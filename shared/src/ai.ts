@@ -22,9 +22,9 @@ interface Skill {
 }
 
 const SKILLS: Record<Difficulty, Skill> = {
-  easy: { shotErr: 0.13, shootThreshold: 1.05, stealRate: 0.04, blockRate: 0.3, react: 0.8 },
-  normal: { shotErr: 0.08, shootThreshold: 0.95, stealRate: 0.08, blockRate: 0.55, react: 0.92 },
-  hard: { shotErr: 0.05, shootThreshold: 0.9, stealRate: 0.12, blockRate: 0.8, react: 1 },
+  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8 },
+  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92 },
+  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1 },
 };
 
 /** Offensive spots as (distance from the hoop toward mid-court, z). */
@@ -231,19 +231,20 @@ function handlerAi(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
     return steer(p, rim, true);
   }
 
-  const patience = state.shotClock > 16 ? 0.08 : 0;
+  const patience = state.shotClock > 18 ? 0.05 : 0;
   if (mine >= sk.shootThreshold + patience && mine >= passValue - 0.05 && mine >= drive - 0.1) {
     return shootNow(state, p, sk);
   }
-  if (pass && passValue > Math.max(mine, drive) + 0.1 && passValue > 0.85) return passTo(pass.m);
-  if (drive > 0.95 && rand(state) < 0.65) {
+  if (pass && passValue > Math.max(mine, drive) + 0.25 && passValue > 0.9) return passTo(pass.m);
+  if (drive > 0.9 && rand(state) < 0.75) {
     p.ai.mode = 'drive';
     p.ai.modeTimer = 1.6 + rand(state) * 0.6;
     p.ai.screenSide = Math.sign(p.pos.z) || (rand(state) < 0.5 ? 1 : -1);
     return steer(p, rim, true);
   }
   if (p.slot <= 1 && distHoop > 6.3 && rand(state) < 0.25) callScreen(state, p);
-  if (state.shotClock < 10 && pass && passValue > 0.6 && rand(state) < 0.4) return passTo(pass.m);
+  if (state.shotClock < 8 && mine > 0.7) return shootNow(state, p, sk);
+  if (state.shotClock < 10 && pass && passValue > 0.8 && rand(state) < 0.3) return passTo(pass.m);
   // Probe: jab toward a slightly different spot.
   const jitter = { x: holderHasSpot.x + (rand(state) - 0.5) * 2.5, z: holderHasSpot.z + (rand(state) - 0.5) * 3 };
   return steer(p, jitter);

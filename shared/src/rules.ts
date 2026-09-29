@@ -238,6 +238,13 @@ function updateInbound(state: GameState): void {
 function endPeriod(state: GameState): void {
   state.pendingEnd = false;
   state.shotClockOn = false;
+  // Anyone mid-gather at the buzzer is too late; don't let the frozen input release it.
+  for (const p of state.players) {
+    if (p.action !== 'shooting') continue;
+    p.action = 'normal';
+    p.shotMeter = -1;
+    p.lastShoot = false;
+  }
   state.events.push({ type: 'periodEnd', period: state.period });
   if (state.period >= 4 && state.score[0] !== state.score[1]) {
     state.phase = 'final';

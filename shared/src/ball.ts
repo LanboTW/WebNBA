@@ -183,12 +183,12 @@ function checkBlocks(state: GameState): void {
   const shooter = state.players[shot.shooterId];
   for (const o of state.players) {
     if (o.team === shot.team || o.onGround || shot.blockChecked.includes(o.id)) continue;
-    if (hdist(o.pos, b.pos) > 0.9) continue;
-    if (b.pos.y > o.pos.y + o.info.heightM * 1.33 + 0.2) continue;
+    if (hdist(o.pos, b.pos) > 0.75) continue;
+    if (b.pos.y > o.pos.y + o.info.heightM * 1.33 + 0.15) continue;
     shot.blockChecked.push(o.id);
     const chance = Math.min(
-      0.75,
-      Math.max(0.05, 0.2 + o.info.ratings.block * 0.005 + (o.info.heightM - shooter.info.heightM) * 0.3),
+      0.6,
+      Math.max(0.03, 0.05 + o.info.ratings.block * 0.004 + (o.info.heightM - shooter.info.heightM) * 0.3),
     );
     if (nextRandom(state) >= chance) continue;
     shot.blocked = true;

@@ -190,6 +190,15 @@ describe('game rules', () => {
     expect(Math.abs(state.inbound!.spot.z)).toBeGreaterThan(COURT.halfWidth);
   });
 
+  it('does not release a shot that was still gathering at the buzzer', () => {
+    const state = liveGame(HOOP_X - 5, 0);
+    state.gameClock = 0.2;
+    const events = run(state, 12, { ...NO_INPUT, shoot: true });
+    expect(events).toContainEqual({ type: 'periodEnd', period: 1 });
+    expect(events.some((e) => e.type === 'shot')).toBe(false);
+    expect(state.players[0].action).toBe('normal');
+  });
+
   it('ends the quarter and starts the next with an inbound', () => {
     const state = liveGame(-3, 0);
     state.gameClock = 0.1;
@@ -207,9 +216,9 @@ describe('full AI game', () => {
   function playFull(seed: number): GameState {
     const state = createGame({
       teams: [GSW, LAL],
-      settings: { seed, humanTeams: [], quarterSeconds: 60 },
+      settings: { seed, humanTeams: [], quarterSeconds: 120 },
     });
-    for (let i = 0; i < 30 * 60 * 12 && state.phase !== 'final'; i++) step(state, {});
+    for (let i = 0; i < 30 * 60 * 20 && state.phase !== 'final'; i++) step(state, {});
     return state;
   }
 
