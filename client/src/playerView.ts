@@ -1,6 +1,20 @@
 import * as THREE from 'three';
 import { SHOT_SWEET, type PlayerState, type TeamInfo } from '@webnba/shared';
 
+export interface Kit {
+  body: string;
+  trim: string;
+  number: string;
+  outline: string;
+}
+
+/** Home wears white with team-colour trim; away wears the team colour. */
+export function kitFor(team: TeamInfo, home: boolean): Kit {
+  return home
+    ? { body: '#f2f2f2', trim: team.primary, number: team.primary, outline: team.secondary }
+    : { body: team.primary, trim: team.secondary, number: team.secondary === '#000000' ? '#ffffff' : team.secondary, outline: '#111111' };
+}
+
 /** Proportions are authored for a 2.0 m player and scaled to the real height. */
 const BASE_HEIGHT = 2.0;
 const THIGH = 0.5;
@@ -22,9 +36,9 @@ export class PlayerView {
   private readonly legR: Limb;
   private runPhase = 0;
 
-  constructor(info: PlayerState['info'], team: TeamInfo) {
-    const jersey = new THREE.MeshStandardMaterial({ color: team.primary, roughness: 0.7 });
-    const trim = new THREE.MeshStandardMaterial({ color: team.secondary, roughness: 0.7 });
+  constructor(info: PlayerState['info'], kit: Kit) {
+    const jersey = new THREE.MeshStandardMaterial({ color: kit.body, roughness: 0.7 });
+    const trim = new THREE.MeshStandardMaterial({ color: kit.trim, roughness: 0.7 });
     const skin = new THREE.MeshStandardMaterial({ color: 0x8d5a3b, roughness: 0.8, flatShading: true });
     const shoe = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 });
 
@@ -48,7 +62,7 @@ export class PlayerView {
     head.position.y = hipY + 0.86;
     this.body.add(head);
 
-    const numberTex = makeNumberTexture(info.number, team);
+    const numberTex = makeNumberTexture(info.number, kit);
     for (const side of [1, -1]) {
       const plate = new THREE.Mesh(
         new THREE.PlaneGeometry(0.34, 0.34),
@@ -77,7 +91,7 @@ export class PlayerView {
     });
   }
 
-  update(p: PlayerState, pos: THREE.Vector3, facing: number, hasBall: boolean, dt: number): void {
+  update(p: PlayerState, pos: THREE.Vector3, facing: number, hasBall: boolean, defending: boolean, dt: number): void {
     this.root.position.copy(pos);
     this.root.rotation.y = facing;
 
@@ -119,6 +133,20 @@ export class PlayerView {
       this.armR.lower.rotation.x = -0.4 - (1 - bounce) * 0.5;
       this.armL.upper.rotation.set(-0.5 - swing * 0.2, 0, 0.35);
       this.armL.lower.rotation.x = -0.9;
+    } else if (defending && speed < 3.5) {
+      // Defensive stance: low, arms wide.
+      this.body.position.y -= 0.1;
+      this.body.rotation.x = 0.25;
+      this.armL.upper.rotation.set(-0.5, 0, 0.9);
+      this.armR.upper.rotation.set(-0.5, 0, -0.9);
+      this.armL.lower.rotation.x = -0.5;
+      this.armR.lower.rotation.x = -0.5;
+      if (!airborne) {
+        this.legL.upper.rotation.x = -0.35 + swing * 0.4;
+        this.legR.upper.rotation.x = -0.35 - swing * 0.4;
+        this.legL.lower.rotation.x = 0.7;
+        this.legR.lower.rotation.x = 0.7;
+      }
     } else {
       this.armL.upper.rotation.set(-swing * 0.7, 0, 0.12);
       this.armR.upper.rotation.set(swing * 0.7, 0, -0.12);
@@ -170,7 +198,7 @@ function makeLimb(
   return { upper, lower };
 }
 
-function makeNumberTexture(num: number, team: TeamInfo): THREE.CanvasTexture {
+function makeNumberTexture(num: number, kit: Kit): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const ctx = c.getContext('2d')!;
@@ -178,9 +206,9 @@ function makeNumberTexture(num: number, team: TeamInfo): THREE.CanvasTexture {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = 8;
-  ctx.strokeStyle = team.primary;
+  ctx.strokeStyle = kit.outline;
   ctx.strokeText(String(num), 64, 68);
-  ctx.fillStyle = team.secondary;
+  ctx.fillStyle = kit.number;
   ctx.fillText(String(num), 64, 68);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;

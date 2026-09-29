@@ -12,7 +12,7 @@ export class Input {
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
-      if (PREVENT.has(e.code)) e.preventDefault();
+      if (PREVENT.has(e.code) && !(e.target instanceof HTMLSelectElement)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     });
@@ -27,6 +27,10 @@ export class Input {
     return had;
   }
 
+  clearPresses(): void {
+    this.pressed.clear();
+  }
+
   sample(): PlayerInput {
     const k = this.keys;
     let moveX = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
@@ -34,6 +38,8 @@ export class Input {
     let sprint = k.has('ShiftLeft') || k.has('ShiftRight');
     let shoot = k.has('KeyJ');
     let jump = k.has('Space');
+    let pass = k.has('KeyK');
+    let switchPlayer = k.has('KeyL');
 
     const pad = navigator.getGamepads?.().find((g) => g && g.connected);
     if (pad) {
@@ -44,9 +50,11 @@ export class Input {
       }
       const btn = (i: number) => !!pad.buttons[i]?.pressed;
       shoot ||= btn(2); // X / Square
-      jump ||= btn(0); // A / Cross
+      jump ||= btn(3); // Y / Triangle
+      pass ||= btn(0); // A / Cross
+      switchPlayer ||= btn(4); // LB / L1
       sprint ||= btn(7) || btn(5); // RT / RB
     }
-    return { moveX, moveZ, sprint, shoot, jump };
+    return { moveX, moveZ, sprint, shoot, jump, pass, switchPlayer };
   }
 }

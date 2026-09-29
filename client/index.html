@@ -8,24 +8,78 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="hud">
+
+    <div id="hud" class="hidden">
       <div id="scoreboard">
-        <div class="team" id="home"><span class="abbr"></span><span class="pts">0</span></div>
-        <div class="clock">練習模式</div>
+        <div class="team" id="t0"><span class="abbr"></span><span class="pts">0</span></div>
+        <div class="center">
+          <div class="period">Q1</div>
+          <div class="clock">3:00</div>
+        </div>
+        <div class="team right" id="t1"><span class="pts">0</span><span class="abbr"></span></div>
+        <div class="shotclock">24</div>
       </div>
       <div id="statline"></div>
       <div id="meter"><div class="zone good"></div><div class="zone perfect"></div><div class="fill"></div></div>
       <div id="toasts"></div>
       <div id="help">
-        <b>操作</b><br />
-        WASD／方向鍵　移動<br />
-        Shift　加速<br />
-        J（按住放開）　投籃<br />
-        空白鍵　跳<br />
-        R　重置球<br />
-        H　隱藏說明
+        <b>進攻</b>　WASD 移動　Shift 加速<br />
+        J 投籃（按住，綠區放開）　K 傳球（方向鍵指定對象）<br />
+        <b>防守</b>　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
+        Esc 暫停／數據　H 隱藏說明
       </div>
     </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel">
+        <h1>WebNBA</h1>
+        <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
+        <div class="row">
+          <label>你的隊伍<select id="homeSel"></select></label>
+          <label>對手<select id="awaySel"></select></label>
+        </div>
+        <div class="matchup"><div id="homeCard" class="card"></div><div class="vs">VS</div><div id="awayCard" class="card"></div></div>
+        <div class="row">
+          <label>模式
+            <select id="modeSel">
+              <option value="game">對戰電腦</option>
+              <option value="watch">電腦對戰（觀戰）</option>
+              <option value="practice">投籃練習</option>
+            </select>
+          </label>
+          <label>難度
+            <select id="diffSel">
+              <option value="easy">簡單</option>
+              <option value="normal" selected>普通</option>
+              <option value="hard">困難</option>
+            </select>
+          </label>
+          <label>每節長度
+            <select id="quarterSel">
+              <option value="60">1 分鐘</option>
+              <option value="120">2 分鐘</option>
+              <option value="180" selected>3 分鐘</option>
+              <option value="300">5 分鐘</option>
+              <option value="720">12 分鐘</option>
+            </select>
+          </label>
+        </div>
+        <button id="startBtn" class="primary">開始比賽</button>
+        <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
+      </div>
+    </div>
+
+    <div id="boxscore" class="overlay hidden">
+      <div class="panel wide">
+        <h2 id="boxTitle">暫停</h2>
+        <div id="boxTables"></div>
+        <div class="buttons">
+          <button id="resumeBtn" class="primary">繼續</button>
+          <button id="quitBtn">回主選單</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

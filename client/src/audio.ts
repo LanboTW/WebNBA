@@ -62,6 +62,48 @@ export class Sfx {
     this.burst(1.8, 1100, 'bandpass', 0.22, 0.25);
   }
 
+  whistle(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    const g = ctx.createGain();
+    o.frequency.value = 2900;
+    lfo.frequency.value = 38;
+    lfoGain.gain.value = 140;
+    lfo.connect(lfoGain).connect(o.frequency);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.02);
+    g.gain.setValueAtTime(0.12, t + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+    o.connect(g).connect(ctx.destination);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.45);
+    lfo.stop(t + 0.45);
+  }
+
+  buzzer(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    for (const f of [180, 183]) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.08, t + 0.03);
+      g.gain.setValueAtTime(0.08, t + 0.9);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.05);
+      o.connect(g).connect(ctx.destination);
+      o.start(t);
+      o.stop(t + 1.1);
+    }
+  }
+
   private burst(dur: number, freq: number, type: BiquadFilterType, volume: number, attack = 0.005): void {
     const ctx = this.ctx;
     if (!ctx || !this.noise) return;

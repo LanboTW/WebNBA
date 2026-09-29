@@ -23,14 +23,26 @@ export function gradeTiming(meter: number): { quality: ShotQuality; factor: numb
 /** Make chance for an uncontested, well-timed shot. */
 export function baseMakeChance(r: Ratings, dist: number, three: boolean, layup: boolean): number {
   if (layup) return 0.55 + r.close * 0.004;
-  if (three) return 0.18 + r.three * 0.0035 - Math.max(0, dist - 7.6) * 0.06;
+  if (three) return 0.1 + r.three * 0.0035 - Math.max(0, dist - 7.6) * 0.06;
   if (dist < 3) return 0.45 + r.close * 0.0035;
   return 0.3 + r.mid * 0.0035 - (dist - 3) * 0.015;
 }
 
-export function makeChance(r: Ratings, dist: number, three: boolean, layup: boolean, meter: number): number {
+/** contest: 0 = wide open, 1 = smothered. */
+export function contestMultiplier(contest: number): number {
+  return 1 - 0.5 * Math.min(1, Math.max(0, contest));
+}
+
+export function makeChance(
+  r: Ratings,
+  dist: number,
+  three: boolean,
+  layup: boolean,
+  meter: number,
+  contest = 0,
+): number {
   const base = baseMakeChance(r, dist, three, layup);
   const { quality, factor } = gradeTiming(meter);
-  const p = quality === 'perfect' ? base + 0.3 : base * factor;
-  return Math.min(0.97, Math.max(0.02, p));
+  const timed = quality === 'perfect' ? base + 0.3 : base * factor;
+  return Math.min(0.97, Math.max(0.02, timed * contestMultiplier(contest)));
 }

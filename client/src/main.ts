@@ -1,26 +1,12 @@
 import * as THREE from 'three';
-import {
-  DT,
-  HOOP_X,
-  SAMPLE_TEAMS,
-  createGame,
-  giveBall,
-  step,
-  type GameEvent,
-  type GameState,
-  type ShotQuality,
-  type Vec3,
-} from '@webnba/shared';
-import { buildArena } from './arena';
+import { ROSTER_SEASON, TEAMS, findTeam, type Difficulty, type GameSettings, type TeamInfo } from '@webnba/shared';
 import { Sfx } from './audio';
-import { BallView } from './ballView';
-import { BroadcastCamera } from './camera';
+import { renderBoxScore } from './boxscore';
 import { Hud } from './hud';
 import { Input } from './input';
-import { PlayerView } from './playerView';
+import { Session } from './session';
 
-const home = SAMPLE_TEAMS[0];
-const CONTROLLED = 0;
+const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -28,147 +14,151 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-document.querySelector('#app')!.appendChild(renderer.domElement);
+$('#app').appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
-const arena = buildArena(scene, home);
-const cam = new BroadcastCamera(window.innerWidth / window.innerHeight);
-const hud = new Hud(home);
+const hud = new Hud();
 const input = new Input(window);
 const sfx = new Sfx();
 window.addEventListener('keydown', () => sfx.unlock());
 window.addEventListener('pointerdown', () => sfx.unlock());
 
-const state: GameState = createGame({
-  players: [{ info: home.players[0], team: 0, pos: { x: 4, z: 2 } }],
-  ballHolder: 0,
-});
-const playerViews = state.players.map((p) => {
-  const v = new PlayerView(p.info, home);
-  scene.add(v.root);
-  return v;
-});
-const ballView = new BallView(scene);
+let session: Session | null = null;
 
-// Previous-tick snapshot for render interpolation.
-let prev = snapshot(state);
-function snapshot(s: GameState) {
-  return {
-    players: s.players.map((p) => ({ pos: { ...p.pos }, facing: p.facing })),
-    ball: { ...s.ball.pos },
+// ----------------------------------------------------------------- menu
+
+const homeSel = $<HTMLSelectElement>('#homeSel');
+const awaySel = $<HTMLSelectElement>('#awaySel');
+const modeSel = $<HTMLSelectElement>('#modeSel');
+const diffSel = $<HTMLSelectElement>('#diffSel');
+const quarterSel = $<HTMLSelectElement>('#quarterSel');
+$('#season').textContent = ROSTER_SEASON;
+
+for (const sel of [homeSel, awaySel]) {
+  for (const t of [...TEAMS].sort((a, b) => a.name.localeCompare(b.name))) {
+    sel.add(new Option(`${t.name} (${t.abbr})`, t.abbr));
+  }
+}
+homeSel.value = load('home', 'GSW');
+awaySel.value = load('away', 'LAL');
+modeSel.value = load('mode', 'game');
+diffSel.value = load('diff', 'normal');
+quarterSel.value = load('quarter', '180');
+
+function load(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(`webnba.${key}`) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function save(key: string, value: string): void {
+  try {
+    localStorage.setItem(`webnba.${key}`, value);
+  } catch {
+    // Storage unavailable (private mode); preferences just won't persist.
+  }
+}
+
+function renderCard(el: HTMLElement, t: TeamInfo): void {
+  el.style.setProperty('--team', t.primary === '#000000' ? t.secondary : t.primary);
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  el.innerHTML =
+    `<b>${esc(t.name)}</b><br>` +
+    t.players
+      .slice(0, 5)
+      .map((p) => `${p.position}　${esc(p.name)}`)
+      .join('<br>');
+}
+function refreshCards(): void {
+  renderCard($('#homeCard'), findTeam(homeSel.value));
+  renderCard($('#awayCard'), findTeam(awaySel.value));
+  const practice = modeSel.value === 'practice';
+  awaySel.disabled = practice;
+  $('#awayCard').style.opacity = practice ? '0.35' : '1';
+  $('#startBtn').textContent = practice ? '開始練習' : modeSel.value === 'watch' ? '開始觀戰' : '開始比賽';
+}
+[homeSel, awaySel, modeSel].forEach((s) => s.addEventListener('change', refreshCards));
+refreshCards();
+
+$('#startBtn').addEventListener('click', () => {
+  sfx.unlock();
+  save('home', homeSel.value);
+  save('away', awaySel.value);
+  save('mode', modeSel.value);
+  save('diff', diffSel.value);
+  save('quarter', quarterSel.value);
+  const mode = modeSel.value;
+  const settings: Partial<GameSettings> = {
+    mode: mode === 'practice' ? 'practice' : 'game',
+    humanTeams: mode === 'watch' ? [] : [0],
+    difficulty: diffSel.value as Difficulty,
+    quarterSeconds: Number(quarterSel.value),
+    seed: (Math.random() * 2 ** 31) | 0,
   };
+  startSession([findTeam(homeSel.value), findTeam(awaySel.value)], settings);
+});
+
+function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
+  session?.dispose();
+  session = new Session(teams, settings, hud, input, sfx, { onFinal: showFinal }, window.innerWidth / window.innerHeight);
+  $('#menu').classList.add('hidden');
+  $('#boxscore').classList.add('hidden');
+  input.clearPresses();
 }
 
-const lerpV = (a: Vec3, b: Vec3, t: number, out: THREE.Vector3) =>
-  out.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
-function lerpAngle(a: number, b: number, t: number): number {
-  let d = b - a;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return a + d * t;
+function backToMenu(): void {
+  session?.dispose();
+  session = null;
+  $('#boxscore').classList.add('hidden');
+  $('#menu').classList.remove('hidden');
 }
 
-const QUALITY_TEXT: Record<ShotQuality, [string, string]> = {
-  perfect: ['完美出手！', 'perfect'],
-  good: ['不錯的出手', 'good'],
-  early: ['太早', 'bad'],
-  late: ['太晚', 'bad'],
-};
+// ------------------------------------------------------------ box score
 
-function handleEvent(e: GameEvent): void {
-  switch (e.type) {
-    case 'dribble':
-      sfx.dribble(0.45);
-      break;
-    case 'bounce':
-      sfx.dribble(Math.min(0.6, e.speed * 0.1));
-      break;
-    case 'rim':
-      sfx.rim(Math.min(0.7, e.speed * 0.15));
-      break;
-    case 'board':
-      sfx.board(Math.min(0.7, e.speed * 0.12));
-      break;
-    case 'shot': {
-      const [text, cls] = QUALITY_TEXT[e.quality];
-      hud.toast(`${text}　${Math.round(e.chance * 100)}%`, cls, true);
-      break;
-    }
-    case 'score':
-      sfx.swish();
-      sfx.cheer();
-      arena.swishNet(e.hoopX);
-      arena.cheer();
-      hud.toast(e.swish ? `空心！ +${e.points}` : `+${e.points}`, 'perfect');
-      break;
-    case 'pickup':
-      if (e.rebound) hud.toast('籃板', '', true);
-      break;
-  }
+function showBox(title: string, canResume: boolean): void {
+  if (!session) return;
+  $('#boxTitle').textContent = title;
+  $('#boxTables').innerHTML = renderBoxScore(session.state, session.teams);
+  $('#resumeBtn').classList.toggle('hidden', !canResume);
+  $('#boxscore').classList.remove('hidden');
 }
 
-function resetBall(): void {
-  const p = state.players[CONTROLLED];
-  if (p.action !== 'normal') return;
-  giveBall(state, CONTROLLED);
-  prev = snapshot(state);
+function showFinal(): void {
+  if (!session) return;
+  session.paused = true;
+  const [a, b] = session.state.score;
+  const [ta, tb] = session.teams;
+  showBox(`終場　${ta.abbr} ${a} : ${b} ${tb.abbr}`, false);
 }
 
-const tmp = new THREE.Vector3();
-const focus = new THREE.Vector3();
-let acc = 0;
+function togglePause(): void {
+  if (!session || session.state.phase === 'final') return;
+  session.paused = !session.paused;
+  if (session.paused) showBox('暫停', true);
+  else $('#boxscore').classList.add('hidden');
+}
+
+$('#resumeBtn').addEventListener('click', togglePause);
+$('#quitBtn').addEventListener('click', backToMenu);
+
+// ----------------------------------------------------------------- loop
+
 let last = performance.now();
-
 function frame(now: number): void {
-  acc += Math.min(0.25, (now - last) / 1000);
-  const frameDt = Math.min(0.1, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-
-  if (input.consumePress('KeyR')) resetBall();
-  if (input.consumePress('KeyH')) hud.toggleHelp();
-
-  while (acc >= DT) {
-    prev = snapshot(state);
-    step(state, { [CONTROLLED]: input.sample() });
-    state.events.forEach(handleEvent);
-    acc -= DT;
-  }
-  const alpha = acc / DT;
-
-  state.players.forEach((p, i) => {
-    const a = prev.players[i];
-    lerpV(a.pos, p.pos, alpha, tmp);
-    const hasBall = state.ball.mode === 'held' && state.ball.holderId === p.id;
-    playerViews[i].update(p, tmp, lerpAngle(a.facing, p.facing, alpha), hasBall, frameDt);
-  });
-  lerpV(prev.ball, state.ball.pos, alpha, tmp);
-  ballView.update(tmp, state.ball.vel, frameDt);
-
-  // Follow the ball, but lean toward the hoop being attacked.
-  focus.set(tmp.x * 0.75 + HOOP_X * 0.25, 0, tmp.z);
-  cam.update(focus, frameDt);
-  arena.update(frameDt);
-
-  const me = state.players[CONTROLLED];
-  hud.setScore(state.score[0]);
-  hud.setStats(me);
-  if (me.action === 'shooting') {
-    const head = new THREE.Vector3(me.pos.x, me.pos.y + me.info.heightM + 0.2, me.pos.z).project(cam.camera);
-    hud.setMeter(me.shotMeter, {
-      x: ((head.x + 1) / 2) * window.innerWidth,
-      y: ((1 - head.y) / 2) * window.innerHeight,
-    });
+  if (input.consumePress('Escape')) togglePause();
+  if (session) {
+    session.frame(dt);
+    renderer.render(session.scene, session.cam.camera);
   } else {
-    hud.setMeter(-1, null);
+    renderer.clear();
   }
-
-  renderer.render(scene, cam.camera);
   requestAnimationFrame(frame);
 }
+requestAnimationFrame(frame);
 
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-  cam.resize(window.innerWidth / window.innerHeight);
+  session?.resize(window.innerWidth / window.innerHeight);
 });
-
-requestAnimationFrame(frame);
