@@ -50,6 +50,11 @@ export function teammates(state: GameState, p: PlayerState): PlayerState[] {
   return state.players.filter((o) => o.team === p.team && o.id !== p.id);
 }
 
+/** Icon-pass order: teammates by lineup slot, so each keeps a stable number. */
+export function passIcons(state: GameState, p: PlayerState): PlayerState[] {
+  return teammates(state, p).sort((a, b) => a.slot - b.slot);
+}
+
 export function opponents(state: GameState, team: 0 | 1): PlayerState[] {
   return state.players.filter((o) => o.team !== team);
 }
@@ -85,7 +90,9 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
     p.shotTimer += DT;
     if (p.onGround && p.shotTimer > 0.2) p.action = 'normal';
   } else if (mine && passPressed && (canPlay || inbounder)) {
-    const target = inp.passTarget ?? choosePassTarget(state, p, inp);
+    const explicit = inp.passTarget !== undefined ? state.players[inp.passTarget] : undefined;
+    const valid = explicit && explicit.team === p.team && explicit.id !== p.id;
+    const target = valid ? explicit.id : choosePassTarget(state, p, inp);
     if (target >= 0) releasePass(state, p, target);
   } else if (mine && shootPressed && p.onGround && canPlay && !inbounder) {
     startShot(state, p);
@@ -425,6 +432,7 @@ function attemptSteal(state: GameState, d: PlayerState): void {
   const h = state.players[ball.holderId];
   if (h.team === d.team || h.action === 'shooting' || isInbounder(state, h)) return;
   d.stealCooldown = 0.9;
+  state.events.push({ type: 'reach', playerId: d.id });
   const dist = hdist(d.pos, ball.pos);
   if (dist > 1.4) return;
   const chance = Math.min(
@@ -455,7 +463,8 @@ export function heldBallPosition(state: GameState, p: PlayerState): Vec3 {
     return { x: p.pos.x + fx * 0.25, y: p.pos.y + h * (0.7 + 0.45 * t), z: p.pos.z + fz * 0.25 };
   }
   if (isInbounder(state, p)) {
-    return { x: p.pos.x + fx * 0.3, y: h * 0.9, z: p.pos.z + fz * 0.3 };
+    // Matches the overhead-hold pose: hands end up ~1.12 x height, just in front of the face.
+    return { x: p.pos.x + fx * 0.12, y: h * 1.17, z: p.pos.z + fz * 0.12 };
   }
   const rx = -fz;
   const rz = fx;

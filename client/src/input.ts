@@ -27,6 +27,10 @@ export class Input {
     return had;
   }
 
+  isDown(code: string): boolean {
+    return this.keys.has(code);
+  }
+
   clearPresses(): void {
     this.pressed.clear();
   }

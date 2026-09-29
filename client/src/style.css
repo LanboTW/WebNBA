@@ -193,6 +193,42 @@ body {
   mix-blend-mode: difference;
 }
 
+.picon {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 2px;
+  border-radius: 999px;
+  background: rgba(10, 12, 20, 0.72);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+
+.picon b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2a3044;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.picon.aim {
+  background: rgba(255, 122, 26, 0.92);
+  color: #1a0d00;
+}
+
+.picon.aim b {
+  background: #1a0d00;
+  color: var(--accent);
+}
+
 #toasts {
   position: absolute;
   top: 30%;

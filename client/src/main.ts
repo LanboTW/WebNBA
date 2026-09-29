@@ -101,6 +101,8 @@ $('#startBtn').addEventListener('click', () => {
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
   session?.dispose();
   session = new Session(teams, settings, hud, input, sfx, { onFinal: showFinal }, window.innerWidth / window.innerHeight);
+  // Dev-only hook for inspecting the sim from the browser console.
+  if (import.meta.env.DEV) (window as unknown as { __session: Session }).__session = session;
   $('#menu').classList.add('hidden');
   $('#boxscore').classList.add('hidden');
   input.clearPresses();

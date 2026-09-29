@@ -1,10 +1,10 @@
-﻿export interface Vec3 {
+export interface Vec3 {
   x: number;
   y: number;
   z: number;
 }
 
-/** 0??00 scale. Order matches RATING_KEYS in the roster JSON. */
+/** 0-100 scale. Order matches RATING_KEYS in the roster JSON. */
 export interface Ratings {
   speed: number;
   jump: number;
@@ -76,7 +76,7 @@ export interface PlayerAi {
 export interface PlayerState {
   id: number;
   team: 0 | 1;
-  /** Lineup slot 0?? (PG, SG, SF, PF, C). */
+  /** Lineup slot 0-4 (PG, SG, SF, PF, C). */
   slot: number;
   info: PlayerInfo;
   pos: Vec3;
@@ -154,6 +154,7 @@ export type GameEvent =
   | { type: 'pickup'; playerId: number; rebound: boolean }
   | { type: 'pass'; playerId: number; targetId: number }
   | { type: 'steal'; playerId: number; fromId: number }
+  | { type: 'reach'; playerId: number }
   | { type: 'block'; playerId: number; shooterId: number }
   | { type: 'turnover'; team: 0 | 1; reason: TurnoverReason }
   | { type: 'possession'; team: 0 | 1 }

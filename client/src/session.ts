@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import {
   DT,
   attackHoopX,
+  choosePassTarget,
   createGame,
+  passIcons,
   giveBall,
   step,
   type GameEvent,
   type GameSettings,
   type GameState,
+  type PlayerInput,
   type ShotQuality,
   type TeamInfo,
   type Vec3,
@@ -48,6 +51,8 @@ export class Session {
   private prev: Snapshot;
   private acc = 0;
   private readonly human: 0 | -1;
+  private lastInput: PlayerInput | null = null;
+  private readonly icons: HTMLElement[];
   paused = false;
 
   constructor(
@@ -87,6 +92,16 @@ export class Session {
     }
     this.prev = this.snapshot();
     hud.show(teams, practice);
+
+    const iconRoot = document.querySelector('#passIcons')!;
+    iconRoot.replaceChildren();
+    this.icons = [1, 2, 3, 4].map((n) => {
+      const el = document.createElement('div');
+      el.className = 'picon hidden';
+      el.innerHTML = `<b>${n}</b><span></span>`;
+      iconRoot.appendChild(el);
+      return el;
+    });
   }
 
   private snapshot(): Snapshot {
@@ -111,7 +126,7 @@ export class Session {
       this.acc += Math.min(0.25, dt);
       while (this.acc >= DT) {
         this.prev = this.snapshot();
-        const inputs = this.human === 0 ? { 0: this.input.sample() } : {};
+        const inputs = this.human === 0 ? { 0: this.humanInput() } : {};
         step(s, inputs);
         s.events.forEach((e) => this.handleEvent(e));
         this.acc -= DT;
@@ -120,19 +135,73 @@ export class Session {
     this.render(this.paused ? 1 : this.acc / DT, dt);
   }
 
+  /** Keyboard/pad input plus icon passing: digits 1-4 pass straight to that teammate. */
+  private humanInput(): PlayerInput {
+    const s = this.state;
+    const inp = this.input.sample();
+    const me = s.players[s.controlled[0]];
+    if (me && s.ball.mode === 'held' && s.ball.holderId === me.id) {
+      const mates = passIcons(s, me);
+      for (let i = 0; i < mates.length; i++) {
+        if (this.input.isDown(`Digit${i + 1}`) || this.input.isDown(`Numpad${i + 1}`)) {
+          inp.pass = true;
+          inp.passTarget = mates[i].id;
+          break;
+        }
+      }
+    }
+    this.lastInput = inp;
+    return inp;
+  }
+
+  /** Numbered labels over teammates while you hold the ball; the K-pass receiver is highlighted. */
+  private renderPassIcons(): void {
+    const s = this.state;
+    const me = this.human === 0 ? s.players[s.controlled[0]] : undefined;
+    const holding = !!me && s.ball.mode === 'held' && s.ball.holderId === me.id && me.action === 'normal';
+    const mates = holding ? passIcons(s, me) : [];
+    const aimed = holding && this.lastInput ? choosePassTarget(s, me, this.lastInput) : -1;
+    this.icons.forEach((el, i) => {
+      const m = mates[i];
+      if (!m) {
+        el.classList.add('hidden');
+        return;
+      }
+      const v = new THREE.Vector3(m.pos.x, m.pos.y + m.info.heightM + 0.45, m.pos.z).project(this.cam.camera);
+      el.classList.remove('hidden');
+      el.classList.toggle('aim', m.id === aimed);
+      el.style.left = `${((v.x + 1) / 2) * window.innerWidth}px`;
+      el.style.top = `${((1 - v.y) / 2) * window.innerHeight}px`;
+      const last = m.info.name.split(' ').slice(1).join(' ') || m.info.name;
+      el.querySelector('span')!.textContent = last;
+    });
+  }
+
   private render(alpha: number, dt: number): void {
     const s = this.state;
     const tmp = new THREE.Vector3();
     const holder = s.ball.mode === 'held' ? s.ball.holderId : -1;
     const offense = holder >= 0 ? s.players[holder].team : s.possession;
+    const ballPos = lerpV(this.prev.ball, s.ball.pos, alpha, new THREE.Vector3());
     s.players.forEach((p, i) => {
       const a = this.prev.players[i];
       lerpV(a.pos, p.pos, alpha, tmp);
-      const defending = s.settings.mode === 'game' && p.team !== offense && s.phase === 'live';
-      this.playerViews[i].update(p, tmp, lerpAngle(a.facing, p.facing, alpha), holder === p.id, defending, this.paused ? 0 : dt);
+      this.playerViews[i].update(
+        p,
+        tmp,
+        lerpAngle(a.facing, p.facing, alpha),
+        {
+          hasBall: holder === p.id,
+          defending: s.settings.mode === 'game' && p.team !== offense && s.phase === 'live',
+          inbounding: s.phase === 'inbound' && s.inbound?.passerId === p.id,
+          catching: s.ball.mode === 'pass' && s.ball.pass?.targetId === p.id,
+          lookAt: ballPos,
+        },
+        this.paused ? 0 : dt,
+      );
       if (this.human === 0 && s.controlled[0] === p.id) this.ring.position.set(tmp.x, 0.02, tmp.z);
     });
-    lerpV(this.prev.ball, s.ball.pos, alpha, tmp);
+    tmp.copy(ballPos);
     this.ballView.update(tmp, s.ball.vel, this.paused ? 0 : dt);
 
     // Follow the ball, leaning toward the hoop the offence is attacking.
@@ -140,6 +209,7 @@ export class Session {
     const focus = new THREE.Vector3(tmp.x * 0.75 + hx * 0.25, 0, tmp.z);
     this.cam.update(focus, dt);
     this.arena.update(dt);
+    this.renderPassIcons();
 
     const me = this.human === 0 ? s.players[s.controlled[0]] ?? null : null;
     this.hud.update(s, me);
@@ -181,6 +251,7 @@ export class Session {
         }
         break;
       case 'score': {
+        this.playerViews[e.playerId]?.trigger('celebrate');
         this.sfx.swish();
         this.sfx.cheer();
         this.arena.swishNet(e.hoopX);
@@ -190,6 +261,12 @@ export class Session {
         if (e.assistId >= 0) hud.toast(`助攻 ${this.name(e.assistId)}`, '', true);
         break;
       }
+      case 'pass':
+        this.playerViews[e.playerId]?.trigger('pass');
+        break;
+      case 'reach':
+        this.playerViews[e.playerId]?.trigger('reach');
+        break;
       case 'steal':
         hud.toast(`抄截！ ${this.name(e.playerId)}`, 'accent', true);
         break;
@@ -231,6 +308,7 @@ export class Session {
       }
     });
     this.hud.hide();
+    this.icons.forEach((el) => el.remove());
   }
 }
 

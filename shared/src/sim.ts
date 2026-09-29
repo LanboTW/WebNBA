@@ -13,7 +13,7 @@ import {
 } from './types';
 
 export { giveBall } from './ball';
-export { heldBallPosition, runSpeed } from './players';
+export { choosePassTarget, heldBallPosition, passIcons, runSpeed } from './players';
 
 export interface GameSetup {
   teams: [TeamInfo, TeamInfo];

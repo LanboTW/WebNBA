@@ -190,6 +190,40 @@ describe('game rules', () => {
     expect(Math.abs(state.inbound!.spot.z)).toBeGreaterThan(COURT.halfWidth);
   });
 
+  it('passes toward the aimed direction', () => {
+    const state = liveGame(0, 0);
+    // Teammates on each side: +x, -x, +z, -z.
+    placePlayer(state, 1, 5, 0);
+    placePlayer(state, 2, -5, 0);
+    placePlayer(state, 3, 0, 5);
+    placePlayer(state, 4, 0, -5);
+    const aims: [number, number, number][] = [
+      [1, 0, 1],
+      [-1, 0, 2],
+      [0, 1, 3],
+      [0, -1, 4],
+    ];
+    for (const [moveX, moveZ, expected] of aims) {
+      const s = structuredClone(state);
+      step(s, { 0: { ...NO_INPUT, moveX, moveZ, pass: true } });
+      expect(s.ball.pass?.targetId ?? s.ball.pass).toBe(expected);
+    }
+  });
+
+  it('icon-passes to an explicit teammate and ignores invalid targets', () => {
+    const state = liveGame(0, 0);
+    placePlayer(state, 3, 5, 3);
+    const toMate = structuredClone(state);
+    step(toMate, { 0: { ...NO_INPUT, pass: true, passTarget: 3 } });
+    expect(toMate.ball.pass?.targetId).toBe(3);
+
+    // An opponent id must never be honoured as a pass target.
+    const toOpponent = structuredClone(state);
+    step(toOpponent, { 0: { ...NO_INPUT, pass: true, passTarget: 7 } });
+    const target = toOpponent.ball.pass?.targetId ?? -1;
+    expect(toOpponent.players[target].team).toBe(0);
+  });
+
   it('does not release a shot that was still gathering at the buzzer', () => {
     const state = liveGame(HOOP_X - 5, 0);
     state.gameClock = 0.2;
