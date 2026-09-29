@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>WebNBA</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">
+      <div id="scoreboard">
+        <div class="team" id="home"><span class="abbr"></span><span class="pts">0</span></div>
+        <div class="clock">練習模式</div>
+      </div>
+      <div id="statline"></div>
+      <div id="meter"><div class="zone good"></div><div class="zone perfect"></div><div class="fill"></div></div>
+      <div id="toasts"></div>
+      <div id="help">
+        <b>操作</b><br />
+        WASD／方向鍵　移動<br />
+        Shift　加速<br />
+        J（按住放開）　投籃<br />
+        空白鍵　跳<br />
+        R　重置球<br />
+        H　隱藏說明
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
