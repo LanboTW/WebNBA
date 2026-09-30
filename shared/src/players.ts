@@ -73,6 +73,7 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   p.lastPass = inp.pass;
   p.pickupCooldown = Math.max(0, p.pickupCooldown - DT);
   p.stealCooldown = Math.max(0, p.stealCooldown - DT);
+  p.intenseD = inp.intenseD && !mine && canPlay;
 
   if (p.action === 'shooting') {
     // Release uses the meter the player saw when letting go, before advancing it.
@@ -101,20 +102,38 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   } else if (jumpPressed && p.onGround && !inbounder) {
     p.vel.y = 3.0 + p.info.ratings.jump * 0.014;
     p.onGround = false;
+    // Leaving the floor with the ball ends the dribble: no dribbling again once you land.
+    if (mine) p.dribbleDead = true;
   }
 
+  // A dead dribble may pivot, pass or shoot, but walking with it would be a travel.
+  const pivotOnly = mine && p.dribbleDead;
   if (inbounder) {
     p.vel.x = 0;
     p.vel.z = 0;
-  } else if (p.onGround && p.action === 'normal') {
+  } else if (p.onGround && p.action === 'normal' && !pivotOnly) {
     let mx = inp.moveX;
     let mz = inp.moveZ;
+    if (p.intenseD) {
+      // Slide to the spot between your man and the rim; the stick only nudges.
+      const t = intenseTarget(state, p);
+      if (t) {
+        const dx = t.x - p.pos.x;
+        const dz = t.z - p.pos.z;
+        const d = Math.hypot(dx, dz);
+        const k = d > 0.05 ? Math.min(1, d / 0.5) / d : 0;
+        mx = dx * k + mx * 0.35;
+        mz = dz * k + mz * 0.35;
+      }
+    }
     const len = Math.hypot(mx, mz);
     if (len > 1) {
       mx /= len;
       mz /= len;
     }
-    const speed = runSpeed(p) * (inp.sprint ? 1.3 : 1) * (mine ? 0.92 : 1);
+    const pressured = mine && state.players.some((o) => o.team !== p.team && o.intenseD && hdist(o.pos, p.pos) < 1.3);
+    const speed =
+      runSpeed(p) * (inp.sprint ? 1.3 : 1) * (mine ? 0.92 : 1) * (pressured ? 0.88 : 1) * (p.intenseD ? 0.95 : 1);
     const k = Math.min(1, MOVE_RESPONSE * DT);
     p.vel.x += (mx * speed - p.vel.x) * k;
     p.vel.z += (mz * speed - p.vel.z) * k;
@@ -133,6 +152,7 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
       p.pos.y = 0;
       p.vel.y = 0;
       p.onGround = true;
+      if (pivotOnly) state.events.push({ type: 'deadDribble', playerId: p.id });
     }
   }
   const limX = COURT.halfLength + 1.2;
@@ -144,17 +164,38 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   let targetFacing = p.facing;
   if (p.action !== 'normal') targetFacing = Math.atan2(attackHoopX(p.team, state.period) - p.pos.x, -p.pos.z);
   else if (inbounder) targetFacing = Math.atan2(-p.pos.x, -p.pos.z);
+  else if (pivotOnly && Math.hypot(inp.moveX, inp.moveZ) > 0.3) targetFacing = Math.atan2(inp.moveX, inp.moveZ);
+  else if (p.intenseD) targetFacing = Math.atan2(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
   else if (hSpeed > 1.5 || (mine && hSpeed > 0.3)) targetFacing = Math.atan2(p.vel.x, p.vel.z);
   else if (!mine) targetFacing = Math.atan2(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
   p.facing = lerpAngle(p.facing, targetFacing, Math.min(1, 12 * DT));
 
-  if (mine && p.action === 'normal' && !inbounder) {
+  if (mine && p.action === 'normal' && !inbounder && !p.dribbleDead) {
     const before = Math.floor(p.dribblePhase / Math.PI);
     p.dribblePhase += DT * Math.PI * (1.8 + hSpeed * 0.3);
     if (Math.floor(p.dribblePhase / Math.PI) !== before && p.onGround) {
       state.events.push({ type: 'dribble', pos: { x: p.pos.x, y: 0, z: p.pos.z } });
     }
   }
+}
+
+/**
+ * Intense defence spot: tight between the ball handler (if close) or your
+ * assigned man and the rim they attack.
+ */
+function intenseTarget(state: GameState, p: PlayerState): { x: number; z: number } | null {
+  const b = state.ball;
+  const holder = b.mode === 'held' ? state.players[b.holderId] : null;
+  let man: PlayerState | null = null;
+  if (holder && holder.team !== p.team && hdist(holder.pos, p.pos) < 4.5) man = holder;
+  else if (state.assign[p.id] >= 0) man = state.players[state.assign[p.id]];
+  if (!man) return null;
+  const hx = attackHoopX(man.team, state.period);
+  const dx = hx - man.pos.x;
+  const dz = -man.pos.z;
+  const l = Math.hypot(dx, dz) || 1;
+  const gap = man === holder ? 0.95 : 1.4;
+  return { x: man.pos.x + (dx / l) * gap, z: man.pos.z + (dz / l) * gap };
 }
 
 /** Pushes overlapping players apart; the one moving into the other gives way more. */
@@ -253,7 +294,7 @@ export function contestAt(state: GameState, team: 0 | 1, pos: { x: number; z: nu
     const front = cos > 0.2 ? 1 : 0.45;
     const closeness = Math.min(1, (2.2 - d) / 1.6);
     const height = Math.max(0.5, Math.min(1.3, 0.8 + (o.info.heightM - shooterHeight) * 0.8 + (o.onGround ? 0 : 0.25)));
-    const c = closeness * front * height * (0.7 + o.info.ratings.defense * 0.004);
+    const c = closeness * front * height * (0.7 + o.info.ratings.defense * 0.004) * (o.intenseD ? 1.2 : 1);
     best = Math.max(best, c);
   }
   return Math.min(1, best);
@@ -337,12 +378,13 @@ function releaseShot(state: GameState, p: PlayerState): void {
   p.shotTimer = 0;
   p.shotMeter = -1;
   p.pickupCooldown = 0.5;
+  p.dribbleDead = false;
   state.events.push({ type: 'shot', playerId: p.id, quality, points, chance });
 }
 
 // --------------------------------------------------------------- passing
 
-/** Human passing: aim with the stick, or pick the most open teammate. */
+/** Human passing: aim with the stick, otherwise the nearest teammate. */
 export function choosePassTarget(state: GameState, p: PlayerState, inp: PlayerInput): number {
   const mates = teammates(state, p);
   if (!mates.length) return -1;
@@ -353,23 +395,13 @@ export function choosePassTarget(state: GameState, p: PlayerState, inp: PlayerIn
     const dx = m.pos.x - p.pos.x;
     const dz = m.pos.z - p.pos.z;
     const d = Math.hypot(dx, dz) || 1;
-    const score =
-      aim > 0.3
-        ? (dx * inp.moveX + dz * inp.moveZ) / (d * aim) - d * 0.01
-        : shotValue(state, m) + Math.min(3, openness(state, m)) * 0.15 - d * 0.02;
+    const score = aim > 0.3 ? (dx * inp.moveX + dz * inp.moveZ) / (d * aim) - d * 0.01 : -d;
     if (score > bestScore) {
       bestScore = score;
       best = m;
     }
   }
   return best.id;
-}
-
-/** Distance to the nearest opponent. */
-export function openness(state: GameState, p: PlayerState): number {
-  let best = Infinity;
-  for (const o of state.players) if (o.team !== p.team) best = Math.min(best, hdist(o.pos, p.pos));
-  return best;
 }
 
 export function releasePass(state: GameState, p: PlayerState, targetId: number): void {
@@ -421,6 +453,7 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
     z: (to.z - from.z) / flight,
   };
   p.pickupCooldown = 0.35;
+  p.dribbleDead = false;
   state.events.push({ type: 'pass', playerId: p.id, targetId });
 }
 
@@ -437,7 +470,10 @@ function attemptSteal(state: GameState, d: PlayerState): void {
   if (dist > 1.4) return;
   const chance = Math.min(
     0.4,
-    Math.max(0.03, 0.1 + (d.info.ratings.steal - h.info.ratings.handle) * 0.004 + (1.4 - dist) * 0.08),
+    Math.max(
+      0.03,
+      0.1 + (d.info.ratings.steal - h.info.ratings.handle) * 0.004 + (1.4 - dist) * 0.08 + (d.intenseD ? 0.05 : 0),
+    ),
   );
   if (nextRandom(state) >= chance) return;
   const dx = d.pos.x - ball.pos.x;
@@ -461,6 +497,10 @@ export function heldBallPosition(state: GameState, p: PlayerState): Vec3 {
   if (p.action === 'shooting' || !p.onGround) {
     const t = p.action === 'shooting' ? Math.min(1, Math.max(0, p.shotMeter) / SHOT_SWEET) : 0.3;
     return { x: p.pos.x + fx * 0.25, y: p.pos.y + h * (0.7 + 0.45 * t), z: p.pos.z + fz * 0.25 };
+  }
+  if (p.dribbleDead) {
+    // Both hands on the ball at the chest.
+    return { x: p.pos.x + fx * 0.3, y: h * 0.62, z: p.pos.z + fz * 0.3 };
   }
   if (isInbounder(state, p)) {
     // Matches the overhead-hold pose: hands end up ~1.12 x height, just in front of the face.

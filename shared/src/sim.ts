@@ -47,6 +47,8 @@ function newPlayer(id: number, team: 0 | 1, slot: number, info: TeamInfo['player
     shotJumped: false,
     shotFrom: { x: 0, y: 0, z: 0 },
     dribblePhase: 0,
+    dribbleDead: false,
+    intenseD: false,
     pickupCooldown: 0,
     stealCooldown: 0,
     lastShoot: false,

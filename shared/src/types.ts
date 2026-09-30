@@ -91,6 +91,10 @@ export interface PlayerState {
   shotJumped: boolean;
   shotFrom: Vec3;
   dribblePhase: number;
+  /** Picked up the dribble (jumped with the ball): may pivot, pass or shoot, but not move or dribble. */
+  dribbleDead: boolean;
+  /** Holding the intense-defence button this tick. */
+  intenseD: boolean;
   pickupCooldown: number;
   stealCooldown: number;
   lastShoot: boolean;
@@ -155,6 +159,7 @@ export type GameEvent =
   | { type: 'pass'; playerId: number; targetId: number }
   | { type: 'steal'; playerId: number; fromId: number }
   | { type: 'reach'; playerId: number }
+  | { type: 'deadDribble'; playerId: number }
   | { type: 'block'; playerId: number; shooterId: number }
   | { type: 'turnover'; team: 0 | 1; reason: TurnoverReason }
   | { type: 'possession'; team: 0 | 1 }
@@ -218,6 +223,8 @@ export interface PlayerInput {
   pass: boolean;
   /** Switch controlled player (defence / loose ball). */
   switchPlayer: boolean;
+  /** Hold on defence: auto-shadow the ball handler (or your man) tightly. */
+  intenseD: boolean;
   /** AI only: explicit pass receiver. */
   passTarget?: number;
 }
@@ -230,4 +237,5 @@ export const NO_INPUT: PlayerInput = {
   jump: false,
   pass: false,
   switchPlayer: false,
+  intenseD: false,
 };

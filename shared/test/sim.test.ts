@@ -69,6 +69,13 @@ function liveGame(x: number, z: number, seed = 1): GameState {
   giveBall(state, 0);
   state.controlled[0] = 0;
   placePlayer(state, 0, x, z);
+  // Spread teammates out so a pass is never caught on the tick it is thrown.
+  [
+    [-9, -5],
+    [-9, 5],
+    [-6, -2.5],
+    [-6, 2.5],
+  ].forEach(([tx, tz], i) => placePlayer(state, i + 1, tx, tz));
   // Park the defence well away so drills are uncontested.
   state.players.filter((p) => p.team === 1).forEach((p, i) => placePlayer(state, p.id, -12, -6 + i * 3));
   return state;
@@ -208,6 +215,62 @@ describe('game rules', () => {
       step(s, { 0: { ...NO_INPUT, moveX, moveZ, pass: true } });
       expect(s.ball.pass?.targetId ?? s.ball.pass).toBe(expected);
     }
+  });
+
+  it('passes to the nearest teammate when no direction is held', () => {
+    const state = liveGame(0, 0);
+    placePlayer(state, 1, 6, 0);
+    placePlayer(state, 2, -3, 1);
+    placePlayer(state, 3, 0, 7);
+    placePlayer(state, 4, -8, -5);
+    step(state, { 0: { ...NO_INPUT, pass: true } });
+    expect(state.ball.pass?.targetId).toBe(2);
+  });
+
+  it('jumping with the ball kills the dribble: no moving after landing, passing still allowed', () => {
+    const state = liveGame(0, 0);
+    run(state, 1, { ...NO_INPUT, jump: true });
+    expect(state.players[0].dribbleDead).toBe(true);
+    const events = run(state, 30);
+    expect(events).toContainEqual({ type: 'deadDribble', playerId: 0 });
+    const start = { ...state.players[0].pos };
+    run(state, 30, { ...NO_INPUT, moveX: 1, sprint: true });
+    expect(Math.hypot(state.players[0].pos.x - start.x, state.players[0].pos.z - start.z)).toBeLessThan(0.05);
+    expect(events.some((e) => e.type === 'dribble')).toBe(false);
+    step(state, { 0: { ...NO_INPUT, pass: true } });
+    expect(state.ball.mode).toBe('pass');
+    expect(state.players[0].dribbleDead).toBe(false);
+  });
+
+  it('can pass in mid-air after jumping with the ball', () => {
+    const state = liveGame(0, 0);
+    run(state, 6, { ...NO_INPUT, jump: true });
+    expect(state.players[0].onGround).toBe(false);
+    step(state, { 0: { ...NO_INPUT, pass: true } });
+    expect(state.ball.mode).toBe('pass');
+  });
+
+  it('intense defence slides the defender between the ball handler and the rim', () => {
+    const state = createGame({ teams: [GSW, LAL], settings: { seed: 1, humanTeams: [0] } });
+    state.phase = 'live';
+    state.possession = 1;
+    giveBall(state, 5);
+    placePlayer(state, 5, 4, 2);
+    state.controlled[0] = 0;
+    placePlayer(state, 0, 1, -2);
+    // Team 1 attacks the -x hoop in the first half; hold still so the handler stays put.
+    for (let i = 0; i < 45; i++) {
+      state.players[5].pos = { x: 4, y: 0, z: 2 };
+      state.players[5].vel = { x: 0, y: 0, z: 0 };
+      step(state, { 0: { ...NO_INPUT, intenseD: true } });
+    }
+    const d = state.players[0];
+    const h = state.players[5];
+    const hoop = { x: attackHoopX(1, 1), z: 0 };
+    expect(d.intenseD).toBe(true);
+    expect(Math.hypot(d.pos.x - h.pos.x, d.pos.z - h.pos.z)).toBeLessThan(1.3);
+    // Defender is closer to the rim than the handler.
+    expect(Math.hypot(d.pos.x - hoop.x, d.pos.z)).toBeLessThan(Math.hypot(h.pos.x - hoop.x, h.pos.z));
   });
 
   it('icon-passes to an explicit teammate and ignores invalid targets', () => {

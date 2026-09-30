@@ -199,7 +199,10 @@ export class Session {
         },
         this.paused ? 0 : dt,
       );
-      if (this.human === 0 && s.controlled[0] === p.id) this.ring.position.set(tmp.x, 0.02, tmp.z);
+      if (this.human === 0 && s.controlled[0] === p.id) {
+        this.ring.position.set(tmp.x, 0.02, tmp.z);
+        (this.ring.material as THREE.MeshBasicMaterial).color.set(p.intenseD ? 0xff3b3b : 0xff7a1a);
+      }
     });
     tmp.copy(ballPos);
     this.ballView.update(tmp, s.ball.vel, this.paused ? 0 : dt);
@@ -266,6 +269,9 @@ export class Session {
         break;
       case 'reach':
         this.playerViews[e.playerId]?.trigger('reach');
+        break;
+      case 'deadDribble':
+        if (this.human === 0 && e.playerId === s.controlled[0]) hud.toast('已收球：只能傳球或投籃', 'bad', true);
         break;
       case 'steal':
         hud.toast(`抄截！ ${this.name(e.playerId)}`, 'accent', true);

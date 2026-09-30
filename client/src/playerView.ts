@@ -215,12 +215,30 @@ export class PlayerView {
       // Hands up and out to receive the pass.
       t.armL = [-1.35, 0.3, -0.35];
       t.armR = [-1.35, -0.3, -0.35];
+    } else if (ctx.hasBall && p.dribbleDead) {
+      // Dribble picked up: ball clutched at the chest, pivoting.
+      t.armL = [-1.05, 0.4, -1.35];
+      t.armR = [-1.05, -0.4, -1.35];
+      t.lean = 0.1;
+      t.legL = [-0.2, 0.35];
+      t.legR = [0.1, 0.25];
     } else if (ctx.hasBall) {
       // Right hand pumps the dribble, left arm guards.
       const bounce = Math.abs(Math.sin(p.dribblePhase));
       t.armR = [-0.45, -0.25, -0.4 - (1 - bounce) * 0.5];
       t.armL = [-0.5 - swing * 0.2, 0.35, -0.9];
       t.bodyY -= 0.05;
+    } else if (p.intenseD) {
+      // Intense D: lower, one hand up to contest, the other active low at the ball.
+      const flick = Math.sin(this.clock * 9) * 0.25;
+      t.bodyY -= 0.16;
+      t.lean = 0.3;
+      t.armL = [-2.2, 0.45, -0.3];
+      t.armR = [-0.9 + flick, -0.7, -0.35];
+      if (!airborne) {
+        t.legL = [-0.45 + swing * 0.35, 0.95];
+        t.legR = [-0.45 - swing * 0.35, 0.95];
+      }
     } else if (ctx.defending && speed < 3.5) {
       // Defensive stance: low, arms wide, shuffling.
       t.bodyY -= 0.1;

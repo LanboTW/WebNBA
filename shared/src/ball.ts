@@ -18,6 +18,7 @@ export function giveBall(state: GameState, playerId: number): void {
   b.strippedFrom = -1;
   b.vel = { x: 0, y: 0, z: 0 };
   const p = state.players[playerId];
+  p.dribbleDead = false;
   b.lastTouchTeam = p.team;
   b.pos = heldBallPosition(state, p);
 }
