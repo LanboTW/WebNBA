@@ -1,8 +1,18 @@
 import * as THREE from 'three';
-import { ROSTER_SEASON, TEAMS, findTeam, type Difficulty, type GameSettings, type TeamInfo } from '@webnba/shared';
+import {
+  ROSTER_SEASON,
+  TEAMS,
+  findTeam,
+  playerRating,
+  teamRating,
+  type Difficulty,
+  type GameSettings,
+  type TeamInfo,
+} from '@webnba/shared';
 import { Sfx } from './audio';
 import { renderBoxScore } from './boxscore';
 import { Hud } from './hud';
+import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
 import { Session } from './session';
@@ -32,6 +42,7 @@ const awaySel = $<HTMLSelectElement>('#awaySel');
 const modeSel = $<HTMLSelectElement>('#modeSel');
 const diffSel = $<HTMLSelectElement>('#diffSel');
 const quarterSel = $<HTMLSelectElement>('#quarterSel');
+const viewSel = $<HTMLSelectElement>('#viewSel');
 const ruleBoxes = {
   fouls: $<HTMLInputElement>('#ruleFouls'),
   violations: $<HTMLInputElement>('#ruleViolations'),
@@ -42,7 +53,7 @@ $('#season').textContent = ROSTER_SEASON;
 
 for (const sel of [homeSel, awaySel]) {
   for (const t of [...TEAMS].sort((a, b) => a.name.localeCompare(b.name))) {
-    sel.add(new Option(`${t.name} (${t.abbr})`, t.abbr));
+    sel.add(new Option(`${t.name} (${t.abbr})　${teamRating(t)}`, t.abbr));
   }
 }
 homeSel.value = load('home', 'GSW');
@@ -50,6 +61,7 @@ awaySel.value = load('away', 'LAL');
 modeSel.value = load('mode', 'game');
 diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
+viewSel.value = load('view', 'broadcast');
 for (const [key, box] of Object.entries(ruleBoxes)) box.checked = load(`rule.${key}`, '1') === '1';
 
 function load(key: string, fallback: string): string {
@@ -70,12 +82,13 @@ function save(key: string, value: string): void {
 function renderCard(el: HTMLElement, t: TeamInfo): void {
   el.style.setProperty('--team', t.primary === '#000000' ? t.secondary : t.primary);
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const row = (p: TeamInfo['players'][number]) =>
+    `<div class="prow"><span>${p.position}　${esc(p.name)}</span><b class="ovr">${playerRating(p)}</b></div>`;
   el.innerHTML =
-    `<b>${esc(t.name)}</b><br>` +
-    t.players
-      .slice(0, 5)
-      .map((p) => `${p.position}　${esc(p.name)}`)
-      .join('<br>');
+    `<div class="thead"><b>${esc(t.name)}</b><span class="tovr" title="先發五人平均">${teamRating(t)}</span></div>` +
+    t.players.slice(0, 5).map(row).join('') +
+    `<div class="benchlbl">替補</div>` +
+    t.players.slice(5).map(row).join('');
 }
 function refreshCards(): void {
   renderCard($('#homeCard'), findTeam(homeSel.value));
@@ -96,6 +109,7 @@ $('#startBtn').addEventListener('click', () => {
   save('mode', modeSel.value);
   save('diff', diffSel.value);
   save('quarter', quarterSel.value);
+  save('view', viewSel.value);
   for (const [key, box] of Object.entries(ruleBoxes)) save(`rule.${key}`, box.checked ? '1' : '0');
   const mode = modeSel.value;
   const settings: Partial<GameSettings> = {
@@ -115,7 +129,20 @@ $('#startBtn').addEventListener('click', () => {
 
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
   session?.dispose();
-  session = new Session(teams, settings, hud, input, sfx, { onFinal: showFinal }, window.innerWidth / window.innerHeight);
+  const onViewChange = (view: CameraMode) => {
+    viewSel.value = view;
+    save('view', view);
+  };
+  session = new Session(
+    teams,
+    settings,
+    hud,
+    input,
+    sfx,
+    { onFinal: showFinal, onViewChange },
+    window.innerWidth / window.innerHeight,
+    viewSel.value as CameraMode,
+  );
   // Dev-only hook for inspecting the sim from the browser console.
   if (import.meta.env.DEV) (window as unknown as { __session: Session }).__session = session;
   $('#menu').classList.add('hidden');

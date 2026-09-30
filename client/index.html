@@ -22,6 +22,7 @@
       <div id="teaminfo"><span id="ti0"></span><span id="ti1"></span></div>
       <div id="banner" class="hidden"></div>
       <div id="statline"></div>
+      <div id="stamina"><i></i></div>
       <div id="meter"><div class="zone good"></div><div class="zone perfect"></div><div class="fill"></div></div>
       <div id="passIcons"></div>
       <div id="toasts"></div>
@@ -31,7 +32,7 @@
         K 傳球（按方向鍵傳那一側，否則傳最近的；標亮者接球）<br />
         空白鍵 起跳（持球起跳＝收球，落地後不能再運）　Shift＋J 靠近籃框灌籃<br />
         <b>防守</b>　按住 U 加強防守（較耗體力、易犯規）　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
-        T 叫暫停（死球或我方持球）　Esc 暫停／數據／換人　H 隱藏說明
+        T 叫暫停（死球或我方持球）　Esc 暫停／數據／換人　C 切換視角　H 隱藏說明
       </div>
     </div>
 
@@ -57,6 +58,12 @@
               <option value="easy">簡單</option>
               <option value="normal" selected>普通</option>
               <option value="hard">困難</option>
+            </select>
+          </label>
+          <label>視角
+            <select id="viewSel">
+              <option value="broadcast">轉播視角（側面）</option>
+              <option value="end">後場視角（跟著進攻方向）</option>
             </select>
           </label>
           <label>每節長度

@@ -1,4 +1,4 @@
-import { FOUL_OUT, cancelSub, requestSub, type GameState } from '@webnba/shared';
+import { FOUL_OUT, cancelSub, playerRating, requestSub, type GameState } from '@webnba/shared';
 import { energyBar, esc, teamRows } from './boxscore';
 
 /**
@@ -38,7 +38,7 @@ export class LineupPanel {
     const queued = (slot: number) => state.subQueue.find((q) => q.team === team && q.slotId === slot);
     const pendingIn = new Set(state.subQueue.filter((q) => q.team === team).map((q) => q.rosterIdx));
     const card = (r: (typeof rows)[number], attrs: string, extra = '', cls = '') =>
-      `<button class="pcard ${cls}" ${attrs}><b>${esc(r.info.name)}</b><small>#${r.info.number} ${r.info.position} · 犯規 ${r.stats.pf}</small>${energyBar(r.energy)}${extra}</button>`;
+      `<button class="pcard ${cls}" ${attrs}><b>${esc(r.info.name)}</b><small>#${r.info.number} ${r.info.position} · 評分 ${playerRating(r.info)} · 犯規 ${r.stats.pf}</small>${energyBar(r.energy)}${extra}</button>`;
 
     const court = state.players
       .filter((p) => p.team === team)

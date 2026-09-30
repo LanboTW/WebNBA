@@ -51,3 +51,14 @@ export const TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster);
 export function findTeam(abbr: string): TeamInfo {
   return TEAMS.find((t) => t.abbr === abbr) ?? TEAMS[0];
 }
+
+/** Player rating shown in menus: the plain average of every rating. */
+export function playerRating(info: PlayerInfo): number {
+  return Math.round(RATING_KEYS.reduce((sum, k) => sum + info.ratings[k], 0) / RATING_KEYS.length);
+}
+
+/** Team rating: average of the five starters' player ratings. */
+export function teamRating(team: TeamInfo): number {
+  const starters = team.players.slice(0, 5);
+  return Math.round(starters.reduce((sum, p) => sum + playerRating(p), 0) / Math.max(1, starters.length));
+}

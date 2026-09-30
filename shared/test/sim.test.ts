@@ -12,7 +12,9 @@ import {
   makeChance,
   nextRandom,
   placePlayer,
+  playerRating,
   step,
+  teamRating,
   type GameState,
 } from '../src';
 import { GSW, LAL, liveGame, practice, run, shootAt } from './helpers';
@@ -23,6 +25,13 @@ describe('roster', () => {
   it('loads 30 teams of 8 players with full ratings', () => {
     expect(LAL.players[2].name).toBe('LeBron James');
     expect(Object.keys(curry.ratings)).toHaveLength(13);
+  });
+
+  it('rates players by their average rating and teams by their starters', () => {
+    const values = Object.values(curry.ratings);
+    expect(playerRating(curry)).toBe(Math.round(values.reduce((a, b) => a + b, 0) / values.length));
+    const starters = GSW.players.slice(0, 5).map(playerRating);
+    expect(teamRating(GSW)).toBe(Math.round(starters.reduce((a, b) => a + b, 0) / 5));
   });
 });
 

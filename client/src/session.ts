@@ -19,7 +19,7 @@ import {
 import { buildArena, type Arena } from './arena';
 import type { Sfx } from './audio';
 import { BallView } from './ballView';
-import { BroadcastCamera } from './camera';
+import { CAMERA_LABEL, GameCamera, type CameraMode } from './camera';
 import { periodLabel, type Hud } from './hud';
 import type { Input } from './input';
 import { LineupPanel } from './lineup';
@@ -55,13 +55,14 @@ interface Snapshot {
 
 export interface SessionCallbacks {
   onFinal(state: GameState): void;
+  onViewChange?(view: CameraMode): void;
 }
 
 /** One match (or practice) rendered into its own scene. */
 export class Session {
   readonly state: GameState;
   readonly scene = new THREE.Scene();
-  readonly cam: BroadcastCamera;
+  readonly cam: GameCamera;
   private readonly arena: Arena;
   private readonly playerViews: PlayerView[];
   private readonly ballView: BallView;
@@ -86,12 +87,13 @@ export class Session {
     private readonly sfx: Sfx,
     private readonly callbacks: SessionCallbacks,
     aspect: number,
+    view: CameraMode = 'broadcast',
   ) {
     const practice = settings.mode === 'practice';
     this.state = createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
     this.human = this.state.settings.humanTeams.includes(0) ? 0 : -1;
     this.arena = buildArena(this.scene, teams[0]);
-    this.cam = new BroadcastCamera(aspect);
+    this.cam = new GameCamera(aspect, view);
     this.playerViews = this.state.players.map((p) => {
       const v = new PlayerView(p.info, kitFor(teams[p.team], p.team === 0));
       this.scene.add(v.root);
@@ -144,6 +146,12 @@ export class Session {
   frame(dt: number): void {
     const s = this.state;
     if (this.input.consumePress('KeyH')) this.hud.toggleHelp();
+    if (this.input.consumePress('KeyC')) {
+      const next: CameraMode = this.cam.mode === 'broadcast' ? 'end' : 'broadcast';
+      this.cam.setMode(next);
+      this.hud.toast(CAMERA_LABEL[next], '', true);
+      this.callbacks.onViewChange?.(next);
+    }
     if (s.settings.mode === 'practice' && this.input.consumePress('KeyR')) {
       if (s.players[0].action === 'normal') giveBall(s, 0);
     }
@@ -165,6 +173,10 @@ export class Session {
   private humanInput(): PlayerInput {
     const s = this.state;
     const inp = this.input.sample();
+    // Stick directions are relative to the screen; the end view rotates with play.
+    const w = this.cam.toWorld(inp.moveX, inp.moveZ);
+    inp.moveX = w.x;
+    inp.moveZ = w.z;
     if (this.resumePress) {
       inp.timeout = true;
       this.resumePress = false;
@@ -238,16 +250,20 @@ export class Session {
     tmp.copy(ballPos);
     this.ballView.update(tmp, s.ball.vel, this.paused ? 0 : dt);
 
-    // Follow the ball, leaning toward the hoop the offence is attacking.
-    const hx = attackHoopX(s.possession, s.period);
-    const focus = new THREE.Vector3(tmp.x * 0.75 + hx * 0.25, 0, tmp.z);
-    this.cam.update(focus, dt);
+    // Follow the ball toward the hoop the offence is attacking.
+    this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoopX(s.possession, s.period)), dt);
     this.arena.update(dt);
     this.renderPassIcons();
     this.renderTimeout();
 
     const me = this.human === 0 ? s.players[s.controlled[0]] ?? null : null;
     this.hud.update(s, me);
+    if (me && s.settings.mode === 'game' && s.settings.rules.fatigue && s.phase !== 'timeout') {
+      const feet = this.ring.position.clone().project(this.cam.camera);
+      this.hud.setStamina(me.energy, { x: ((feet.x + 1) / 2) * window.innerWidth, y: ((1 - feet.y) / 2) * window.innerHeight });
+    } else {
+      this.hud.setStamina(-1, null);
+    }
     if (me && me.action === 'shooting') {
       const head = new THREE.Vector3(me.pos.x, me.pos.y + me.info.heightM + 0.2, me.pos.z).project(this.cam.camera);
       this.hud.setMeter(me.shotMeter, {

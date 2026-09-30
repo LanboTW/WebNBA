@@ -32,6 +32,8 @@ export class Hud {
   private readonly teamInfo = [$('#ti0'), $('#ti1')];
   private readonly teamInfoRow = $('#teaminfo');
   private readonly banner = $('#banner');
+  private readonly stamina = $('#stamina');
+  private readonly staminaFill = $('#stamina i');
   private readonly meter = $('#meter');
   private readonly meterFill = $('#meter .fill');
   private readonly toasts = $('#toasts');
@@ -67,6 +69,7 @@ export class Hud {
   hide(): void {
     this.root.classList.add('hidden');
     this.setMeter(-1, null);
+    this.setStamina(-1, null);
   }
 
   update(state: GameState, me: PlayerState | null): void {
@@ -123,6 +126,19 @@ export class Hud {
     this.meter.style.left = `${screen.x + 48}px`;
     this.meter.style.top = `${screen.y}px`;
     this.meterFill.style.height = `${Math.min(1, value / METER_MAX) * 100}%`;
+  }
+
+  /** Energy bar under the controlled player's feet (screen: projected feet position). */
+  setStamina(energy: number, screen: { x: number; y: number } | null): void {
+    if (!screen || energy < 0) {
+      this.stamina.style.display = 'none';
+      return;
+    }
+    this.stamina.style.display = 'block';
+    this.stamina.style.left = `${screen.x}px`;
+    this.stamina.style.top = `${screen.y + 26}px`;
+    this.stamina.className = energy < 0.6 ? 'low' : energy < 0.8 ? 'mid' : '';
+    this.staminaFill.style.width = `${Math.round(energy * 100)}%`;
   }
 
   toast(text: string, cls = '', small = false): void {
