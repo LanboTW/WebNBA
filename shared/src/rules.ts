@@ -1,14 +1,28 @@
 import { BALL_RADIUS, COURT, DT, SHOT_CLOCK, attackHoopX, isInBounds } from './constants';
 import { giveBall } from './ball';
+import { applySubs } from './bench';
+import { defensiveThree, lateWindow, startFreeThrows, updateFreeThrow } from './fouls';
 import { choosePassTarget, hdist, releasePass } from './players';
 import { nextRandom } from './rng';
-import { NO_INPUT, type GameState, type PlayerState, type TurnoverReason, type Vec3 } from './types';
+import {
+  NO_INPUT,
+  type GameState,
+  type PlayerInput,
+  type PlayerState,
+  type Resume,
+  type TurnoverReason,
+  type Vec3,
+} from './types';
 
 const INBOUND_OFFSET = 0.45;
 const DEAD_BALL_SECONDS = 1.3;
 const PERIOD_BREAK_SECONDS = 3;
-/** A human inbounder who stalls gets an automatic pass (5-second violations come in stage 3). */
-const INBOUND_AUTO_PASS = 5;
+/** Inbounder must release within this (five-second violation; auto-pass when violations are off). */
+const INBOUND_LIMIT = 5;
+export const TIMEOUTS_PER_GAME = 5;
+export const TIMEOUT_SECONDS = 30;
+/** Distance from the baseline of the frontcourt inbound line used after a late timeout (28 ft). */
+const ADVANCE_LINE = 8.53;
 
 export function isHuman(state: GameState, team: 0 | 1): boolean {
   return state.settings.humanTeams.includes(team);
@@ -37,15 +51,30 @@ export function setPossession(state: GameState, team: 0 | 1): void {
   state.possession = team;
   state.shotClock = SHOT_CLOCK;
   state.ball.assist = null;
+  state.frontcourt = false;
+  state.backcourtTimer = 0;
+  for (const p of state.players) p.paintTime = 0;
   state.events.push({ type: 'possession', team });
   const other = (1 - team) as 0 | 1;
   if (isHuman(state, other)) state.controlled[other] = nearestToBall(state, other).id;
 }
 
-/** Someone secured the ball (catch, rebound, recovery). */
-export function onGainBall(state: GameState, p: PlayerState): void {
+/**
+ * Someone secured the ball (catch, rebound, recovery). `prevTouch` is the team
+ * that touched it last before this player.
+ */
+export function onGainBall(state: GameState, p: PlayerState, prevTouch: 0 | 1 = p.team): void {
   if (isHuman(state, p.team)) state.controlled[p.team] = p.id;
   if (state.settings.mode !== 'game') return;
+  state.clockHold = false;
+  // Recovering a ball the defence knocked into the backcourt is legal; a new count starts.
+  if (state.possession === p.team && state.frontcourt && prevTouch !== p.team) {
+    const s = Math.sign(attackHoopX(p.team, state.period));
+    if (s * p.pos.x < 0) {
+      state.frontcourt = false;
+      state.backcourtTimer = 0;
+    }
+  }
   setPossession(state, p.team);
   if (state.phase === 'live') state.shotClockOn = true;
 }
@@ -55,8 +84,12 @@ export function onMadeBasket(state: GameState): void {
   state.score[shot.team] += shot.points;
   const shooter = state.players[shot.shooterId];
   shooter.stats.pts += shot.points;
-  shooter.stats.fgm++;
+  if (shot.kind === 'free') shooter.stats.ftm++;
+  else shooter.stats.fgm++;
   if (shot.points === 3) shooter.stats.tpm++;
+  if (state.run.team === shot.team) state.run.pts += shot.points;
+  else state.run = { team: shot.team, pts: shot.points };
+  state.clockHold = false;
   const a = state.ball.assist;
   let assistId = -1;
   if (a && a.receiverId === shooter.id && a.passerId !== shooter.id && state.tick - a.tick < 3 * 30) {
@@ -72,14 +105,16 @@ export function onMadeBasket(state: GameState): void {
     playerId: shooter.id,
     team: shot.team,
     points: shot.points,
+    kind: shot.kind,
     swish: !shot.touchedRim,
     hoopX: shot.hoopX,
     assistId,
   });
   if (state.settings.mode !== 'game') return;
   state.shotClockOn = false;
-  // A buzzer-beater is handled by the pending period end.
-  if (state.pendingEnd) return;
+  // A buzzer-beater is handled by the pending period end; an and-one or a
+  // free throw that isn't the last one keeps the current stoppage going.
+  if (state.pendingEnd || state.pendingFT || state.phase === 'freeThrow') return;
   const other = (1 - shot.team) as 0 | 1;
   const s = Math.sign(shot.hoopX);
   state.phase = 'dead';
@@ -102,13 +137,25 @@ export function updateRules(state: GameState): void {
       break;
     case 'dead':
       state.phaseTimer -= DT;
-      if (state.phaseTimer <= 0 && state.pendingInbound) {
-        startInbound(state, state.pendingInbound.team, state.pendingInbound.spot);
+      if (state.phaseTimer > 0) break;
+      if (maybeAiTimeout(state)) break;
+      if (state.pendingFT) {
+        const ft = state.pendingFT;
+        startFreeThrows(state, ft.shooterId, ft.total, ft.after);
+      } else if (state.pendingInbound) {
+        const pi = state.pendingInbound;
         state.pendingInbound = null;
+        startInbound(state, pi.team, pi.spot);
       }
       break;
     case 'inbound':
       updateInbound(state);
+      break;
+    case 'freeThrow':
+      updateFreeThrow(state);
+      break;
+    case 'timeout':
+      updateTimeout(state);
       break;
     case 'periodEnd':
       state.phaseTimer -= DT;
@@ -121,7 +168,7 @@ export function updateRules(state: GameState): void {
 
 function updateLive(state: GameState): void {
   const ball = state.ball;
-  state.gameClock -= DT;
+  if (!state.clockHold) state.gameClock -= DT;
   for (const p of state.players) p.stats.secs += DT;
   if (state.shotClockOn) state.shotClock -= DT;
 
@@ -149,9 +196,13 @@ function updateLive(state: GameState): void {
 
   if (ball.mode === 'held') {
     const h = state.players[ball.holderId];
-    if (!isInBounds(h.pos.x, h.pos.z)) turnover(state, h.team, 'oob', inboundSpot(h.pos), h.id);
-    return;
+    if (!isInBounds(h.pos.x, h.pos.z)) {
+      turnover(state, h.team, 'oob', inboundSpot(h.pos), h.id);
+      return;
+    }
   }
+  if (state.settings.rules.violations && checkViolations(state)) return;
+  if (ball.mode === 'held') return;
   const onFloorOut = ball.pos.y <= BALL_RADIUS + 0.05 && !isInBounds(ball.pos.x, ball.pos.z);
   const intoStands =
     Math.abs(ball.pos.x) > COURT.halfLength + 2.8 || Math.abs(ball.pos.z) > COURT.halfWidth + 2.8;
@@ -160,9 +211,67 @@ function updateLive(state: GameState): void {
   }
 }
 
-function turnover(state: GameState, team: 0 | 1, reason: TurnoverReason, spot: Vec3, playerId = -1): void {
+/** Painted area in front of the hoop at hoopX. */
+export function inPaint(pos: { x: number; z: number }, hoopX: number): boolean {
+  const s = Math.sign(hoopX);
+  return Math.abs(pos.z) < COURT.keyWidth / 2 && s * pos.x > COURT.halfLength - COURT.freeThrowFromBaseline;
+}
+
+/** Three seconds (both ends), eight seconds and backcourt. Returns true if a whistle blew. */
+function checkViolations(state: GameState): boolean {
+  const ball = state.ball;
+  const team = state.possession;
+  const holder = ball.mode === 'held' ? state.players[ball.holderId] : null;
+  const control = (!!holder && holder.team === team) || (ball.mode === 'pass' && ball.pass?.team === team);
+  const hx = attackHoopX(team, state.period);
+  const s = Math.sign(hx);
+
+  if (holder && holder.team === team && holder.onGround) {
+    if (state.frontcourt && s * holder.pos.x < -0.05) {
+      turnover(state, team, 'backcourt', sidelineSpot(holder.pos), holder.id);
+      return true;
+    }
+    if (!state.frontcourt && s * holder.pos.x > 0.05) state.frontcourt = true;
+  }
+  if (!state.frontcourt && control && state.shotClockOn) {
+    state.backcourtTimer += DT;
+    if (state.backcourtTimer > 8) {
+      turnover(state, team, 'eightSec', sidelineSpot(ball.pos), holder?.team === team ? holder.id : -1);
+      return true;
+    }
+  }
+
+  const counting = control && state.frontcourt;
+  for (const p of state.players) {
+    if (!counting || !inPaint(p.pos, hx)) {
+      p.paintTime = 0;
+      continue;
+    }
+    if (p.team === team) {
+      // Shooters and players driving to score get the benefit.
+      if (p.action !== 'normal') continue;
+      p.paintTime += DT;
+      if (p.paintTime > 3) {
+        turnover(state, team, 'threeSec', sidelineSpot(ball.pos), p.id);
+        return true;
+      }
+    } else {
+      // Defenders may stay in the lane only while guarding someone within arm's length.
+      const guarding = state.players.some((o) => o.team === team && hdist(o.pos, p.pos) < 1.5);
+      p.paintTime = guarding ? 0 : p.paintTime + DT;
+      if (p.paintTime > 3) {
+        p.paintTime = 0;
+        defensiveThree(state, p);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function turnover(state: GameState, team: 0 | 1, reason: TurnoverReason, spot: Vec3, playerId = -1): void {
   if (playerId >= 0) state.players[playerId].stats.tov++;
-  state.events.push({ type: 'turnover', team, reason });
+  state.events.push({ type: 'turnover', team, reason, playerId });
   const other = (1 - team) as 0 | 1;
   const b = state.ball;
   if (b.mode === 'held') b.vel = { x: 0, y: 0, z: 0 };
@@ -174,7 +283,19 @@ function turnover(state: GameState, team: 0 | 1, reason: TurnoverReason, spot: V
   state.phase = 'dead';
   state.phaseTimer = 1.0;
   state.pendingInbound = { team: other, spot };
+  state.pendingFT = null;
+  for (const p of state.players) {
+    if (p.action !== 'shooting') continue;
+    p.action = 'normal';
+    p.shotMeter = -1;
+  }
   setPossession(state, other);
+}
+
+/** Nearest sideline spot, kept away from the corners. */
+export function sidelineSpot(pos: { x: number; z: number }): Vec3 {
+  const L = COURT.halfLength - 1.5;
+  return { x: Math.max(-L, Math.min(L, pos.x)), y: 0, z: Math.sign(pos.z || 1) * (COURT.halfWidth + INBOUND_OFFSET) };
 }
 
 /** Nearest point just outside the boundary to where the ball went out. */
@@ -193,6 +314,7 @@ function inboundSpot(pos: Vec3): Vec3 {
 }
 
 function startInbound(state: GameState, team: 0 | 1, spot: Vec3): void {
+  applySubs(state);
   let passer: PlayerState | null = null;
   let bestD = Infinity;
   for (const p of state.players) {
@@ -215,6 +337,9 @@ function startInbound(state: GameState, team: 0 | 1, spot: Vec3): void {
   setPossession(state, team);
   giveBall(state, passer.id);
   state.shotClockOn = false;
+  state.frontcourt = false;
+  state.backcourtTimer = 0;
+  for (const p of state.players) p.paintTime = 0;
   if (isHuman(state, team)) state.controlled[team] = passer.id;
 }
 
@@ -228,8 +353,13 @@ function updateInbound(state: GameState): void {
     state.shotClockOn = true;
     return;
   }
-  if (state.phaseTimer > INBOUND_AUTO_PASS) {
+  if (state.phaseTimer > INBOUND_LIMIT) {
     const passer = state.players[inbound.passerId];
+    if (state.settings.rules.violations) {
+      state.inbound = null;
+      turnover(state, inbound.team, 'fiveSec', inbound.spot, passer.id);
+      return;
+    }
     const target = choosePassTarget(state, passer, NO_INPUT);
     if (target >= 0) releasePass(state, passer, target);
   }
@@ -262,8 +392,21 @@ export function startPeriod(state: GameState, period: number): void {
   state.shotClockOn = false;
   state.pendingEnd = false;
   state.pendingInbound = null;
+  state.pendingFT = null;
+  state.freeThrow = null;
   state.inbound = null;
+  state.clockHold = false;
+  state.teamFouls = [0, 0];
+  state.lateFouls = [0, 0];
+  if (period >= 5) state.timeoutsLeft = [state.timeoutsLeft[0] + 1, state.timeoutsLeft[1] + 1];
+  // The break between periods is a breather for everyone.
+  if (period > 1) {
+    for (const p of state.players) p.energy = Math.min(1, p.energy + 0.15);
+    for (const bench of state.bench) for (const b of bench) b.energy = Math.min(1, b.energy + 0.15);
+  }
+  applySubs(state);
   for (const p of state.players) {
+    p.paintTime = 0;
     p.vel = { x: 0, y: 0, z: 0 };
     p.pos.y = 0;
     p.onGround = true;
@@ -338,7 +481,130 @@ function updateTipoff(state: GameState): void {
     b.vel = { x: (dx / l) * 4.5, y: 0.5, z: (dz / l) * 4.5 };
     b.lastTouchTeam = winner;
     state.possession = winner;
+    state.frontcourt = false;
+    state.backcourtTimer = 0;
     state.phase = 'live';
     state.events.push({ type: 'tipoff' });
   }
+}
+
+// -------------------------------------------------------------- timeouts
+
+/** Timeout button: call one, or (during one) signal ready to continue. */
+export function handleTimeoutInput(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput>>): void {
+  for (const team of state.settings.humanTeams) {
+    const pressed = !!inputs[team]?.timeout;
+    const edge = pressed && !state.timeoutLatch[team];
+    state.timeoutLatch[team] = pressed;
+    if (!edge) continue;
+    if (state.phase === 'timeout') {
+      const t = state.timeout!;
+      if (!t.ready.includes(team)) t.ready.push(team);
+    } else if (canCallTimeout(state, team)) {
+      callTimeout(state, team);
+    }
+  }
+}
+
+/** Dead ball, or live while your team holds the ball (not mid-shot). */
+export function canCallTimeout(state: GameState, team: 0 | 1): boolean {
+  if (state.settings.mode !== 'game' || state.timeoutsLeft[team] <= 0) return false;
+  const b = state.ball;
+  switch (state.phase) {
+    case 'live': {
+      if (b.mode !== 'held') return false;
+      const h = state.players[b.holderId];
+      return h.team === team && h.action === 'normal';
+    }
+    case 'dead':
+      return b.mode !== 'flight' && b.mode !== 'pass' && (!!state.pendingFT || !!state.pendingInbound);
+    case 'inbound':
+      return true;
+    case 'freeThrow':
+      return !!state.freeThrow && !state.freeThrow.released;
+    default:
+      return false;
+  }
+}
+
+export function callTimeout(state: GameState, team: 0 | 1): void {
+  const b = state.ball;
+  let resume: Resume;
+  if (state.phase === 'live') {
+    resume = { kind: 'inbound', team, spot: sidelineSpot(b.pos) };
+  } else if (state.phase === 'freeThrow' && state.freeThrow) {
+    const ft = state.freeThrow;
+    resume = { kind: 'freeThrow', shooterId: ft.shooterId, total: ft.total, index: ft.index, after: ft.after };
+  } else if (state.phase === 'inbound' && state.inbound) {
+    resume = { kind: 'inbound', team: state.inbound.team, spot: state.inbound.spot };
+  } else if (state.pendingFT) {
+    const ft = state.pendingFT;
+    resume = { kind: 'freeThrow', shooterId: ft.shooterId, total: ft.total, index: 0, after: ft.after };
+  } else {
+    resume = { kind: 'inbound', team: state.pendingInbound!.team, spot: state.pendingInbound!.spot };
+  }
+  // Late in the fourth quarter (and overtime) a timeout advances the ball to the frontcourt.
+  if (resume.kind === 'inbound' && resume.team === team && state.period >= 4 && state.gameClock <= lateWindow(state)) {
+    const s = Math.sign(attackHoopX(team, state.period));
+    if (s * resume.spot.x < COURT.halfLength - ADVANCE_LINE) {
+      resume.spot = {
+        x: s * (COURT.halfLength - ADVANCE_LINE),
+        y: 0,
+        z: Math.sign(resume.spot.z || 1) * (COURT.halfWidth + INBOUND_OFFSET),
+      };
+    }
+  }
+
+  state.timeoutsLeft[team]--;
+  if (b.mode === 'held' || b.mode === 'loose') {
+    b.mode = 'loose';
+    b.holderId = -1;
+    b.vel = { x: 0, y: 0, z: 0 };
+  }
+  state.shotClockOn = false;
+  state.pendingFT = null;
+  state.pendingInbound = null;
+  state.freeThrow = null;
+  state.inbound = null;
+  state.run = { team, pts: 0 };
+  for (const p of state.players) {
+    p.vel = { x: 0, y: 0, z: 0 };
+    p.action = 'normal';
+    p.shotMeter = -1;
+    p.intenseD = false;
+    p.energy = Math.min(1, p.energy + 0.08);
+  }
+  state.phase = 'timeout';
+  state.phaseTimer = 0;
+  state.timeout = { team, timer: 0, limit: state.settings.humanTeams.length ? TIMEOUT_SECONDS : 3, resume, ready: [] };
+  state.events.push({ type: 'timeout', team, left: state.timeoutsLeft[team] });
+  applySubs(state);
+}
+
+function updateTimeout(state: GameState): void {
+  const t = state.timeout!;
+  t.timer += DT;
+  const humans = state.settings.humanTeams;
+  const allReady = humans.length > 0 && humans.every((h) => t.ready.includes(h));
+  if (t.timer < t.limit && !allReady) return;
+  state.timeout = null;
+  state.events.push({ type: 'timeoutEnd' });
+  const r = t.resume;
+  if (r.kind === 'freeThrow') {
+    startFreeThrows(state, r.shooterId, r.total, r.after, r.index);
+  } else {
+    startInbound(state, r.team, r.spot);
+  }
+}
+
+/** AI coaches stop an opponent's run at the next dead ball. */
+function maybeAiTimeout(state: GameState): boolean {
+  for (const team of [0, 1] as const) {
+    if (isHuman(state, team) || state.timeoutsLeft[team] <= 1) continue;
+    if (state.run.team !== team && state.run.pts >= 8 && canCallTimeout(state, team)) {
+      callTimeout(state, team);
+      return true;
+    }
+  }
+  return false;
 }

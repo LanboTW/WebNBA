@@ -7,9 +7,13 @@ export const GOOD_WINDOW = 0.1;
 /** Seconds for the meter to go from 0 to 1. */
 export const JUMPER_METER_TIME = 0.6;
 export const LAYUP_METER_TIME = 0.45;
+export const DUNK_METER_TIME = 0.5;
+export const FREE_METER_TIME = 0.6;
 /** The meter auto-releases here (very late). */
 export const METER_MAX = 1.15;
 export const LAYUP_DISTANCE = 1.8;
+/** Within this distance a player who can reach the rim may dunk. */
+export const DUNK_DISTANCE = 2.6;
 
 export function gradeTiming(meter: number): { quality: ShotQuality; factor: number } {
   const diff = meter - SHOT_SWEET;
@@ -45,4 +49,19 @@ export function makeChance(
   const { quality, factor } = gradeTiming(meter);
   const timed = quality === 'perfect' ? base + 0.3 : base * factor;
   return Math.min(0.97, Math.max(0.02, timed * contestMultiplier(contest)));
+}
+
+/** Dunks barely care about timing and shrug off most of a contest. */
+export function dunkChance(r: Ratings, meter: number, contest = 0): number {
+  const base = 0.9 + r.close * 0.0007;
+  const { quality, factor } = gradeTiming(meter);
+  const timed = quality === 'perfect' || quality === 'good' ? base : base * (0.75 + 0.25 * factor);
+  return Math.min(0.99, Math.max(0.3, timed * (1 - 0.25 * Math.min(1, Math.max(0, contest)))));
+}
+
+export function freeThrowChance(r: Ratings, meter: number): number {
+  const base = 0.3 + r.ft * 0.0062;
+  const { quality, factor } = gradeTiming(meter);
+  const timed = quality === 'perfect' ? base + 0.08 : base * factor;
+  return Math.min(0.98, Math.max(0.05, timed));
 }

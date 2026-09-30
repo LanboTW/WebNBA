@@ -1,4 +1,5 @@
 import { BALL_RADIUS, BOARD_X, COURT, DT, GRAVITY, HOOP, HOOP_X, OREB_SHOT_CLOCK } from './constants';
+import { shootingFoul } from './fouls';
 import { hdist, heldBallPosition } from './players';
 import { nextRandom } from './rng';
 import { onGainBall, onMadeBasket } from './rules';
@@ -43,7 +44,7 @@ export function updateBall(state: GameState): void {
     collideHoop(state, -HOOP_X, prevY);
   }
   if (b.mode === 'pass') tryCatch(state);
-  else if (b.mode === 'flight') checkBlocks(state);
+  else if (b.mode === 'flight' && state.phase === 'live') checkBlocks(state);
   if (b.mode === 'loose' && (state.phase === 'live' || state.settings.mode === 'practice')) tryPickup(state);
 }
 
@@ -187,11 +188,17 @@ function checkBlocks(state: GameState): void {
     if (hdist(o.pos, b.pos) > 0.75) continue;
     if (b.pos.y > o.pos.y + o.info.heightM * 1.33 + 0.15) continue;
     shot.blockChecked.push(o.id);
-    const chance = Math.min(
-      0.6,
-      Math.max(0.03, 0.05 + o.info.ratings.block * 0.004 + (o.info.heightM - shooter.info.heightM) * 0.3),
-    );
-    if (nextRandom(state) >= chance) continue;
+    const chance =
+      Math.min(0.6, Math.max(0.03, 0.05 + o.info.ratings.block * 0.004 + (o.info.heightM - shooter.info.heightM) * 0.3)) *
+      (shot.kind === 'dunk' ? 0.5 : 1);
+    if (nextRandom(state) >= chance) {
+      // Went for the block and got arm instead.
+      if (nextRandom(state) < 0.08) {
+        shootingFoul(state, shot, o);
+        return;
+      }
+      continue;
+    }
     shot.blocked = true;
     shot.willMake = false;
     const dx = b.pos.x - shot.hoopX;
@@ -216,17 +223,18 @@ function tryCatch(state: GameState): void {
   if (b.pos.y > r.pos.y + r.info.heightM * 1.3 || b.pos.y < 0.2) return;
   if (r.action === 'shooting') return;
   const passer = state.players[pass.passerId];
+  const prevTouch = b.lastTouchTeam;
   giveBall(state, r.id);
   r.dribblePhase = 0;
   if (pass.intercepted) {
     r.stats.stl++;
     passer.stats.tov++;
     state.events.push({ type: 'steal', playerId: r.id, fromId: passer.id });
-    state.events.push({ type: 'turnover', team: passer.team, reason: 'intercept' });
+    state.events.push({ type: 'turnover', team: passer.team, reason: 'intercept', playerId: passer.id });
   } else {
     b.assist = { passerId: passer.id, receiverId: r.id, tick: state.tick };
   }
-  onGainBall(state, r);
+  onGainBall(state, r, prevTouch);
 }
 
 function tryPickup(state: GameState): void {
@@ -258,12 +266,13 @@ function tryPickup(state: GameState): void {
     stripper.stats.stl++;
     stripped.stats.tov++;
     state.events.push({ type: 'steal', playerId: stripper.id, fromId: stripped.id });
-    state.events.push({ type: 'turnover', team: stripped.team, reason: 'steal' });
+    state.events.push({ type: 'turnover', team: stripped.team, reason: 'steal', playerId: stripped.id });
   }
   const offensiveReset = rebound && shot.touchedRim && best.team === shot.team;
+  const prevTouch = b.lastTouchTeam;
   best.dribblePhase = 0;
   giveBall(state, best.id);
   state.events.push({ type: 'pickup', playerId: best.id, rebound });
-  onGainBall(state, best);
+  onGainBall(state, best, prevTouch);
   if (offensiveReset && state.settings.mode === 'game') state.shotClock = Math.max(state.shotClock, OREB_SHOT_CLOCK);
 }

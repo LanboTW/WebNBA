@@ -27,8 +27,8 @@ interface Limb {
   lower: THREE.Group;
 }
 
-type OneShot = 'pass' | 'reach' | 'celebrate';
-const ONE_SHOT_SECONDS: Record<OneShot, number> = { pass: 0.35, reach: 0.35, celebrate: 1.3 };
+type OneShot = 'pass' | 'reach' | 'celebrate' | 'flop' | 'fouled';
+const ONE_SHOT_SECONDS: Record<OneShot, number> = { pass: 0.35, reach: 0.35, celebrate: 1.3, flop: 1.1, fouled: 0.6 };
 
 export interface AnimContext {
   hasBall: boolean;
@@ -160,7 +160,50 @@ export class PlayerView {
     }
 
     const shooting = p.action === 'shooting' || p.action === 'release';
-    if (shooting && p.shotKind === 'layup') {
+    if (shooting && p.shotKind === 'dunk') {
+      const k = p.action === 'release' ? 1 : Math.min(1, Math.max(0, p.shotMeter) / SHOT_SWEET);
+      if (p.action === 'release' && airborne) {
+        // Hanging on the rim: both hands up on the iron, knees tucked.
+        t.armL = [-2.9, 0.3, -0.15];
+        t.armR = [-2.9, -0.3, -0.15];
+        t.legL = [-0.7, 1.3];
+        t.legR = [-0.5, 1.1];
+        t.lean = -0.1;
+      } else {
+        // Cock the ball back behind the head, then throw it down.
+        const cock = Math.min(1, k * 1.4);
+        const slam = Math.max(0, (k - 0.7) / 0.3);
+        t.armL = [-1.2 - 1.9 * cock + 0.9 * slam, 0.25, -1.4 + 1.0 * cock];
+        t.armR = [-1.2 - 1.9 * cock + 0.9 * slam, -0.25, -1.4 + 1.0 * cock];
+        t.lean = -0.15 * cock + 0.35 * slam;
+        t.legL = [-1.1, 1.3];
+        t.legR = [0.2, 0.35];
+      }
+    } else if (shooting && p.shotKind === 'free' && !airborne) {
+      // Set shot from the line: dip, then a straight follow-through.
+      const k = p.action === 'release' ? 1 : Math.min(1, Math.max(0, p.shotMeter) / SHOT_SWEET);
+      t.armL = [-0.9 - 1.9 * k, 0.2, -1.5 + 1.3 * k];
+      t.armR = [-0.9 - 2.1 * k, -0.15, -1.6 + 1.5 * k];
+      t.bodyY = -0.07 * (1 - k);
+      t.legL = [-0.25 * (1 - k), 0.5 * (1 - k)];
+      t.legR = [-0.25 * (1 - k), 0.5 * (1 - k)];
+      t.lean = 0;
+    } else if (this.oneShot === 'flop' && !shooting) {
+      // Took the charge: knocked back, arms flung up.
+      const k = Math.sin(Math.min(1, this.oneShotT * 1.6) * Math.PI * 0.5);
+      t.lean = -0.55 * k;
+      t.bodyY = -0.25 * k;
+      t.armL = [-2.4, 0.8, -0.3];
+      t.armR = [-2.4, -0.8, -0.3];
+      t.legL = [-0.9 * k, 1.2 * k];
+      t.legR = [-0.6 * k, 0.9 * k];
+    } else if (this.oneShot === 'fouled' && !shooting) {
+      // Arms up, protesting the contact.
+      const k = Math.sin(this.oneShotT * Math.PI);
+      t.armL = [-1.6 * k, 0.6, -0.4];
+      t.armR = [-1.6 * k, -0.6, -0.4];
+      t.lean = -0.15 * k;
+    } else if (shooting && p.shotKind === 'layup') {
       // One-hand finish with a knee drive.
       const k = p.action === 'release' ? 1 : Math.min(1, Math.max(0, p.shotMeter) / SHOT_SWEET);
       t.lean = 0.05;

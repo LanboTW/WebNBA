@@ -1,8 +1,9 @@
 import { aiInput } from './ai';
 import { giveBall, updateBall } from './ball';
+import { updateEnergy } from './bench';
 import { BALL_RADIUS, SHOT_CLOCK, attackHoopX } from './constants';
 import { hdist, resolveCollisions, updatePlayer } from './players';
-import { isHuman, startPeriod, updateRules } from './rules';
+import { TIMEOUTS_PER_GAME, handleTimeoutInput, isHuman, startPeriod, updateRules } from './rules';
 import {
   NO_INPUT,
   type GameSettings,
@@ -13,7 +14,10 @@ import {
 } from './types';
 
 export { giveBall } from './ball';
-export { choosePassTarget, heldBallPosition, passIcons, runSpeed } from './players';
+export { RESTED, TIRED, cancelSub, overall, requestSub } from './bench';
+export { FOUL_OUT, fouledOut, inBonus, startFreeThrows } from './fouls';
+export { canDunk, choosePassTarget, heldBallPosition, passIcons, runSpeed } from './players';
+export { TIMEOUT_SECONDS, TIMEOUTS_PER_GAME, canCallTimeout, callTimeout, inPaint } from './rules';
 
 export interface GameSetup {
   teams: [TeamInfo, TeamInfo];
@@ -28,7 +32,26 @@ export const DEFAULT_SETTINGS: GameSettings = {
   difficulty: 'normal',
   humanTeams: [0],
   seed: 20260930,
+  rules: { fouls: true, violations: true, fatigue: true },
 };
+
+const emptyStats = (): PlayerState['stats'] => ({
+  secs: 0,
+  pts: 0,
+  fgm: 0,
+  fga: 0,
+  tpm: 0,
+  tpa: 0,
+  oreb: 0,
+  dreb: 0,
+  ast: 0,
+  stl: 0,
+  blk: 0,
+  tov: 0,
+  ftm: 0,
+  fta: 0,
+  pf: 0,
+});
 
 function newPlayer(id: number, team: 0 | 1, slot: number, info: TeamInfo['players'][number]): PlayerState {
   return {
@@ -55,12 +78,20 @@ function newPlayer(id: number, team: 0 | 1, slot: number, info: TeamInfo['player
     lastJump: false,
     lastPass: false,
     ai: { mode: 'none', modeTimer: 0, decisionTimer: 0, shotTarget: 0.85, screenSide: 1, arrived: false },
-    stats: { secs: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, tov: 0 },
+    stats: emptyStats(),
+    rosterIdx: slot,
+    energy: 1,
+    paintTime: 0,
+    contactCooldown: 0,
   };
 }
 
 export function createGame(setup: GameSetup): GameState {
-  const settings: GameSettings = { ...DEFAULT_SETTINGS, ...setup.settings };
+  const settings: GameSettings = {
+    ...DEFAULT_SETTINGS,
+    ...setup.settings,
+    rules: { ...DEFAULT_SETTINGS.rules, ...setup.settings?.rules },
+  };
   const counts = setup.playersPerTeam ?? [5, 5];
   const players: PlayerState[] = [];
   ([0, 1] as const).forEach((team) => {
@@ -68,6 +99,16 @@ export function createGame(setup: GameSetup): GameState {
       players.push(newPlayer(players.length, team, slot, info));
     });
   });
+  const bench = ([0, 1] as const).map((team) =>
+    counts[team] >= 5
+      ? setup.teams[team].players.slice(counts[team]).map((info, i) => ({
+          rosterIdx: counts[team] + i,
+          info,
+          stats: emptyStats(),
+          energy: 1,
+        }))
+      : [],
+  ) as GameState['bench'];
   // Everyone guards the opponent in the same lineup slot.
   const assign = players.map((p) => players.find((o) => o.team !== p.team && o.slot === p.slot)?.id ?? -1);
 
@@ -99,6 +140,19 @@ export function createGame(setup: GameSetup): GameState {
     phaseTimer: 0,
     inbound: null,
     pendingInbound: null,
+    pendingFT: null,
+    freeThrow: null,
+    timeout: null,
+    timeoutsLeft: [TIMEOUTS_PER_GAME, TIMEOUTS_PER_GAME],
+    teamFouls: [0, 0],
+    lateFouls: [0, 0],
+    bench,
+    subQueue: [],
+    frontcourt: false,
+    backcourtTimer: 0,
+    clockHold: false,
+    run: { team: 0, pts: 0 },
+    timeoutLatch: [false, false],
     pendingEnd: false,
     tipWinner: 0,
     controlled: [-1, -1],
@@ -137,11 +191,15 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
   state.events = [];
   state.tick++;
   handleSwitching(state, inputs);
+  if (state.settings.mode === 'game') handleTimeoutInput(state, inputs);
 
-  const frozen = state.phase === 'tipoff' || state.phase === 'periodEnd' || state.phase === 'final';
+  const frozen =
+    state.phase === 'tipoff' || state.phase === 'periodEnd' || state.phase === 'final' || state.phase === 'timeout';
+  const ftShooter = state.phase === 'freeThrow' ? state.freeThrow?.shooterId : undefined;
   for (const p of state.players) {
     let inp: PlayerInput;
-    if (frozen) inp = NO_INPUT;
+    // Only the shooter acts during free throws; everyone else waits on the lane.
+    if (frozen || (ftShooter !== undefined && p.id !== ftShooter)) inp = NO_INPUT;
     else if (state.controlled[p.team] === p.id) inp = inputs[p.team] ?? NO_INPUT;
     else inp = aiInput(state, p);
     updatePlayer(state, p, inp);
@@ -149,6 +207,7 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
   resolveCollisions(state);
   updateBall(state);
   updateRules(state);
+  updateEnergy(state);
 }
 
 /** Switch button: jump to the teammate nearest the ball (next nearest if already there). */

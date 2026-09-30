@@ -45,6 +45,7 @@ export class Input {
     let pass = k.has('KeyK');
     let switchPlayer = k.has('KeyL');
     let intenseD = k.has('KeyU');
+    let timeout = k.has('KeyT');
 
     const pad = navigator.getGamepads?.().find((g) => g && g.connected);
     if (pad) {
@@ -60,7 +61,8 @@ export class Input {
       switchPlayer ||= btn(4); // LB / L1
       sprint ||= btn(7) || btn(5); // RT / RB
       intenseD ||= btn(6); // LT / L2
+      timeout ||= btn(8); // Back / Share
     }
-    return { moveX, moveZ, sprint, shoot, jump, pass, switchPlayer, intenseD };
+    return { moveX, moveZ, sprint, shoot, jump, pass, switchPlayer, intenseD, timeout };
   }
 }

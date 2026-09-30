@@ -33,7 +33,8 @@ const SPOTS: [number, number][] = [
   [5.3, 5.2],
   [0.9, -6.95],
   [4.6, -2.9],
-  [1.3, 2.1],
+  // Dunker spot: just outside the lane so the big isn't camped in the paint.
+  [1.3, 3.0],
 ];
 
 type Target = { x: number; z: number };
@@ -107,7 +108,15 @@ function shootNow(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
   const noise = (rand(state) + rand(state) - 1) * sk.shotErr * 1.6;
   p.ai.shotTarget = SHOT_SWEET + noise;
   p.ai.mode = 'none';
-  return { ...NO_INPUT, shoot: true };
+  // Near the rim, sprint + shoot: dunk it if the player can.
+  const near = hdist(p.pos, { x: attackHoopX(p.team, state.period), z: 0 }) < 2.6;
+  return { ...NO_INPUT, shoot: true, sprint: near && rand(state) < 0.5 };
+}
+
+/** Where a player should stand to get out of the lane. */
+function outOfPaint(p: PlayerState, hx: number): Target {
+  const s = Math.sign(hx);
+  return { x: hx - s * Math.max(1.2, Math.abs(hx - p.pos.x)), z: (Math.sign(p.pos.z) || 1) * (COURT.keyWidth / 2 + 0.9) };
 }
 
 function passTo(target: PlayerState): PlayerInput {
@@ -131,7 +140,10 @@ function laneRisk(state: GameState, p: PlayerState, m: PlayerState): number {
 
 function bestPass(state: GameState, p: PlayerState, inbound: boolean): { m: PlayerState; value: number } | null {
   let best: { m: PlayerState; value: number } | null = null;
+  const s = Math.sign(attackHoopX(p.team, state.period));
   for (const m of teammates(state, p)) {
+    // Once the ball is in the frontcourt, passing back is a violation.
+    if (!inbound && state.frontcourt && s * m.pos.x < 0.3) continue;
     const open = Math.min(4, openness(state, m));
     const value = inbound
       ? open * 0.25 + (m.slot === 0 ? 0.4 : 0) - laneRisk(state, p, m)
@@ -170,10 +182,44 @@ function driveValue(state: GameState, p: PlayerState): number {
   return layup * beat * Math.max(0, 1 - clog * 0.5) * (ll > 9 ? 0.85 : 1);
 }
 
+/** Ball handlers veer around a defender planted right in their path instead of running him over. */
+function dodge(state: GameState, p: PlayerState, inp: PlayerInput): PlayerInput {
+  const m = Math.hypot(inp.moveX, inp.moveZ);
+  if (m < 0.3 || inp.shoot || inp.pass) return inp;
+  const ux = inp.moveX / m;
+  const uz = inp.moveZ / m;
+  let side = 0;
+  for (const o of opponents(state, p.team)) {
+    const dx = o.pos.x - p.pos.x;
+    const dz = o.pos.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 1.5 || d < 1e-6) continue;
+    const ahead = (dx * ux + dz * uz) / d;
+    if (ahead < 0.55) continue;
+    // Step to whichever side of him is already open.
+    const cross = ux * dz - uz * dx;
+    side += (cross >= 0 ? -1 : 1) * (1.5 - d) * ahead;
+  }
+  if (!side) return inp;
+  const k = Math.max(-1.2, Math.min(1.2, side * 1.6));
+  const mx = ux - uz * k;
+  const mz = uz + ux * k;
+  const l = Math.hypot(mx, mz);
+  return { ...inp, moveX: (mx / l) * m, moveZ: (mz / l) * m, sprint: inp.sprint && Math.abs(k) < 0.6 };
+}
+
 function handlerAi(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
+  return dodge(state, p, handlerDecision(state, p, sk));
+}
+
+function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
   if (p.action === 'shooting') return { ...NO_INPUT, shoot: p.shotMeter < p.ai.shotTarget };
   if (p.action !== 'normal') return NO_INPUT;
 
+  if (state.phase === 'freeThrow') {
+    // Settle, then shoot.
+    return state.freeThrow && state.freeThrow.timer > 1.0 && !state.freeThrow.released ? shootNow(state, p, sk) : NO_INPUT;
+  }
   if (isInbounder(state, p)) {
     if (state.phaseTimer < 0.9) return NO_INPUT;
     const t = bestPass(state, p, true);
@@ -187,6 +233,13 @@ function handlerAi(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
   const distHoop = hdist(p.pos, rim);
   const inBackcourt = s * p.pos.x < 0;
   const holderHasSpot = spotFor(p, hx, null);
+
+  // Three-second count running: score it or get out.
+  if (p.paintTime > 2) {
+    if (distHoop < 3) return shootNow(state, p, sk);
+    p.ai.mode = 'none';
+    return steer(p, outOfPaint(p, hx), true);
+  }
 
   if (p.ai.mode === 'drive') {
     if (distHoop < 2.3) return shootNow(state, p, sk);
@@ -277,6 +330,10 @@ function offBallAi(state: GameState, p: PlayerState, holder: PlayerState | null)
     }
   }
 
+  if (p.paintTime > 1.6) {
+    p.ai.mode = 'none';
+    return steer(p, outOfPaint(p, hx), true);
+  }
   if (p.ai.mode === 'screen') return screenAi(state, p, holder);
   if (p.ai.mode === 'roll' || p.ai.mode === 'cut') {
     if (p.ai.modeTimer > 0) return steer(p, { x: hx - s * 1.0, z: p.ai.screenSide * 0.7 }, true);
@@ -405,6 +462,11 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
       z: man.pos.z + (rim.z - man.pos.z) * 0.33 + (ball.z - man.pos.z) * 0.15,
     };
     sprint = hdist(p.pos, target) > 2.5;
+    // Defensive three seconds: tighten up on your man to stay legal.
+    if (p.paintTime > 1.8) {
+      const d = dirTo(man.pos, rim);
+      target = { x: man.pos.x + d.x * 0.9, z: man.pos.z + d.z * 0.9 };
+    }
   }
   return { ...steer(p, target, sprint, sk.react), jump };
 }

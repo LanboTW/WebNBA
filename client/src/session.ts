@@ -7,6 +7,7 @@ import {
   passIcons,
   giveBall,
   step,
+  type FoulKind,
   type GameEvent,
   type GameSettings,
   type GameState,
@@ -21,6 +22,7 @@ import { BallView } from './ballView';
 import { BroadcastCamera } from './camera';
 import { periodLabel, type Hud } from './hud';
 import type { Input } from './input';
+import { LineupPanel } from './lineup';
 import { PlayerView, kitFor } from './playerView';
 
 const QUALITY_TEXT: Record<ShotQuality, [string, string]> = {
@@ -28,6 +30,22 @@ const QUALITY_TEXT: Record<ShotQuality, [string, string]> = {
   good: ['不錯的出手', 'good'],
   early: ['太早', 'bad'],
   late: ['太晚', 'bad'],
+};
+
+const FOUL_TEXT: Record<FoulKind, string> = {
+  shooting: '投籃犯規',
+  reach: '打手犯規',
+  block: '阻擋犯規',
+  charge: '進攻犯規（撞人）',
+  contact: '防守犯規（非法接觸）',
+  defThree: '防守 3 秒（技術犯規）',
+};
+
+const VIOLATION_TEXT: Partial<Record<string, string>> = {
+  threeSec: '3 秒違例',
+  eightSec: '8 秒違例',
+  backcourt: '回場違例',
+  fiveSec: '5 秒違例',
 };
 
 interface Snapshot {
@@ -53,6 +71,11 @@ export class Session {
   private readonly human: 0 | -1;
   private lastInput: PlayerInput | null = null;
   private readonly icons: HTMLElement[];
+  private readonly timeoutPanel = document.querySelector<HTMLElement>('#timeoutPanel')!;
+  private readonly timeoutLineup = new LineupPanel(document.querySelector<HTMLElement>('#timeoutLineup')!);
+  private timeoutShown = false;
+  /** "Continue" clicked on the timeout screen: sent as a timeout press on the next tick. */
+  private resumePress = false;
   paused = false;
 
   constructor(
@@ -74,6 +97,9 @@ export class Session {
       this.scene.add(v.root);
       return v;
     });
+    document.querySelector<HTMLElement>('#timeoutResume')!.onclick = () => {
+      this.resumePress = true;
+    };
     this.ballView = new BallView(this.scene);
 
     this.ring = new THREE.Mesh(
@@ -139,6 +165,10 @@ export class Session {
   private humanInput(): PlayerInput {
     const s = this.state;
     const inp = this.input.sample();
+    if (this.resumePress) {
+      inp.timeout = true;
+      this.resumePress = false;
+    }
     const me = s.players[s.controlled[0]];
     if (me && s.ball.mode === 'held' && s.ball.holderId === me.id) {
       const mates = passIcons(s, me);
@@ -158,7 +188,8 @@ export class Session {
   private renderPassIcons(): void {
     const s = this.state;
     const me = this.human === 0 ? s.players[s.controlled[0]] : undefined;
-    const holding = !!me && s.ball.mode === 'held' && s.ball.holderId === me.id && me.action === 'normal';
+    const holding =
+      !!me && s.ball.mode === 'held' && s.ball.holderId === me.id && me.action === 'normal' && s.phase !== 'freeThrow';
     const mates = holding ? passIcons(s, me) : [];
     const aimed = holding && this.lastInput ? choosePassTarget(s, me, this.lastInput) : -1;
     this.icons.forEach((el, i) => {
@@ -213,6 +244,7 @@ export class Session {
     this.cam.update(focus, dt);
     this.arena.update(dt);
     this.renderPassIcons();
+    this.renderTimeout();
 
     const me = this.human === 0 ? s.players[s.controlled[0]] ?? null : null;
     this.hud.update(s, me);
@@ -225,6 +257,35 @@ export class Session {
     } else {
       this.hud.setMeter(-1, null);
     }
+  }
+
+  /** Timeout screen with the substitution board for the human team. */
+  private renderTimeout(): void {
+    const s = this.state;
+    const t = s.phase === 'timeout' ? s.timeout : null;
+    const show = !!t && this.human === 0 && !this.paused;
+    if (show !== this.timeoutShown) {
+      this.timeoutShown = show;
+      this.timeoutPanel.classList.toggle('hidden', !show);
+      if (show) this.timeoutLineup.render(s, 0);
+    }
+    if (!t || !show) return;
+    const who = this.teams[t.team];
+    const left = Math.max(0, Math.ceil(t.limit - t.timer));
+    document.querySelector('#timeoutTitle')!.textContent = `暫停　${who.abbr}`;
+    document.querySelector('#timeoutSub')!.textContent =
+      `${who.name} 喊的暫停 · 剩 ${left} 秒 · 我方剩餘暫停 ${s.timeoutsLeft[0]} 次`;
+  }
+
+  /** A substitution swaps who is in the slot: rebuild that player's model. */
+  private rebuildView(slotId: number): void {
+    const p = this.state.players[slotId];
+    const old = this.playerViews[slotId];
+    this.scene.remove(old.root);
+    disposeTree(old.root);
+    const v = new PlayerView(p.info, kitFor(this.teams[p.team], p.team === 0));
+    this.scene.add(v.root);
+    this.playerViews[slotId] = v;
   }
 
   private name(id: number): string {
@@ -254,14 +315,20 @@ export class Session {
         }
         break;
       case 'score': {
-        this.playerViews[e.playerId]?.trigger('celebrate');
         this.sfx.swish();
-        this.sfx.cheer();
         this.arena.swishNet(e.hoopX);
-        this.arena.cheer();
         const who = this.name(e.playerId);
-        hud.toast(`${e.swish ? '空心！' : ''}+${e.points}  ${who}`, e.team === 0 ? 'perfect' : 'accent');
+        if (e.kind === 'free') {
+          hud.toast(`罰進 +1  ${who}`, e.team === 0 ? 'perfect' : 'accent', true);
+          break;
+        }
+        this.playerViews[e.playerId]?.trigger('celebrate');
+        this.sfx.cheer();
+        this.arena.cheer();
+        const label = e.kind === 'dunk' ? '灌籃！' : e.swish ? '空心！' : '';
+        hud.toast(`${label}+${e.points}  ${who}`, e.team === 0 ? 'perfect' : 'accent');
         if (e.assistId >= 0) hud.toast(`助攻 ${this.name(e.assistId)}`, '', true);
+        if (s.pendingFT?.total === 1 && s.pendingFT.shooterId === e.playerId) hud.toast('進算加罰！', 'accent');
         break;
       }
       case 'pass':
@@ -280,14 +347,43 @@ export class Session {
         this.sfx.board(0.6);
         hud.toast(`火鍋！ ${this.name(e.playerId)}`, 'accent');
         break;
-      case 'turnover':
+      case 'turnover': {
+        const violation = VIOLATION_TEXT[e.reason];
         if (e.reason === 'oob') {
           this.sfx.whistle();
           hud.toast('出界', 'bad', true);
         } else if (e.reason === 'shotclock') {
           this.sfx.buzzer();
           hud.toast('24 秒違例', 'bad');
+        } else if (violation) {
+          this.sfx.whistle();
+          hud.toast(`${violation}${e.playerId >= 0 ? '　' + this.name(e.playerId) : ''}`, 'bad');
         }
+        break;
+      }
+      case 'foul': {
+        this.sfx.whistle();
+        const p = s.players[e.playerId];
+        const extra = e.kind === 'charge' ? '　球權轉換' : e.shots ? `　罰球 ${e.shots} 次` : '';
+        hud.toast(`${FOUL_TEXT[e.kind]}　${this.name(e.playerId)}（${p?.stats.pf ?? 0} 犯）${extra}`, 'bad');
+        if (e.bonus && e.kind !== 'shooting' && e.kind !== 'charge') hud.toast('進入加罰', '', true);
+        if (e.kind === 'charge') this.playerViews[e.onId]?.trigger('flop');
+        else this.playerViews[e.onId]?.trigger('fouled');
+        break;
+      }
+      case 'fouledOut':
+        hud.toast(`${e.name} 犯滿離場`, 'bad');
+        break;
+      case 'freeThrow':
+        if (e.index === 0) hud.toast(`${this.name(e.shooterId)} 罰球 ${e.total} 次`, '', true);
+        break;
+      case 'sub':
+        this.rebuildView(e.slotId);
+        hud.toast(`換人：${e.inName} 上，${e.outName} 下`, '', true);
+        break;
+      case 'timeout':
+        this.sfx.whistle();
+        hud.toast(`${this.teams[e.team].abbr} 喊暫停（剩 ${e.left} 次）`, 'accent');
         break;
       case 'buzzer':
         this.sfx.buzzer();
@@ -303,19 +399,24 @@ export class Session {
   }
 
   dispose(): void {
-    this.scene.traverse((o) => {
-      if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments || o instanceof THREE.Line) {
-        o.geometry.dispose();
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats) {
-          (m as THREE.MeshStandardMaterial).map?.dispose();
-          m.dispose();
-        }
-      }
-    });
+    disposeTree(this.scene);
     this.hud.hide();
     this.icons.forEach((el) => el.remove());
+    this.timeoutPanel.classList.add('hidden');
   }
+}
+
+function disposeTree(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments || o instanceof THREE.Line) {
+      o.geometry.dispose();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        (m as THREE.MeshStandardMaterial).map?.dispose();
+        m.dispose();
+      }
+    }
+  });
 }
 
 function lerpV(a: Vec3, b: Vec3, t: number, out: THREE.Vector3): THREE.Vector3 {

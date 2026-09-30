@@ -6,7 +6,6 @@ import {
   SHOT_SWEET,
   attackHoopX,
   createGame,
-  findTeam,
   giveBall,
   gradeTiming,
   isThreePoint,
@@ -14,76 +13,15 @@ import {
   nextRandom,
   placePlayer,
   step,
-  type GameEvent,
   type GameState,
-  type PlayerInput,
 } from '../src';
+import { GSW, LAL, liveGame, practice, run, shootAt } from './helpers';
 
-const GSW = findTeam('GSW');
-const LAL = findTeam('LAL');
 const curry = GSW.players[0];
-
-function practice(x: number, z: number, seed = 1): GameState {
-  const state = createGame({
-    teams: [GSW, LAL],
-    settings: { mode: 'practice', seed, humanTeams: [0] },
-    playersPerTeam: [1, 0],
-  });
-  placePlayer(state, 0, x, z);
-  return state;
-}
-
-/** Holds shoot until the meter reaches `meter`, then lets the ball fly for a few seconds. */
-function shootAt(state: GameState, meter: number, ticksAfter = 150): GameEvent[] {
-  const events: GameEvent[] = [];
-  const hold: PlayerInput = { ...NO_INPUT, shoot: true };
-  const me = () => state.players[state.controlled[0]];
-  step(state, { 0: hold });
-  events.push(...state.events);
-  while (me().action === 'shooting' && me().shotMeter < meter) {
-    step(state, { 0: hold });
-    events.push(...state.events);
-  }
-  for (let i = 0; i < ticksAfter; i++) {
-    step(state, { 0: NO_INPUT });
-    events.push(...state.events);
-  }
-  return events;
-}
-
-function run(state: GameState, ticks: number, input: PlayerInput = NO_INPUT): GameEvent[] {
-  const events: GameEvent[] = [];
-  for (let i = 0; i < ticks; i++) {
-    step(state, { 0: input });
-    events.push(...state.events);
-  }
-  return events;
-}
-
-/** A live 5v5 game with team 0's player 0 holding the ball at (x, z). */
-function liveGame(x: number, z: number, seed = 1): GameState {
-  const state = createGame({ teams: [GSW, LAL], settings: { seed, humanTeams: [0] } });
-  state.phase = 'live';
-  state.possession = 0;
-  state.shotClockOn = true;
-  giveBall(state, 0);
-  state.controlled[0] = 0;
-  placePlayer(state, 0, x, z);
-  // Spread teammates out so a pass is never caught on the tick it is thrown.
-  [
-    [-9, -5],
-    [-9, 5],
-    [-6, -2.5],
-    [-6, 2.5],
-  ].forEach(([tx, tz], i) => placePlayer(state, i + 1, tx, tz));
-  // Park the defence well away so drills are uncontested.
-  state.players.filter((p) => p.team === 1).forEach((p, i) => placePlayer(state, p.id, -12, -6 + i * 3));
-  return state;
-}
 
 describe('roster', () => {
   it('loads 30 teams of 8 players with full ratings', () => {
-    expect(findTeam('LAL').players[2].name).toBe('LeBron James');
+    expect(LAL.players[2].name).toBe('LeBron James');
     expect(Object.keys(curry.ratings)).toHaveLength(13);
   });
 });
@@ -182,7 +120,7 @@ describe('game rules', () => {
     const state = liveGame(-3, 0);
     state.shotClock = 0.5;
     const events = run(state, 30);
-    expect(events).toContainEqual({ type: 'turnover', team: 0, reason: 'shotclock' });
+    expect(events).toContainEqual({ type: 'turnover', team: 0, reason: 'shotclock', playerId: 0 });
     expect(state.possession).toBe(1);
     expect(state.players[0].stats.tov).toBe(1);
   });
@@ -325,7 +263,7 @@ describe('full AI game', () => {
     expect(state.period).toBeGreaterThanOrEqual(4);
     expect(state.score[0]).not.toBe(state.score[1]);
     for (const team of [0, 1] as const) {
-      const players = state.players.filter((p) => p.team === team);
+      const players = [...state.players.filter((p) => p.team === team), ...state.bench[team]];
       const pts = players.reduce((s, p) => s + p.stats.pts, 0);
       expect(pts).toBe(state.score[team]);
       expect(state.score[team]).toBeGreaterThan(4);

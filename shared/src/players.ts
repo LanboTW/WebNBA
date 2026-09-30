@@ -8,8 +8,12 @@ import {
   attackHoopX,
   isThreePoint,
 } from './constants';
+import { chargeFoul, commonFoul, onFreeThrowRelease, shootingFoul } from './fouls';
 import { nextRandom } from './rng';
 import {
+  DUNK_DISTANCE,
+  DUNK_METER_TIME,
+  FREE_METER_TIME,
   JUMPER_METER_TIME,
   LAYUP_DISTANCE,
   LAYUP_METER_TIME,
@@ -17,10 +21,12 @@ import {
   SHOT_SWEET,
   baseMakeChance,
   contestMultiplier,
+  dunkChance,
+  freeThrowChance,
   gradeTiming,
   makeChance,
 } from './shot';
-import type { GameState, PlayerInput, PlayerState, Vec3 } from './types';
+import type { GameState, PlayerInput, PlayerState, ShotKind, Vec3 } from './types';
 
 const MOVE_RESPONSE = 10;
 const PASS_SPEED_BASE = 11;
@@ -34,8 +40,34 @@ export function lerpAngle(a: number, b: number, t: number): number {
   return a + d * t;
 }
 
-export function runSpeed(p: PlayerState): number {
+export function baseRunSpeed(p: PlayerState): number {
   return 4.2 + p.info.ratings.speed * 0.025;
+}
+
+/** 0..1: how rested a player is for performance purposes (full effect above 75% energy). */
+export function freshness(p: PlayerState): number {
+  return Math.min(1, p.energy / 0.75);
+}
+
+export function runSpeed(p: PlayerState): number {
+  return baseRunSpeed(p) * (0.88 + 0.12 * freshness(p));
+}
+
+/** Vertical speed at take-off for a normal jump. */
+export function jumpSpeed(p: PlayerState): number {
+  return (3.0 + p.info.ratings.jump * 0.014) * (0.93 + 0.07 * freshness(p));
+}
+
+const DUNK_JUMP_BONUS = 0.25;
+
+/** Highest point a player's hands reach on a dunk attempt. */
+export function dunkReach(p: PlayerState): number {
+  const vy = jumpSpeed(p) + DUNK_JUMP_BONUS;
+  return p.info.heightM * 1.33 + (vy * vy) / (2 * GRAVITY);
+}
+
+export function canDunk(p: PlayerState): boolean {
+  return dunkReach(p) >= HOOP.rimHeight + 0.45;
 }
 
 export function hasBall(state: GameState, p: PlayerState): boolean {
@@ -73,7 +105,13 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   p.lastPass = inp.pass;
   p.pickupCooldown = Math.max(0, p.pickupCooldown - DT);
   p.stealCooldown = Math.max(0, p.stealCooldown - DT);
+  p.contactCooldown = Math.max(0, p.contactCooldown - DT);
   p.intenseD = inp.intenseD && !mine && canPlay;
+  const ft = state.phase === 'freeThrow' ? state.freeThrow : null;
+  const ftShooter = !!ft && ft.shooterId === p.id && mine && !ft.released && ft.timer > 0.5;
+  // Free throws and inbounds are taken standing still.
+  const planted = inbounder || state.phase === 'freeThrow';
+  let hanging = false;
 
   if (p.action === 'shooting') {
     // Release uses the meter the player saw when letting go, before advancing it.
@@ -81,26 +119,29 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
       releaseShot(state, p);
     } else {
       p.shotTimer += DT;
-      const meterTime = p.shotKind === 'layup' ? LAYUP_METER_TIME : JUMPER_METER_TIME;
-      p.shotMeter = p.shotTimer / meterTime;
-      const jumpAt = p.shotKind === 'layup' ? 0.05 : 0.38;
-      if (!p.shotJumped && p.shotMeter >= jumpAt) launchShotJump(state, p);
+      p.shotMeter = p.shotTimer / METER_TIME[p.shotKind];
+      if (!p.shotJumped && p.shotMeter >= JUMP_AT[p.shotKind]) launchShotJump(state, p);
       if (p.shotMeter >= METER_MAX) releaseShot(state, p);
     }
   } else if (p.action === 'release') {
     p.shotTimer += DT;
+    // Hang on the rim for a moment after a made dunk.
+    const shot = ball.shot;
+    hanging = p.shotKind === 'dunk' && p.shotTimer < 0.4 && p.pos.y > 0.25 && !!shot && shot.shooterId === p.id && shot.scored;
     if (p.onGround && p.shotTimer > 0.2) p.action = 'normal';
+  } else if (ftShooter) {
+    if (shootPressed) startShot(state, p, inp);
   } else if (mine && passPressed && (canPlay || inbounder)) {
     const explicit = inp.passTarget !== undefined ? state.players[inp.passTarget] : undefined;
     const valid = explicit && explicit.team === p.team && explicit.id !== p.id;
     const target = valid ? explicit.id : choosePassTarget(state, p, inp);
     if (target >= 0) releasePass(state, p, target);
   } else if (mine && shootPressed && p.onGround && canPlay && !inbounder) {
-    startShot(state, p);
+    startShot(state, p, inp);
   } else if (!mine && passPressed && canPlay) {
     attemptSteal(state, p);
-  } else if (jumpPressed && p.onGround && !inbounder) {
-    p.vel.y = 3.0 + p.info.ratings.jump * 0.014;
+  } else if (jumpPressed && p.onGround && !planted) {
+    p.vel.y = jumpSpeed(p);
     p.onGround = false;
     // Leaving the floor with the ball ends the dribble: no dribbling again once you land.
     if (mine) p.dribbleDead = true;
@@ -108,7 +149,7 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
 
   // A dead dribble may pivot, pass or shoot, but walking with it would be a travel.
   const pivotOnly = mine && p.dribbleDead;
-  if (inbounder) {
+  if (planted || hanging) {
     p.vel.x = 0;
     p.vel.z = 0;
   } else if (p.onGround && p.action === 'normal' && !pivotOnly) {
@@ -145,7 +186,9 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
 
   p.pos.x += p.vel.x * DT;
   p.pos.z += p.vel.z * DT;
-  if (!p.onGround) {
+  if (hanging) {
+    p.vel.y = 0;
+  } else if (!p.onGround) {
     p.vel.y -= GRAVITY * DT;
     p.pos.y += p.vel.y * DT;
     if (p.pos.y <= 0) {
@@ -170,7 +213,13 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   else if (!mine) targetFacing = Math.atan2(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
   p.facing = lerpAngle(p.facing, targetFacing, Math.min(1, 12 * DT));
 
-  if (mine && p.action === 'normal' && !inbounder && !p.dribbleDead) {
+  // Hand-checking while pressuring the ball can draw a whistle.
+  if (p.intenseD && state.phase === 'live' && ball.mode === 'held') {
+    const h = state.players[ball.holderId];
+    if (h.team !== p.team && hdist(h.pos, p.pos) < 1.1 && nextRandom(state) < 0.0012) commonFoul(state, p, h, 'contact');
+  }
+
+  if (mine && p.action === 'normal' && !planted && !p.dribbleDead) {
     const before = Math.floor(p.dribblePhase / Math.PI);
     p.dribblePhase += DT * Math.PI * (1.8 + hSpeed * 0.3);
     if (Math.floor(p.dribblePhase / Math.PI) !== before && p.onGround) {
@@ -213,6 +262,7 @@ export function resolveCollisions(state: GameState): void {
       const nx = d > 1e-6 ? dx / d : 1;
       const nz = d > 1e-6 ? dz / d : 0;
       const overlap = min - d;
+      checkContact(state, a, b, nx, nz);
       const aLocked = isInbounder(state, a);
       const bLocked = isInbounder(state, b);
       const sa = Math.hypot(a.vel.x, a.vel.z) + 0.1;
@@ -239,17 +289,59 @@ export function resolveCollisions(state: GameState): void {
   }
 }
 
+/**
+ * Ball handler running into a defender: a charge if the defender had set up
+ * (still, facing the play, outside the restricted area), otherwise a block.
+ */
+function checkContact(state: GameState, a: PlayerState, b: PlayerState, nx: number, nz: number): void {
+  const ball = state.ball;
+  if (state.phase !== 'live' || ball.mode !== 'held' || !state.settings.rules.fouls) return;
+  let h: PlayerState;
+  let d: PlayerState;
+  let sign: number;
+  if (ball.holderId === a.id) [h, d, sign] = [a, b, 1];
+  else if (ball.holderId === b.id) [h, d, sign] = [b, a, -1];
+  else return;
+  if (d.team === h.team) return;
+  // Only the first moment of a collision can draw a call; leaning on each other keeps it quiet.
+  const fresh = h.contactCooldown <= 0 && d.contactCooldown <= 0;
+  h.contactCooldown = 0.5;
+  d.contactCooldown = 0.5;
+  if (!fresh || !h.onGround) return;
+  // Handler's speed into the defender.
+  const vn = (h.vel.x * nx + h.vel.z * nz) * sign;
+  if (vn < 3.4) return;
+  if (nextRandom(state) >= Math.min(0.12, 0.025 + (vn - 3.4) * 0.05)) return;
+  const toH = Math.atan2(h.pos.x - d.pos.x, h.pos.z - d.pos.z);
+  const facing = Math.cos(toH - d.facing) > 0.3;
+  const hx = attackHoopX(h.team, state.period);
+  const restricted = Math.hypot(d.pos.x - hx, d.pos.z) < COURT.restrictedRadius;
+  const set = d.onGround && Math.hypot(d.vel.x, d.vel.z) < 1.3 && facing && !restricted;
+  if (set) chargeFoul(state, h, d);
+  else commonFoul(state, d, h, 'block');
+}
+
 // -------------------------------------------------------------- shooting
 
-function startShot(state: GameState, p: PlayerState): void {
+const METER_TIME: Record<ShotKind, number> = {
+  jumper: JUMPER_METER_TIME,
+  layup: LAYUP_METER_TIME,
+  dunk: DUNK_METER_TIME,
+  free: FREE_METER_TIME,
+};
+const JUMP_AT: Record<ShotKind, number> = { jumper: 0.38, layup: 0.05, dunk: 0.05, free: 0.5 };
+
+function startShot(state: GameState, p: PlayerState, inp: PlayerInput): void {
   const hx = attackHoopX(p.team, state.period);
   const dist = Math.hypot(hx - p.pos.x, p.pos.z);
   const toHoopX = (hx - p.pos.x) / Math.max(dist, 1e-6);
   const toHoopZ = -p.pos.z / Math.max(dist, 1e-6);
   const drivingSpeed = p.vel.x * toHoopX + p.vel.z * toHoopZ;
   const layup = dist < LAYUP_DISTANCE || (dist < 3.5 && drivingSpeed > 3);
+  // Sprint + shoot near the rim dunks if you can get up there; bigs flush it from point-blank anyway.
+  const dunk = dist < DUNK_DISTANCE && canDunk(p) && (inp.sprint || dist < 1.2);
   p.action = 'shooting';
-  p.shotKind = layup ? 'layup' : 'jumper';
+  p.shotKind = state.phase === 'freeThrow' ? 'free' : dunk ? 'dunk' : layup ? 'layup' : 'jumper';
   p.shotTimer = 0;
   p.shotMeter = 0;
   p.shotJumped = false;
@@ -259,7 +351,19 @@ function startShot(state: GameState, p: PlayerState): void {
 function launchShotJump(state: GameState, p: PlayerState): void {
   p.shotJumped = true;
   p.onGround = false;
-  if (p.shotKind === 'layup') {
+  if (p.shotKind === 'free') {
+    p.vel.y = 0.9;
+  } else if (p.shotKind === 'dunk') {
+    p.vel.y = jumpSpeed(p) + DUNK_JUMP_BONUS;
+    const hx = attackHoopX(p.team, state.period);
+    const dx = hx - p.pos.x;
+    const dz = -p.pos.z;
+    const d = Math.hypot(dx, dz);
+    // Arrive just in front of the rim at the top of the jump.
+    const speed = Math.min(4.5, Math.max(0, d - 0.5) / (p.vel.y / GRAVITY));
+    p.vel.x = (dx / Math.max(d, 1e-6)) * speed;
+    p.vel.z = (dz / Math.max(d, 1e-6)) * speed;
+  } else if (p.shotKind === 'layup') {
     p.vel.y = 3.6;
     const hx = attackHoopX(p.team, state.period);
     const dx = hx - p.pos.x;
@@ -279,11 +383,22 @@ function launchShotJump(state: GameState, p: PlayerState): void {
  * Closer, in-front, taller and airborne defenders contest more.
  */
 export function contestAt(state: GameState, team: 0 | 1, pos: { x: number; z: number }, shooterHeight: number): number {
+  return topContest(state, team, pos, shooterHeight).contest;
+}
+
+/** Strongest contest on a shot and the defender providing it. */
+function topContest(
+  state: GameState,
+  team: 0 | 1,
+  pos: { x: number; z: number },
+  shooterHeight: number,
+): { contest: number; by: PlayerState | null } {
   const hx = attackHoopX(team, state.period);
   const ux = hx - pos.x;
   const uz = -pos.z;
   const ul = Math.hypot(ux, uz) || 1;
   let best = 0;
+  let by: PlayerState | null = null;
   for (const o of state.players) {
     if (o.team === team) continue;
     const vx = o.pos.x - pos.x;
@@ -295,9 +410,12 @@ export function contestAt(state: GameState, team: 0 | 1, pos: { x: number; z: nu
     const closeness = Math.min(1, (2.2 - d) / 1.6);
     const height = Math.max(0.5, Math.min(1.3, 0.8 + (o.info.heightM - shooterHeight) * 0.8 + (o.onGround ? 0 : 0.25)));
     const c = closeness * front * height * (0.7 + o.info.ratings.defense * 0.004) * (o.intenseD ? 1.2 : 1);
-    best = Math.max(best, c);
+    if (c > best) {
+      best = c;
+      by = o;
+    }
   }
-  return Math.min(1, best);
+  return { contest: Math.min(1, best), by };
 }
 
 /** Expected points of a well-timed shot by `p` from `pos` given current defence. */
@@ -315,19 +433,48 @@ function releaseShot(state: GameState, p: PlayerState): void {
   const ball = state.ball;
   const hx = attackHoopX(p.team, state.period);
   const meter = p.shotMeter;
-  const layup = p.shotKind === 'layup';
+  const kind = p.shotKind;
+  const free = kind === 'free';
+  const layup = kind === 'layup';
+  const dunk = kind === 'dunk';
   const from = p.shotFrom;
   const dist = Math.hypot(hx - from.x, from.z);
-  const three = !layup && isThreePoint(from.x, from.z, hx);
-  const contest = contestAt(state, p.team, p.pos, p.info.heightM);
-  const chance = makeChance(p.info.ratings, dist, three, layup, meter, contest);
+  const three = kind === 'jumper' && isThreePoint(from.x, from.z, hx);
+  const { contest, by } = free ? { contest: 0, by: null } : topContest(state, p.team, p.pos, p.info.heightM);
+  const release = heldBallPosition(state, p);
+  // No dunk if the hands never got above the rim (let go too early).
+  const reached = !dunk || release.y > HOOP.rimHeight + 0.05;
+
+  // Contact on the shot: closer, more aggressive contests on drives foul more often.
+  let fouler: PlayerState | null = null;
+  if (by && contest > 0.15 && state.settings.rules.fouls && state.settings.mode === 'game') {
+    const rate = (layup || dunk ? 0.2 : 0.08) * (by.intenseD ? 1.5 : 1) * (1.2 - by.info.ratings.defense * 0.004);
+    if (nextRandom(state) < contest * rate) fouler = by;
+  }
+  const tired = free ? 0.92 + 0.08 * freshness(p) : 0.85 + 0.15 * freshness(p);
+  let chance = free
+    ? freeThrowChance(p.info.ratings, meter)
+    : dunk
+      ? dunkChance(p.info.ratings, meter, contest)
+      : makeChance(p.info.ratings, dist, three, layup, meter, contest);
+  chance *= tired * (fouler ? 0.5 : 1) * (reached ? 1 : 0.3);
   const willMake = nextRandom(state) < chance;
   const { quality } = gradeTiming(meter);
-  const points: 2 | 3 = three ? 3 : 2;
+  const points: 1 | 2 | 3 = free ? 1 : three ? 3 : 2;
 
-  const release = heldBallPosition(state, p);
   let target: Vec3;
-  if (willMake) {
+  let flightTime: number | undefined;
+  if (willMake && dunk) {
+    // Hammer it straight down through the ring from just in front of it.
+    const ox = release.x - hx;
+    const oz = release.z;
+    const ol = Math.hypot(ox, oz) || 1;
+    release.x = hx + (ox / ol) * 0.12;
+    release.z = (oz / ol) * 0.12;
+    release.y = HOOP.rimHeight + 0.22;
+    target = { x: hx, y: HOOP.rimHeight - 0.3, z: 0 };
+    flightTime = 0.1;
+  } else if (willMake) {
     target = { x: hx + (nextRandom(state) - 0.5) * 0.06, y: HOOP.rimHeight, z: (nextRandom(state) - 0.5) * 0.06 };
   } else {
     // Miss toward the front or back rim, biased short when early and long when late.
@@ -344,9 +491,9 @@ function releaseShot(state: GameState, p: PlayerState): void {
     const off = HOOP.rimRadius + 0.02 + nextRandom(state) * 0.08;
     target = { x: hx + dx * off, y: HOOP.rimHeight + 0.02, z: dz * off };
   }
-
   const hd = Math.hypot(target.x - release.x, target.z - release.z);
-  const flightTime = layup ? 0.45 + hd * 0.12 : 0.8 + hd * 0.065;
+  flightTime ??= dunk ? 0.22 : layup ? 0.45 + hd * 0.12 : 0.8 + hd * 0.065;
+
   ball.mode = 'flight';
   ball.holderId = -1;
   ball.pass = null;
@@ -361,6 +508,7 @@ function releaseShot(state: GameState, p: PlayerState): void {
     shooterId: p.id,
     team: p.team,
     hoopX: hx,
+    kind,
     points,
     willMake,
     quality,
@@ -370,16 +518,20 @@ function releaseShot(state: GameState, p: PlayerState): void {
     scored: false,
     blocked: false,
     blockChecked: [],
+    fouledBy: -1,
   };
 
-  p.stats.fga++;
+  if (free) p.stats.fta++;
+  else p.stats.fga++;
   if (three) p.stats.tpa++;
   p.action = 'release';
   p.shotTimer = 0;
   p.shotMeter = -1;
   p.pickupCooldown = 0.5;
   p.dribbleDead = false;
-  state.events.push({ type: 'shot', playerId: p.id, quality, points, chance });
+  state.events.push({ type: 'shot', playerId: p.id, kind, quality, points, chance });
+  if (free) onFreeThrowRelease(state);
+  else if (fouler) shootingFoul(state, ball.shot, fouler);
 }
 
 // --------------------------------------------------------------- passing
@@ -475,7 +627,12 @@ function attemptSteal(state: GameState, d: PlayerState): void {
       0.1 + (d.info.ratings.steal - h.info.ratings.handle) * 0.004 + (1.4 - dist) * 0.08 + (d.intenseD ? 0.05 : 0),
     ),
   );
-  if (nextRandom(state) >= chance) return;
+  if (nextRandom(state) >= chance) {
+    // A missed swipe sometimes catches the arm instead.
+    const foul = 0.07 + (d.intenseD ? 0.05 : 0) + (1.4 - dist) * 0.05 - d.info.ratings.steal * 0.0005;
+    if (nextRandom(state) < foul) commonFoul(state, d, h, 'reach');
+    return;
+  }
   const dx = d.pos.x - ball.pos.x;
   const dz = d.pos.z - ball.pos.z;
   const l = Math.hypot(dx, dz) || 1;
@@ -494,6 +651,11 @@ export function heldBallPosition(state: GameState, p: PlayerState): Vec3 {
   const fx = Math.sin(p.facing);
   const fz = Math.cos(p.facing);
   const h = p.info.heightM;
+  if (p.action === 'shooting' && p.shotKind === 'dunk') {
+    // Cocked back, then up over the head toward the rim.
+    const t = Math.min(1, Math.max(0, p.shotMeter) / SHOT_SWEET);
+    return { x: p.pos.x + fx * (0.15 + 0.25 * t), y: p.pos.y + h * (0.75 + 0.55 * t), z: p.pos.z + fz * (0.15 + 0.25 * t) };
+  }
   if (p.action === 'shooting' || !p.onGround) {
     const t = p.action === 'shooting' ? Math.min(1, Math.max(0, p.shotMeter) / SHOT_SWEET) : 0.3;
     return { x: p.pos.x + fx * 0.25, y: p.pos.y + h * (0.7 + 0.45 * t), z: p.pos.z + fz * 0.25 };

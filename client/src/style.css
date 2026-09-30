@@ -138,9 +138,69 @@ body {
   color: var(--bad);
 }
 
+#teaminfo {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 28px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+#teaminfo i {
+  font-style: normal;
+  opacity: 0.25;
+}
+
+#teaminfo .bonus {
+  color: var(--bad);
+}
+
+#banner {
+  position: absolute;
+  top: 128px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--panel);
+  padding: 4px 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ebar {
+  display: inline-block;
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.ebar i {
+  display: block;
+  height: 100%;
+  background: var(--perfect);
+}
+
+.ebar.mid i {
+  background: var(--good);
+}
+
+.ebar.low i {
+  background: var(--bad);
+}
+
 #statline {
   position: absolute;
-  top: 70px;
+  top: 90px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 13px;
@@ -438,6 +498,84 @@ button.primary {
   flex: 1;
 }
 
+.toggles {
+  gap: 8px 18px;
+}
+
+.row label.check {
+  flex: 0 1 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* --------------------------------------------------------------- lineup */
+
+.lineup h4 {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.lineup .cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  border-radius: 8px;
+}
+
+.pcard small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.pcard .ebar {
+  width: 100%;
+}
+
+.pcard.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+.pcard.q {
+  border-color: var(--good);
+}
+
+.pcard .queued {
+  font-size: 11px;
+  color: var(--good);
+  font-weight: 400;
+}
+
+.pcard:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#boxLineup {
+  margin-bottom: 14px;
+}
+
 /* ------------------------------------------------------------- box score */
 
 .box {
@@ -475,6 +613,28 @@ button.primary {
 .box td:first-child,
 .box th:first-child {
   text-align: left;
+}
+
+.box tr.benchrow td {
+  color: var(--muted);
+}
+
+.box em {
+  font-style: normal;
+  font-size: 10px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.box em.on {
+  background: rgba(61, 220, 132, 0.18);
+  color: var(--perfect);
+}
+
+.box em.out {
+  background: rgba(255, 107, 91, 0.18);
+  color: var(--bad);
 }
 
 .box tr.total td {

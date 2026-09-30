@@ -19,6 +19,8 @@
         <div class="team right" id="t1"><span class="pts">0</span><span class="abbr"></span></div>
         <div class="shotclock">24</div>
       </div>
+      <div id="teaminfo"><span id="ti0"></span><span id="ti1"></span></div>
+      <div id="banner" class="hidden"></div>
       <div id="statline"></div>
       <div id="meter"><div class="zone good"></div><div class="zone perfect"></div><div class="fill"></div></div>
       <div id="passIcons"></div>
@@ -27,9 +29,9 @@
         <b>進攻</b>　WASD 移動　Shift 加速<br />
         J 投籃（按住，綠區放開）　1–4 傳給頭上號碼的隊友<br />
         K 傳球（按方向鍵傳那一側，否則傳最近的；標亮者接球）<br />
-        空白鍵 起跳（持球起跳＝收球，落地後不能再運）<br />
-        <b>防守</b>　按住 U 加強防守　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
-        Esc 暫停／數據　H 隱藏說明
+        空白鍵 起跳（持球起跳＝收球，落地後不能再運）　Shift＋J 靠近籃框灌籃<br />
+        <b>防守</b>　按住 U 加強防守（較耗體力、易犯規）　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
+        T 叫暫停（死球或我方持球）　Esc 暫停／數據／換人　H 隱藏說明
       </div>
     </div>
 
@@ -67,6 +69,11 @@
             </select>
           </label>
         </div>
+        <div class="row toggles">
+          <label class="check"><input type="checkbox" id="ruleFouls" checked />犯規與罰球</label>
+          <label class="check"><input type="checkbox" id="ruleViolations" checked />違例（3 秒／8 秒／回場／5 秒）</label>
+          <label class="check"><input type="checkbox" id="ruleFatigue" checked />體力與自動換人</label>
+        </div>
         <button id="startBtn" class="primary">開始比賽</button>
         <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
       </div>
@@ -75,10 +82,22 @@
     <div id="boxscore" class="overlay hidden">
       <div class="panel wide">
         <h2 id="boxTitle">暫停</h2>
+        <div id="boxLineup"></div>
         <div id="boxTables"></div>
         <div class="buttons">
           <button id="resumeBtn" class="primary">繼續</button>
           <button id="quitBtn">回主選單</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="timeoutPanel" class="overlay hidden">
+      <div class="panel wide">
+        <h2 id="timeoutTitle">暫停</h2>
+        <p class="sub" id="timeoutSub"></p>
+        <div id="timeoutLineup"></div>
+        <div class="buttons">
+          <button id="timeoutResume" class="primary">繼續比賽（T）</button>
         </div>
       </div>
     </div>

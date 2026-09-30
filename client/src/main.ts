@@ -4,6 +4,7 @@ import { Sfx } from './audio';
 import { renderBoxScore } from './boxscore';
 import { Hud } from './hud';
 import { Input } from './input';
+import { LineupPanel } from './lineup';
 import { Session } from './session';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -31,6 +32,12 @@ const awaySel = $<HTMLSelectElement>('#awaySel');
 const modeSel = $<HTMLSelectElement>('#modeSel');
 const diffSel = $<HTMLSelectElement>('#diffSel');
 const quarterSel = $<HTMLSelectElement>('#quarterSel');
+const ruleBoxes = {
+  fouls: $<HTMLInputElement>('#ruleFouls'),
+  violations: $<HTMLInputElement>('#ruleViolations'),
+  fatigue: $<HTMLInputElement>('#ruleFatigue'),
+};
+const pauseLineup = new LineupPanel($('#boxLineup'));
 $('#season').textContent = ROSTER_SEASON;
 
 for (const sel of [homeSel, awaySel]) {
@@ -43,6 +50,7 @@ awaySel.value = load('away', 'LAL');
 modeSel.value = load('mode', 'game');
 diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
+for (const [key, box] of Object.entries(ruleBoxes)) box.checked = load(`rule.${key}`, '1') === '1';
 
 function load(key: string, fallback: string): string {
   try {
@@ -73,6 +81,7 @@ function refreshCards(): void {
   renderCard($('#homeCard'), findTeam(homeSel.value));
   renderCard($('#awayCard'), findTeam(awaySel.value));
   const practice = modeSel.value === 'practice';
+  for (const box of Object.values(ruleBoxes)) box.disabled = practice;
   awaySel.disabled = practice;
   $('#awayCard').style.opacity = practice ? '0.35' : '1';
   $('#startBtn').textContent = practice ? '開始練習' : modeSel.value === 'watch' ? '開始觀戰' : '開始比賽';
@@ -87,6 +96,7 @@ $('#startBtn').addEventListener('click', () => {
   save('mode', modeSel.value);
   save('diff', diffSel.value);
   save('quarter', quarterSel.value);
+  for (const [key, box] of Object.entries(ruleBoxes)) save(`rule.${key}`, box.checked ? '1' : '0');
   const mode = modeSel.value;
   const settings: Partial<GameSettings> = {
     mode: mode === 'practice' ? 'practice' : 'game',
@@ -94,6 +104,11 @@ $('#startBtn').addEventListener('click', () => {
     difficulty: diffSel.value as Difficulty,
     quarterSeconds: Number(quarterSel.value),
     seed: (Math.random() * 2 ** 31) | 0,
+    rules: {
+      fouls: ruleBoxes.fouls.checked,
+      violations: ruleBoxes.violations.checked,
+      fatigue: ruleBoxes.fatigue.checked,
+    },
   };
   startSession([findTeam(homeSel.value), findTeam(awaySel.value)], settings);
 });
@@ -121,6 +136,10 @@ function showBox(title: string, canResume: boolean): void {
   if (!session) return;
   $('#boxTitle').textContent = title;
   $('#boxTables').innerHTML = renderBoxScore(session.state, session.teams);
+  const s = session.state;
+  const subs = canResume && s.settings.mode === 'game' && s.settings.humanTeams.includes(0);
+  $('#boxLineup').classList.toggle('hidden', !subs);
+  if (subs) pauseLineup.render(s, 0);
   $('#resumeBtn').classList.toggle('hidden', !canResume);
   $('#boxscore').classList.remove('hidden');
 }
