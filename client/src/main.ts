@@ -2,20 +2,26 @@ import * as THREE from 'three';
 import {
   ROSTER_SEASON,
   TEAMS,
+  decodeState,
   findTeam,
+  normaliseRoomCode,
   playerRating,
   teamRating,
   type Difficulty,
   type GameSettings,
+  type RoomInfo,
+  type RoomSettings,
+  type ServerMessage,
   type TeamInfo,
 } from '@webnba/shared';
 import { Sfx } from './audio';
-import { renderBoxScore } from './boxscore';
+import { esc, renderBoxScore } from './boxscore';
 import { Hud } from './hud';
 import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
-import { Session } from './session';
+import { NetClient, storedToken, type NetStatus } from './net';
+import { Session, type OnlineLink } from './session';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
@@ -43,6 +49,9 @@ const modeSel = $<HTMLSelectElement>('#modeSel');
 const diffSel = $<HTMLSelectElement>('#diffSel');
 const quarterSel = $<HTMLSelectElement>('#quarterSel');
 const viewSel = $<HTMLSelectElement>('#viewSel');
+const nameInput = $<HTMLInputElement>('#nameInput');
+const codeInput = $<HTMLInputElement>('#codeInput');
+const lobbyTeam = $<HTMLSelectElement>('#lobbyTeam');
 const ruleBoxes = {
   fouls: $<HTMLInputElement>('#ruleFouls'),
   violations: $<HTMLInputElement>('#ruleViolations'),
@@ -51,7 +60,7 @@ const ruleBoxes = {
 const pauseLineup = new LineupPanel($('#boxLineup'));
 $('#season').textContent = ROSTER_SEASON;
 
-for (const sel of [homeSel, awaySel]) {
+for (const sel of [homeSel, awaySel, lobbyTeam]) {
   for (const t of [...TEAMS].sort((a, b) => a.name.localeCompare(b.name))) {
     sel.add(new Option(`${t.name} (${t.abbr})　${teamRating(t)}`, t.abbr));
   }
@@ -62,7 +71,15 @@ modeSel.value = load('mode', 'game');
 diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
 viewSel.value = load('view', 'broadcast');
+nameInput.value = load('name', '');
 for (const [key, box] of Object.entries(ruleBoxes)) box.checked = load(`rule.${key}`, '1') === '1';
+
+// A shared room link (?room=CODE) opens the join form.
+const linkCode = normaliseRoomCode(new URLSearchParams(location.search).get('room') ?? '');
+if (linkCode) {
+  modeSel.value = 'online';
+  codeInput.value = linkCode;
+}
 
 function load(key: string, fallback: string): string {
   try {
@@ -81,7 +98,6 @@ function save(key: string, value: string): void {
 
 function renderCard(el: HTMLElement, t: TeamInfo): void {
   el.style.setProperty('--team', t.primary === '#000000' ? t.secondary : t.primary);
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   const row = (p: TeamInfo['players'][number]) =>
     `<div class="prow"><span>${p.position}　${esc(p.name)}</span><b class="ovr">${playerRating(p)}</b></div>`;
   el.innerHTML =
@@ -91,49 +107,98 @@ function renderCard(el: HTMLElement, t: TeamInfo): void {
     t.players.slice(5).map(row).join('');
 }
 function refreshCards(): void {
+  const mode = modeSel.value;
+  const practice = mode === 'practice';
+  const online = mode === 'online';
   renderCard($('#homeCard'), findTeam(homeSel.value));
   renderCard($('#awayCard'), findTeam(awaySel.value));
-  const practice = modeSel.value === 'practice';
   for (const box of Object.values(ruleBoxes)) box.disabled = practice;
   awaySel.disabled = practice;
+  $('#awayLabel').classList.toggle('hidden', online);
   $('#awayCard').style.opacity = practice ? '0.35' : '1';
-  $('#startBtn').textContent = practice ? '開始練習' : modeSel.value === 'watch' ? '開始觀戰' : '開始比賽';
+  $('#awayCard').classList.toggle('hidden', online);
+  $('.matchup .vs').classList.toggle('hidden', online);
+  $('#onlineBox').classList.toggle('hidden', !online);
+  $('#joinBtn').classList.toggle('hidden', !online);
+  $('#startBtn').textContent = online ? '建立房間' : practice ? '開始練習' : mode === 'watch' ? '開始觀戰' : '開始比賽';
+  showMenuMsg('');
 }
 [homeSel, awaySel, modeSel].forEach((s) => s.addEventListener('change', refreshCards));
 refreshCards();
 
-$('#startBtn').addEventListener('click', () => {
-  sfx.unlock();
+function showMenuMsg(text: string): void {
+  $('#onlineMsg').textContent = text;
+  $('#onlineMsg').classList.toggle('hidden', !text);
+}
+
+function saveMenu(): void {
   save('home', homeSel.value);
   save('away', awaySel.value);
   save('mode', modeSel.value);
   save('diff', diffSel.value);
   save('quarter', quarterSel.value);
   save('view', viewSel.value);
+  save('name', nameInput.value.trim());
   for (const [key, box] of Object.entries(ruleBoxes)) save(`rule.${key}`, box.checked ? '1' : '0');
+}
+
+function menuRules(): GameSettings['rules'] {
+  return {
+    fouls: ruleBoxes.fouls.checked,
+    violations: ruleBoxes.violations.checked,
+    fatigue: ruleBoxes.fatigue.checked,
+  };
+}
+
+$('#startBtn').addEventListener('click', () => {
+  sfx.unlock();
+  saveMenu();
   const mode = modeSel.value;
+  if (mode === 'online') {
+    createRoom();
+    return;
+  }
   const settings: Partial<GameSettings> = {
     mode: mode === 'practice' ? 'practice' : 'game',
     humanTeams: mode === 'watch' ? [] : [0],
     difficulty: diffSel.value as Difficulty,
     quarterSeconds: Number(quarterSel.value),
     seed: (Math.random() * 2 ** 31) | 0,
-    rules: {
-      fouls: ruleBoxes.fouls.checked,
-      violations: ruleBoxes.violations.checked,
-      fatigue: ruleBoxes.fatigue.checked,
-    },
+    rules: menuRules(),
   };
   startSession([findTeam(homeSel.value), findTeam(awaySel.value)], settings);
 });
 
-function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
+$('#joinBtn').addEventListener('click', () => {
+  sfx.unlock();
+  saveMenu();
+  const code = normaliseRoomCode(codeInput.value);
+  if (code.length !== 6) {
+    showMenuMsg('請輸入 6 碼房間代碼');
+    return;
+  }
+  connectNet().join(code, playerName(), homeSel.value);
+  showMenuMsg('連線中…');
+});
+
+function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, online?: OnlineLink): void {
   session?.dispose();
+  session = makeSession(teams, settings, online);
+  // Dev-only hook for inspecting the sim from the browser console.
+  if (import.meta.env.DEV) (window as unknown as { __session: Session }).__session = session;
+  $('#menu').classList.add('hidden');
+  $('#lobby').classList.add('hidden');
+  $('#boxscore').classList.add('hidden');
+  (document.activeElement as HTMLElement | null)?.blur();
+  input.clearPresses();
+}
+
+function makeSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, online?: OnlineLink): Session {
   const onViewChange = (view: CameraMode) => {
     viewSel.value = view;
     save('view', view);
   };
-  session = new Session(
+  return new Session(
     teams,
     settings,
     hud,
@@ -142,19 +207,202 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
     { onFinal: showFinal, onViewChange },
     window.innerWidth / window.innerHeight,
     viewSel.value as CameraMode,
+    online,
   );
-  // Dev-only hook for inspecting the sim from the browser console.
-  if (import.meta.env.DEV) (window as unknown as { __session: Session }).__session = session;
-  $('#menu').classList.add('hidden');
-  $('#boxscore').classList.add('hidden');
-  input.clearPresses();
 }
 
 function backToMenu(): void {
+  leaveRoom();
   session?.dispose();
   session = null;
   $('#boxscore').classList.add('hidden');
+  $('#lobby').classList.add('hidden');
+  $('#netinfo').classList.add('hidden');
   $('#menu').classList.remove('hidden');
+}
+
+// --------------------------------------------------------------- online
+
+let net: NetClient | null = null;
+let room: RoomInfo | null = null;
+let mySeat: 0 | 1 = 0;
+let netStatus: NetStatus = 'closed';
+
+const playerName = () => nameInput.value.trim() || '玩家';
+
+function connectNet(): NetClient {
+  net?.leave();
+  const client: NetClient = new NetClient({
+    onMessage: (msg) => {
+      if (net === client) onServer(msg);
+    },
+    onStatus: (status) => {
+      if (net !== client) return;
+      netStatus = status;
+      if (status === 'closed') onConnectionLost();
+      updateNetInfo();
+    },
+  });
+  net = client;
+  return client;
+}
+
+function leaveRoom(): void {
+  net?.leave();
+  net = null;
+  room = null;
+  history.replaceState(null, '', location.pathname);
+}
+
+function createRoom(): void {
+  const settings: RoomSettings = {
+    quarterSeconds: Number(quarterSel.value),
+    difficulty: diffSel.value as Difficulty,
+    rules: menuRules(),
+  };
+  connectNet().create(playerName(), homeSel.value, settings);
+  showMenuMsg('建立房間中…');
+}
+
+function onServer(msg: ServerMessage): void {
+  switch (msg.t) {
+    case 'joined':
+      mySeat = msg.seat;
+      room = msg.room;
+      history.replaceState(null, '', `${location.pathname}?room=${msg.code}`);
+      if (!msg.room.started) showLobby();
+      break;
+    case 'room':
+      room = msg.room;
+      if (!room.started) showLobby();
+      updateNetInfo();
+      break;
+    case 'start': {
+      room = msg.room;
+      mySeat = msg.seat;
+      const teams: [TeamInfo, TeamInfo] = [findTeam(msg.teams[0]), findTeam(msg.teams[1])];
+      const link = net!;
+      startSession(teams, {}, {
+        team: msg.seat,
+        state: decodeState(msg.state, teams),
+        send: (m) => link.send(m),
+      });
+      updateNetInfo();
+      break;
+    }
+    case 'snap':
+      if (session?.isOnline) session.applySnapshot(msg);
+      break;
+    case 'error':
+      if (session?.isOnline) hud.toast(msg.msg, 'bad');
+      else if (!$('#lobby').classList.contains('hidden')) $('#lobbyStatus').textContent = msg.msg;
+      else {
+        showMenuMsg(msg.msg);
+        // Could not get into a room: drop the socket so the next try starts clean.
+        if (!room) leaveRoom();
+      }
+      break;
+    case 'closed':
+      endOnline(msg.msg);
+      break;
+  }
+}
+
+function onConnectionLost(): void {
+  if (!room && !session) {
+    showMenuMsg('連不到伺服器（npm run server 有開嗎？）');
+    net = null;
+    return;
+  }
+  endOnline('和伺服器的連線中斷了');
+}
+
+/** The room is gone (closed, or we could not get back in): show where things stood. */
+function endOnline(text: string): void {
+  net = null;
+  room = null;
+  history.replaceState(null, '', location.pathname);
+  if (session?.isOnline && session.state.phase !== 'final') {
+    session.paused = true;
+    const [a, b] = session.state.score;
+    showBox(`${text}　${session.teams[0].abbr} ${a} : ${b} ${session.teams[1].abbr}`, false);
+  } else if (!session) {
+    $('#lobby').classList.add('hidden');
+    $('#menu').classList.remove('hidden');
+    showMenuMsg(text);
+  }
+  updateNetInfo();
+}
+
+const DIFF_TEXT: Record<Difficulty, string> = { easy: '簡單', normal: '普通', hard: '困難' };
+
+function showLobby(): void {
+  if (!room) return;
+  $('#menu').classList.add('hidden');
+  $('#lobby').classList.remove('hidden');
+  $('#lobbyCode').textContent = room.code;
+  room.seats.forEach((seat, i) => {
+    const role = i === 0 ? '主隊・房主' : '客隊';
+    const you = i === mySeat ? '（你）' : '';
+    const state = !seat.taken ? '<span class="off">等待加入…</span>' : seat.connected ? '' : `<span class="off">斷線，${seat.rejoinLeft} 秒內可回來</span>`;
+    $(`#seatName${i}`).innerHTML = `${role}　<b>${seat.taken ? esc(seat.name) : '—'}</b>${you} ${state}`;
+    const card = $(`#seatCard${i}`);
+    renderCard(card, findTeam(seat.abbr));
+    card.style.opacity = seat.taken ? '1' : '0.35';
+  });
+  lobbyTeam.value = room.seats[mySeat].abbr;
+  const s = room.settings;
+  const rules = [s.rules.fouls && '犯規', s.rules.violations && '違例', s.rules.fatigue && '體力'].filter(Boolean).join('／') || '全關';
+  $('#lobbySettings').textContent = `每節 ${s.quarterSeconds / 60} 分鐘 · 電腦隊友難度 ${DIFF_TEXT[s.difficulty]} · 規則：${rules}`;
+  const ready = room.seats[1].connected && room.seats[0].connected;
+  const start = $<HTMLButtonElement>('#lobbyStart');
+  start.classList.toggle('hidden', mySeat !== 0);
+  start.disabled = !ready;
+  $('#lobbyStatus').textContent = mySeat === 0 ? (ready ? '對手到齊，可以開始了' : '等待對手加入…') : '等待房主開始比賽…';
+}
+
+lobbyTeam.addEventListener('change', () => net?.send({ t: 'pickTeam', abbr: lobbyTeam.value }));
+$('#lobbyStart').addEventListener('click', () => {
+  sfx.unlock();
+  net?.send({ t: 'start' });
+});
+$('#lobbyLeave').addEventListener('click', backToMenu);
+$('#copyLink').addEventListener('click', async () => {
+  if (!room) return;
+  const url = `${location.origin}${location.pathname}?room=${room.code}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    $('#lobbyStatus').textContent = '已複製連結';
+  } catch {
+    $('#lobbyStatus').textContent = url;
+  }
+});
+
+/** Top-right line in online games: ping, and what happened to the other player. */
+function updateNetInfo(): void {
+  const el = $('#netinfo');
+  if (!session?.isOnline) {
+    el.classList.add('hidden');
+    return;
+  }
+  const parts: string[] = [];
+  if (netStatus === 'reconnecting') parts.push('<span class="warn">連線中斷，重新連線中…</span>');
+  else if (net) parts.push(`${room?.code ?? ''}　延遲 ${Math.round(session.ping)} ms`);
+  const other = room?.seats[(1 - mySeat) as 0 | 1];
+  if (other && !other.taken) parts.push('<span class="warn">對手已離開，由電腦接手</span>');
+  else if (other && !other.connected) parts.push(`<span class="warn">對手斷線，電腦代打中（${other.rejoinLeft} 秒內可回來）</span>`);
+  el.innerHTML = parts.join('<br>');
+  el.classList.toggle('hidden', !parts.length);
+}
+setInterval(updateNetInfo, 500);
+
+// Opened from a room link.
+if (linkCode && storedToken(linkCode)) {
+  // This tab already had a seat there (page reloaded): go straight back in.
+  connectNet().join(linkCode, playerName(), homeSel.value);
+  showMenuMsg('重新加入房間中…');
+} else if (linkCode) {
+  showMenuMsg(`選好隊伍後按「加入房間」加入 ${linkCode}`);
 }
 
 // ------------------------------------------------------------ box score
@@ -164,9 +412,10 @@ function showBox(title: string, canResume: boolean): void {
   $('#boxTitle').textContent = title;
   $('#boxTables').innerHTML = renderBoxScore(session.state, session.teams);
   const s = session.state;
-  const subs = canResume && s.settings.mode === 'game' && s.settings.humanTeams.includes(0);
+  const team = session.team;
+  const subs = canResume && s.settings.mode === 'game' && team >= 0;
   $('#boxLineup').classList.toggle('hidden', !subs);
-  if (subs) pauseLineup.render(s, 0);
+  if (subs) pauseLineup.render(s, team as 0 | 1, session.subActions);
   $('#resumeBtn').classList.toggle('hidden', !canResume);
   $('#boxscore').classList.remove('hidden');
 }
@@ -180,9 +429,10 @@ function showFinal(): void {
 }
 
 function togglePause(): void {
-  if (!session || session.state.phase === 'final') return;
+  if (!session || session.state.phase === 'final' || (session.isOnline && !net)) return;
   session.paused = !session.paused;
-  if (session.paused) showBox('暫停', true);
+  // Online the game keeps running behind the stats screen.
+  if (session.paused) showBox(session.isOnline ? '數據（比賽進行中）' : '暫停', true);
   else $('#boxscore').classList.add('hidden');
 }
 

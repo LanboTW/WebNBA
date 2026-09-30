@@ -26,6 +26,7 @@
       <div id="meter"><div class="zone good"></div><div class="zone perfect"></div><div class="fill"></div></div>
       <div id="passIcons"></div>
       <div id="toasts"></div>
+      <div id="netinfo" class="hidden"></div>
       <div id="help">
         <b>進攻</b>　WASD 移動　Shift 加速<br />
         J 投籃（按住，綠區放開）　1–4 傳給頭上號碼的隊友<br />
@@ -42,7 +43,7 @@
         <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
         <div class="row">
           <label>你的隊伍<select id="homeSel"></select></label>
-          <label>對手<select id="awaySel"></select></label>
+          <label id="awayLabel">對手<select id="awaySel"></select></label>
         </div>
         <div class="matchup"><div id="homeCard" class="card"></div><div class="vs">VS</div><div id="awayCard" class="card"></div></div>
         <div class="row">
@@ -51,6 +52,7 @@
               <option value="game">對戰電腦</option>
               <option value="watch">電腦對戰（觀戰）</option>
               <option value="practice">投籃練習</option>
+              <option value="online">線上對戰（和朋友）</option>
             </select>
           </label>
           <label>難度
@@ -81,8 +83,37 @@
           <label class="check"><input type="checkbox" id="ruleViolations" checked />違例（3 秒／8 秒／回場／5 秒）</label>
           <label class="check"><input type="checkbox" id="ruleFatigue" checked />體力與自動換人</label>
         </div>
-        <button id="startBtn" class="primary">開始比賽</button>
+        <div id="onlineBox" class="row hidden">
+          <label>暱稱<input id="nameInput" maxlength="16" placeholder="玩家" autocomplete="off" /></label>
+          <label>房間代碼（加入朋友的房間）<input id="codeInput" maxlength="6" placeholder="例如 K7QX2M" autocomplete="off" /></label>
+        </div>
+        <p id="onlineMsg" class="msg hidden"></p>
+        <div class="buttons stack">
+          <button id="startBtn" class="primary">開始比賽</button>
+          <button id="joinBtn" class="hidden">加入房間</button>
+        </div>
         <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
+      </div>
+    </div>
+
+    <div id="lobby" class="overlay hidden">
+      <div class="panel">
+        <h2>房間 <span id="lobbyCode" class="code"></span></h2>
+        <p class="sub">把代碼或連結傳給朋友，對方加入後由房主開始。<button id="copyLink" class="small">複製連結</button></p>
+        <div class="matchup">
+          <div class="seat"><div class="seatname" id="seatName0"></div><div id="seatCard0" class="card"></div></div>
+          <div class="vs">VS</div>
+          <div class="seat"><div class="seatname" id="seatName1"></div><div id="seatCard1" class="card"></div></div>
+        </div>
+        <div class="row">
+          <label>你的隊伍（雙方可以選同一隊）<select id="lobbyTeam"></select></label>
+        </div>
+        <p class="fine left" id="lobbySettings"></p>
+        <p class="msg" id="lobbyStatus"></p>
+        <div class="buttons">
+          <button id="lobbyStart" class="primary">開始比賽</button>
+          <button id="lobbyLeave">離開房間</button>
+        </div>
       </div>
     </div>
 

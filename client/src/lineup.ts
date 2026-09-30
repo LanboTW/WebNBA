@@ -1,38 +1,52 @@
 import { FOUL_OUT, cancelSub, playerRating, requestSub, type GameState } from '@webnba/shared';
 import { energyBar, esc, teamRows } from './boxscore';
 
+/** How the board reads the game and queues substitutions (locally, or through the server). */
+export interface SubActions {
+  state(): GameState;
+  request(team: 0 | 1, slotId: number, rosterIdx: number): void;
+  cancel(team: 0 | 1, slotId: number): void;
+}
+
+export const localSubs = (state: GameState): SubActions => ({
+  state: () => state,
+  request: (team, slotId, rosterIdx) => requestSub(state, team, slotId, rosterIdx),
+  cancel: (team, slotId) => cancelSub(state, team, slotId),
+});
+
 /**
  * Substitution board: pick a player on the floor, then someone from the bench.
  * The swap is queued and happens at the next dead ball.
  */
 export class LineupPanel {
   private selected = -1;
-  private state: GameState | null = null;
+  private actions: SubActions | null = null;
   private team: 0 | 1 = 0;
 
   constructor(private readonly root: HTMLElement) {
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-slot],[data-roster]');
-      if (!el || !this.state) return;
-      const s = this.state;
+      const actions = this.actions;
+      if (!el || !actions) return;
+      const s = actions.state();
       if (el.dataset.slot !== undefined) {
         const slot = Number(el.dataset.slot);
         if (s.subQueue.some((q) => q.team === this.team && q.slotId === slot)) {
-          cancelSub(s, this.team, slot);
+          actions.cancel(this.team, slot);
           this.selected = -1;
         } else {
           this.selected = this.selected === slot ? -1 : slot;
         }
       } else if (this.selected >= 0) {
-        requestSub(s, this.team, this.selected, Number(el.dataset.roster));
+        actions.request(this.team, this.selected, Number(el.dataset.roster));
         this.selected = -1;
       }
-      this.render(s, this.team);
+      this.render(actions.state(), this.team, actions);
     });
   }
 
-  render(state: GameState, team: 0 | 1): void {
-    this.state = state;
+  render(state: GameState, team: 0 | 1, actions: SubActions = localSubs(state)): void {
+    this.actions = actions;
     this.team = team;
     const rows = teamRows(state, team);
     const queued = (slot: number) => state.subQueue.find((q) => q.team === team && q.slotId === slot);

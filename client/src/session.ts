@@ -1,17 +1,23 @@
 import * as THREE from 'three';
 import {
   DT,
+  NO_INPUT,
   attackHoopX,
+  cancelSub,
   choosePassTarget,
   createGame,
+  decodeState,
   passIcons,
   giveBall,
+  requestSub,
   step,
+  type ClientMessage,
   type FoulKind,
   type GameEvent,
   type GameSettings,
   type GameState,
   type PlayerInput,
+  type ServerMessage,
   type ShotQuality,
   type TeamInfo,
   type Vec3,
@@ -22,7 +28,7 @@ import { BallView } from './ballView';
 import { CAMERA_LABEL, GameCamera, type CameraMode } from './camera';
 import { periodLabel, type Hud } from './hud';
 import type { Input } from './input';
-import { LineupPanel } from './lineup';
+import { LineupPanel, type SubActions } from './lineup';
 import { PlayerView, kitFor } from './playerView';
 
 const QUALITY_TEXT: Record<ShotQuality, [string, string]> = {
@@ -53,6 +59,16 @@ interface Snapshot {
   ball: Vec3;
 }
 
+/** A match played on a server: the state is authoritative there, predicted here. */
+export interface OnlineLink {
+  team: 0 | 1;
+  state: GameState;
+  send(msg: ClientMessage): void;
+}
+
+/** Unacknowledged inputs kept for replay (about 1.5 s). */
+const MAX_PENDING = 45;
+
 export interface SessionCallbacks {
   onFinal(state: GameState): void;
   onViewChange?(view: CameraMode): void;
@@ -60,7 +76,7 @@ export interface SessionCallbacks {
 
 /** One match (or practice) rendered into its own scene. */
 export class Session {
-  readonly state: GameState;
+  state: GameState;
   readonly scene = new THREE.Scene();
   readonly cam: GameCamera;
   private readonly arena: Arena;
@@ -69,12 +85,37 @@ export class Session {
   private readonly ring: THREE.Mesh;
   private prev: Snapshot;
   private acc = 0;
-  private readonly human: 0 | -1;
+  /** The team this screen controls, or -1 when only watching. */
+  readonly team: 0 | 1 | -1;
+  private readonly online: OnlineLink | null;
+  private seq = 0;
+  private pending: { seq: number; input: PlayerInput; sent: number }[] = [];
+  private remoteInput: PlayerInput = NO_INPUT;
+  private serverTick = -1;
+  /** Visual error left over from prediction corrections; decays to zero. */
+  private readonly offsets: THREE.Vector3[];
+  /** Roster index each player model was built for (substitutions rebuild it). */
+  private readonly builtFor: number[];
+  /** Round trip in ms (input sent until the server applied it and said so). */
+  ping = 0;
   private lastInput: PlayerInput | null = null;
   private readonly icons: HTMLElement[];
   private readonly timeoutPanel = document.querySelector<HTMLElement>('#timeoutPanel')!;
   private readonly timeoutLineup = new LineupPanel(document.querySelector<HTMLElement>('#timeoutLineup')!);
   private timeoutShown = false;
+  private lineupKey = '';
+  /** Substitution requests from the lineup boards: applied here and, online, sent to the server. */
+  readonly subActions: SubActions = {
+    state: () => this.state,
+    request: (team, slotId, rosterIdx) => {
+      requestSub(this.state, team, slotId, rosterIdx);
+      this.online?.send({ t: 'sub', slotId, rosterIdx });
+    },
+    cancel: (team, slotId) => {
+      cancelSub(this.state, team, slotId);
+      this.online?.send({ t: 'cancelSub', slotId });
+    },
+  };
   /** "Continue" clicked on the timeout screen: sent as a timeout press on the next tick. */
   private resumePress = false;
   paused = false;
@@ -88,10 +129,14 @@ export class Session {
     private readonly callbacks: SessionCallbacks,
     aspect: number,
     view: CameraMode = 'broadcast',
+    online: OnlineLink | null = null,
   ) {
     const practice = settings.mode === 'practice';
-    this.state = createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
-    this.human = this.state.settings.humanTeams.includes(0) ? 0 : -1;
+    this.online = online;
+    this.state = online ? online.state : createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
+    this.team = online ? online.team : this.state.settings.humanTeams.includes(0) ? 0 : -1;
+    this.offsets = [...this.state.players, null].map(() => new THREE.Vector3());
+    this.builtFor = this.state.players.map((p) => p.rosterIdx);
     this.arena = buildArena(this.scene, teams[0]);
     this.cam = new GameCamera(aspect, view);
     this.playerViews = this.state.players.map((p) => {
@@ -109,7 +154,7 @@ export class Session {
       new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9, depthWrite: false }),
     );
     this.ring.rotation.x = -Math.PI / 2;
-    this.ring.visible = this.human === 0;
+    this.ring.visible = this.team >= 0;
     this.scene.add(this.ring);
 
     if (practice) {
@@ -156,17 +201,88 @@ export class Session {
       if (s.players[0].action === 'normal') giveBall(s, 0);
     }
 
-    if (!this.paused) {
+    if (this.online) {
+      // Online the match never pauses; Esc only opens the stats screen.
       this.acc += Math.min(0.25, dt);
       while (this.acc >= DT) {
         this.prev = this.snapshot();
-        const inputs = this.human === 0 ? { 0: this.humanInput() } : {};
+        const input = this.humanInput();
+        const seq = ++this.seq;
+        this.pending.push({ seq, input, sent: performance.now() });
+        if (this.pending.length > MAX_PENDING) this.pending.shift();
+        this.online.send({ t: 'input', seq, input });
+        this.predict(this.state, input);
+        this.acc -= DT;
+      }
+    } else if (!this.paused) {
+      this.acc += Math.min(0.25, dt);
+      while (this.acc >= DT) {
+        this.prev = this.snapshot();
+        const inputs = this.team === 0 ? { 0: this.humanInput() } : {};
         step(s, inputs);
         s.events.forEach((e) => this.handleEvent(e));
         this.acc -= DT;
       }
     }
-    this.render(this.paused ? 1 : this.acc / DT, dt);
+    this.render(this.frozen ? 1 : this.acc / DT, dt);
+  }
+
+  /** Stats screen open in a local game stops time; online it does not. */
+  get frozen(): boolean {
+    return this.paused && !this.online;
+  }
+
+  get isOnline(): boolean {
+    return !!this.online;
+  }
+
+  /** Team whose scores are shown as "ours" in toasts. */
+  private get myColor(): 0 | 1 {
+    return this.team === 1 ? 1 : 0;
+  }
+
+  /** Local guess at the next tick: our input, plus the other human's last known one. */
+  private predict(state: GameState, input: PlayerInput): void {
+    const team = this.team as 0 | 1;
+    step(state, { [team]: input, [1 - team]: this.remoteInput } as Record<0 | 1, PlayerInput>);
+  }
+
+  /**
+   * Authoritative state from the server: adopt it, replay the inputs it has
+   * not applied yet, and keep the visual difference as a decaying offset so
+   * corrections slide instead of snapping.
+   */
+  applySnapshot(msg: Extract<ServerMessage, { t: 'snap' }>): void {
+    if (msg.tick <= this.serverTick) return;
+    this.serverTick = msg.tick;
+    const team = this.team as 0 | 1;
+    const acked = this.pending.find((p) => p.seq === msg.ack);
+    if (acked) {
+      const rtt = performance.now() - acked.sent;
+      this.ping = this.ping ? this.ping * 0.8 + rtt * 0.2 : rtt;
+    }
+    this.pending = this.pending.filter((p) => p.seq > msg.ack);
+    this.remoteInput = msg.inputs[(1 - team) as 0 | 1] ?? NO_INPUT;
+
+    const old = this.state;
+    const next = decodeState(msg.state, this.teams);
+    this.state = next;
+    this.prev = this.snapshot();
+    this.pending.forEach((p, i) => {
+      if (i === this.pending.length - 1) this.prev = this.snapshot();
+      this.predict(next, p.input);
+    });
+    next.events = [];
+
+    const shift = (o: THREE.Vector3, a: Vec3, b: Vec3) => {
+      o.x += a.x - b.x;
+      o.y += a.y - b.y;
+      o.z += a.z - b.z;
+      if (o.lengthSq() > 9) o.set(0, 0, 0); // a reset (inbound, free throws): just cut
+    };
+    next.players.forEach((p, i) => shift(this.offsets[i], old.players[i].pos, p.pos));
+    shift(this.offsets[next.players.length], old.ball.pos, next.ball.pos);
+    msg.events.forEach((e) => this.handleEvent(e));
   }
 
   /** Keyboard/pad input plus icon passing: digits 1-4 pass straight to that teammate. */
@@ -181,7 +297,7 @@ export class Session {
       inp.timeout = true;
       this.resumePress = false;
     }
-    const me = s.players[s.controlled[0]];
+    const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] : undefined;
     if (me && s.ball.mode === 'held' && s.ball.holderId === me.id) {
       const mates = passIcons(s, me);
       for (let i = 0; i < mates.length; i++) {
@@ -199,7 +315,7 @@ export class Session {
   /** Numbered labels over teammates while you hold the ball; the K-pass receiver is highlighted. */
   private renderPassIcons(): void {
     const s = this.state;
-    const me = this.human === 0 ? s.players[s.controlled[0]] : undefined;
+    const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] : undefined;
     const holding =
       !!me && s.ball.mode === 'held' && s.ball.holderId === me.id && me.action === 'normal' && s.phase !== 'freeThrow';
     const mates = holding ? passIcons(s, me) : [];
@@ -225,10 +341,20 @@ export class Session {
     const tmp = new THREE.Vector3();
     const holder = s.ball.mode === 'held' ? s.ball.holderId : -1;
     const offense = holder >= 0 ? s.players[holder].team : s.possession;
-    const ballPos = lerpV(this.prev.ball, s.ball.pos, alpha, new THREE.Vector3());
+    s.players.forEach((p, i) => {
+      if (p.rosterIdx !== this.builtFor[i]) {
+        this.builtFor[i] = p.rosterIdx;
+        this.rebuildView(i);
+      }
+    });
+    const decay = Math.exp(-dt * 10);
+    for (const o of this.offsets) o.multiplyScalar(decay);
+    // A held ball rides with its holder's correction so it stays in the hand.
+    const ballOffset = this.offsets[holder >= 0 ? holder : s.players.length];
+    const ballPos = lerpV(this.prev.ball, s.ball.pos, alpha, new THREE.Vector3()).add(ballOffset);
     s.players.forEach((p, i) => {
       const a = this.prev.players[i];
-      lerpV(a.pos, p.pos, alpha, tmp);
+      lerpV(a.pos, p.pos, alpha, tmp).add(this.offsets[i]);
       this.playerViews[i].update(
         p,
         tmp,
@@ -240,15 +366,15 @@ export class Session {
           catching: s.ball.mode === 'pass' && s.ball.pass?.targetId === p.id,
           lookAt: ballPos,
         },
-        this.paused ? 0 : dt,
+        this.frozen ? 0 : dt,
       );
-      if (this.human === 0 && s.controlled[0] === p.id) {
+      if (this.team >= 0 && s.controlled[this.team as 0 | 1] === p.id) {
         this.ring.position.set(tmp.x, 0.02, tmp.z);
         (this.ring.material as THREE.MeshBasicMaterial).color.set(p.intenseD ? 0xff3b3b : 0xff7a1a);
       }
     });
     tmp.copy(ballPos);
-    this.ballView.update(tmp, s.ball.vel, this.paused ? 0 : dt);
+    this.ballView.update(tmp, s.ball.vel, this.frozen ? 0 : dt);
 
     // Follow the ball toward the hoop the offence is attacking.
     this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoopX(s.possession, s.period)), dt);
@@ -256,7 +382,7 @@ export class Session {
     this.renderPassIcons();
     this.renderTimeout();
 
-    const me = this.human === 0 ? s.players[s.controlled[0]] ?? null : null;
+    const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] ?? null : null;
     this.hud.update(s, me);
     if (me && s.settings.mode === 'game' && s.settings.rules.fatigue && s.phase !== 'timeout') {
       const feet = this.ring.position.clone().project(this.cam.camera);
@@ -279,18 +405,21 @@ export class Session {
   private renderTimeout(): void {
     const s = this.state;
     const t = s.phase === 'timeout' ? s.timeout : null;
-    const show = !!t && this.human === 0 && !this.paused;
-    if (show !== this.timeoutShown) {
+    const show = !!t && this.team >= 0 && !this.paused;
+    // Online the lineup can change under us (server snapshots): redraw when it does.
+    const key = show ? JSON.stringify([s.subQueue, s.players.map((p) => p.rosterIdx)]) : '';
+    if (show !== this.timeoutShown || key !== this.lineupKey) {
       this.timeoutShown = show;
+      this.lineupKey = key;
       this.timeoutPanel.classList.toggle('hidden', !show);
-      if (show) this.timeoutLineup.render(s, 0);
+      if (show) this.timeoutLineup.render(s, this.team as 0 | 1, this.subActions);
     }
     if (!t || !show) return;
     const who = this.teams[t.team];
     const left = Math.max(0, Math.ceil(t.limit - t.timer));
     document.querySelector('#timeoutTitle')!.textContent = `暫停　${who.abbr}`;
     document.querySelector('#timeoutSub')!.textContent =
-      `${who.name} 喊的暫停 · 剩 ${left} 秒 · 我方剩餘暫停 ${s.timeoutsLeft[0]} 次`;
+      `${who.name} 喊的暫停 · 剩 ${left} 秒 · 我方剩餘暫停 ${s.timeoutsLeft[this.team as 0 | 1]} 次`;
   }
 
   /** A substitution swaps who is in the slot: rebuild that player's model. */
@@ -325,7 +454,7 @@ export class Session {
         this.sfx.board(Math.min(0.7, e.speed * 0.12));
         break;
       case 'shot':
-        if (this.human === 0 && e.playerId === s.controlled[0]) {
+        if (this.team >= 0 && e.playerId === s.controlled[this.team as 0 | 1]) {
           const [text, cls] = QUALITY_TEXT[e.quality];
           hud.toast(`${text}　${Math.round(e.chance * 100)}%`, cls, true);
         }
@@ -335,14 +464,14 @@ export class Session {
         this.arena.swishNet(e.hoopX);
         const who = this.name(e.playerId);
         if (e.kind === 'free') {
-          hud.toast(`罰進 +1  ${who}`, e.team === 0 ? 'perfect' : 'accent', true);
+          hud.toast(`罰進 +1  ${who}`, e.team === this.myColor ? 'perfect' : 'accent', true);
           break;
         }
         this.playerViews[e.playerId]?.trigger('celebrate');
         this.sfx.cheer();
         this.arena.cheer();
         const label = e.kind === 'dunk' ? '灌籃！' : e.swish ? '空心！' : '';
-        hud.toast(`${label}+${e.points}  ${who}`, e.team === 0 ? 'perfect' : 'accent');
+        hud.toast(`${label}+${e.points}  ${who}`, e.team === this.myColor ? 'perfect' : 'accent');
         if (e.assistId >= 0) hud.toast(`助攻 ${this.name(e.assistId)}`, '', true);
         if (s.pendingFT?.total === 1 && s.pendingFT.shooterId === e.playerId) hud.toast('進算加罰！', 'accent');
         break;
@@ -354,7 +483,7 @@ export class Session {
         this.playerViews[e.playerId]?.trigger('reach');
         break;
       case 'deadDribble':
-        if (this.human === 0 && e.playerId === s.controlled[0]) hud.toast('已收球：只能傳球或投籃', 'bad', true);
+        if (this.team >= 0 && e.playerId === s.controlled[this.team as 0 | 1]) hud.toast('已收球：只能傳球或投籃', 'bad', true);
         break;
       case 'steal':
         hud.toast(`抄截！ ${this.name(e.playerId)}`, 'accent', true);
@@ -394,7 +523,6 @@ export class Session {
         if (e.index === 0) hud.toast(`${this.name(e.shooterId)} 罰球 ${e.total} 次`, '', true);
         break;
       case 'sub':
-        this.rebuildView(e.slotId);
         hud.toast(`換人：${e.inName} 上，${e.outName} 下`, '', true);
         break;
       case 'timeout':

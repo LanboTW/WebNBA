@@ -12,7 +12,9 @@ export class Input {
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
-      if (PREVENT.has(e.code) && !(e.target instanceof HTMLSelectElement)) e.preventDefault();
+      // Leave form fields alone (typing a name or room code).
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (PREVENT.has(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     });
