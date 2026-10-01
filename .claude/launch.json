@@ -18,6 +18,20 @@
         "server"
       ],
       "port": 8787
+    },
+    {
+      "name": "pages",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "client",
+        "--base",
+        "/WebNBA/",
+        "--port",
+        "4173"
+      ],
+      "port": 4173
     }
   ]
 }

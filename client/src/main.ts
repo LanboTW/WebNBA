@@ -95,6 +95,15 @@ if (linkCode) {
   codeInput.value = linkCode;
 }
 
+// Static hosting (GitHub Pages) has no game server unless one is configured.
+const onlineAvailable = !import.meta.env.VITE_STATIC || !!import.meta.env.VITE_SERVER_URL;
+if (!onlineAvailable) {
+  const opt = modeSel.querySelector<HTMLOptionElement>('option[value="online"]')!;
+  opt.disabled = true;
+  opt.textContent = '線上對戰（這個網址沒有連線伺服器）';
+  if (modeSel.value === 'online') modeSel.value = 'game';
+}
+
 function load(key: string, fallback: string): string {
   try {
     return localStorage.getItem(`webnba.${key}`) ?? fallback;
@@ -418,7 +427,9 @@ function updateNetInfo(): void {
 setInterval(updateNetInfo, 500);
 
 // Opened from a room link.
-if (linkCode && storedToken(linkCode)) {
+if (linkCode && !onlineAvailable) {
+  showMenuMsg('這個網址沒有連線伺服器，目前只能和電腦對戰');
+} else if (linkCode && storedToken(linkCode)) {
   // This tab already had a seat there (page reloaded): go straight back in.
   connectNet().join(linkCode, playerName(), homeSel.value);
   showMenuMsg('重新加入房間中…');

@@ -2,6 +2,10 @@
 
 3D 網頁籃球遊戲（Three.js + TypeScript），目標是 5v5 完整規則與即時連線對戰。
 
+**▶ 線上試玩：<https://lanbotw.github.io/WebNBA/>**（電腦、手機都能玩；GitHub Pages 上沒有連線伺服器，所以只開放對戰電腦、觀戰與投籃練習）
+
+推上 `main` 會自動測試並部署到 GitHub Pages（`.github/workflows/pages.yml`）。之後有了連線伺服器，在 repo 的 Actions 變數設定 `VITE_SERVER_URL=wss://…/ws`，線上對戰就會打開。
+
 ## 開發
 
 ```bash
