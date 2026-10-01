@@ -126,7 +126,7 @@ describe('game server', () => {
     expect((await third.next('error')).msg).toBe('找不到這個房間');
     third.send({ t: 'join', v: PROTOCOL_VERSION, code, name: 'X' });
     expect((await third.next('error')).msg).toBe('房間已滿');
-    third.send({ t: 'join', v: 0, code, name: 'X' });
+    third.send({ t: 'join', v: '1-old', code, name: 'X' });
     expect((await third.next('error')).msg).toContain('版本');
   });
 

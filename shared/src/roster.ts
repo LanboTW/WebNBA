@@ -25,6 +25,7 @@ type RawPlayer = [string, number, number, string, number[]];
 
 export interface RawRoster {
   season: string;
+  updated?: string;
   ratingKeys: string[];
   teams: { abbr: string; name: string; primary: string; secondary: string; players: RawPlayer[] }[];
 }
@@ -61,4 +62,21 @@ export function playerRating(info: PlayerInfo): number {
 export function teamRating(team: TeamInfo): number {
   const starters = team.players.slice(0, 5);
   return Math.round(starters.reduce((sum, p) => sum + playerRating(p), 0) / Math.max(1, starters.length));
+}
+/** Date of the last automatic roster update (absent for the hand-made baseline). */
+export const ROSTER_UPDATED: string | undefined = (rosterJson as RawRoster).updated;
+
+/**
+ * Fingerprint of the roster. Server and page decode each other's game state
+ * by roster index, so both must run the same roster (see PROTOCOL_VERSION).
+ */
+export const ROSTER_VERSION = fnv1a(JSON.stringify((rosterJson as RawRoster).teams));
+
+function fnv1a(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
 }

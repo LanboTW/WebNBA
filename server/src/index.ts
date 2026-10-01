@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { DT, type ClientMessage, type ServerMessage } from '@webnba/shared';
+import { DT, PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from '@webnba/shared';
 import { Lobby, type Conn } from './rooms';
 
 const MIME: Record<string, string> = {
@@ -32,6 +32,12 @@ export function startServer(port: number, staticDir?: string): Promise<GameServe
   const root = staticDir && existsSync(staticDir) ? resolve(staticDir) : null;
 
   const http = createServer((req, res) => {
+    // Health check for the host, and the page's wake-up ping (free hosting sleeps when idle).
+    if ((req.url ?? '').split('?')[0] === '/health') {
+      res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, version: PROTOCOL_VERSION, rooms: lobby.rooms.size }));
+      return;
+    }
     if (!root) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
       res.end(`WebNBA server: ${lobby.rooms.size} room(s)`);

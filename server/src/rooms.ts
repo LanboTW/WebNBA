@@ -299,7 +299,7 @@ export class Lobby {
     const at = this.where.get(conn);
     switch (msg?.t) {
       case 'create': {
-        if (msg.v !== PROTOCOL_VERSION) return conn.send({ t: 'error', msg: '版本不同，請重新整理頁面' });
+        if (msg.v !== PROTOCOL_VERSION) return conn.send({ t: 'error', msg: '版本不同（遊戲或名單已更新），請重新整理頁面' });
         if (at) this.drop(conn, true);
         let code = randomRoomCode(this.random);
         while (this.rooms.has(code)) code = randomRoomCode(this.random);
@@ -310,7 +310,7 @@ export class Lobby {
         return;
       }
       case 'join': {
-        if (msg.v !== PROTOCOL_VERSION) return conn.send({ t: 'error', msg: '版本不同，請重新整理頁面' });
+        if (msg.v !== PROTOCOL_VERSION) return conn.send({ t: 'error', msg: '版本不同（遊戲或名單已更新），請重新整理頁面' });
         const room = this.rooms.get(normaliseRoomCode(String(msg.code ?? '')));
         if (!room) return conn.send({ t: 'error', msg: '找不到這個房間' });
         if (at) this.drop(conn, true);

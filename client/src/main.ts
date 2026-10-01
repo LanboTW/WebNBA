@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   ROSTER_SEASON,
+  ROSTER_UPDATED,
   TEAMS,
   decodeState,
   findTeam,
@@ -72,7 +73,7 @@ const ruleBoxes = {
   fatigue: $<HTMLInputElement>('#ruleFatigue'),
 };
 const pauseLineup = new LineupPanel($('#boxLineup'));
-$('#season').textContent = ROSTER_SEASON;
+$('#season').textContent = ROSTER_UPDATED ? `${ROSTER_SEASON}（${ROSTER_UPDATED} 更新）` : ROSTER_SEASON;
 
 for (const sel of [homeSel, awaySel, lobbyTeam]) {
   for (const t of [...TEAMS].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -270,6 +271,11 @@ function connectNet(): NetClient {
       if (net !== client) return;
       netStatus = status;
       if (status === 'closed') onConnectionLost();
+      if (status === 'waking' && !session) {
+        const text = '連線伺服器啟動中（免費主機閒置時會休眠，約需 30–60 秒）…';
+        if ($('#lobby').classList.contains('hidden')) showMenuMsg(text);
+        else $('#lobbyStatus').textContent = text;
+      }
       updateNetInfo();
     },
   });
@@ -416,7 +422,8 @@ function updateNetInfo(): void {
     return;
   }
   const parts: string[] = [];
-  if (netStatus === 'reconnecting') parts.push('<span class="warn">連線中斷，重新連線中…</span>');
+  if (netStatus === 'waking') parts.push('<span class="warn">伺服器啟動中…</span>');
+  else if (netStatus === 'reconnecting') parts.push('<span class="warn">連線中斷，重新連線中…</span>');
   else if (net) parts.push(`${room?.code ?? ''}　延遲 ${Math.round(session.ping)} ms`);
   const other = room?.seats[(1 - mySeat) as 0 | 1];
   if (other && !other.taken) parts.push('<span class="warn">對手已離開，由電腦接手</span>');

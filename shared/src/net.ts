@@ -1,8 +1,12 @@
+import { ROSTER_VERSION } from './roster';
 import { nearestToBall } from './rules';
 import type { Difficulty, GameEvent, GameState, PlayerInput, RuleToggles, TeamInfo } from './types';
 
-/** Bumped whenever the wire format or the simulation changes incompatibly. */
-export const PROTOCOL_VERSION = 1;
+/**
+ * Wire format version plus the roster fingerprint: a page left open across a
+ * roster update is told to reload instead of joining with mismatched players.
+ */
+export const PROTOCOL_VERSION = `2-${ROSTER_VERSION}`;
 export const SNAPSHOT_HZ = 20;
 /** A disconnected player's seat is held this long; the AI plays meanwhile. */
 export const REJOIN_SECONDS = 60;
@@ -37,8 +41,8 @@ export interface RoomInfo {
 }
 
 export type ClientMessage =
-  | { t: 'create'; v: number; name: string; abbr: string; settings: RoomSettings }
-  | { t: 'join'; v: number; code: string; name: string; abbr?: string; token?: string }
+  | { t: 'create'; v: string; name: string; abbr: string; settings: RoomSettings }
+  | { t: 'join'; v: string; code: string; name: string; abbr?: string; token?: string }
   | { t: 'pickTeam'; abbr: string }
   | { t: 'start' }
   | { t: 'input'; seq: number; input: PlayerInput }

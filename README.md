@@ -26,7 +26,8 @@ npm run typecheck
 - `client/` Three.js 畫面、選單、輸入、HUD、數據表、音效
   - `net.ts` 連線協定、狀態編碼、斷線交給 AI
 - `server/` 權威伺服器（Node + ws）：房間、30Hz 模擬、20Hz 快照
-- `tools/`（第 6 階段）名單更新工具
+- `tools/` 名單更新工具（balldontlie → roster.json）
+- `render.yaml` Render 部署設定（遊戲伺服器＋每週名單更新）
 
 ## 模式
 
@@ -101,9 +102,51 @@ npm run typecheck
 
 ## 名單
 
-`shared/data/roster.json` 是 2025-26 開季名單的手動快照，每位球員格式為
+`shared/data/roster.json` 以 2025-26 開季名單為底，每位球員格式為
 `[名字, 背號, 身高(m), 位置, [能力值…]]`，能力值順序見檔案內的 `ratingKeys`。
-部分賽季中交易可能尚未反映，第 6 階段的名單更新工具會處理。
+
+### 名單更新工具
+
+```bash
+npm run roster:update                 # 顯示差異，確認後才寫入
+npm run roster:update -- --yes        # 不詢問直接寫入
+npm run roster:update -- --yes --commit   # 跑完測試後透過 GitHub API 推送（排程用）
+```
+
+- 資料來源是 [balldontlie](https://www.balldontlie.io/)，金鑰放在專案根目錄的 `.env`（格式見 `.env.example`）。
+- 能力值是手調的，工具不會改；它只會把球員移到新球隊、更新背號，並依金鑰方案處理名單進出：
+  - **免費方案**：只能讀全部歷史球員，所以只追蹤現有球員轉隊（每分鐘限 5 次請求，跑一次約 10–15 分鐘）。
+  - **ALL-STAR 以上**：能讀現役名單，離開聯盟的球員會移除，新球員會用依位置的預設能力值補進來。
+- 想調整能力值、背號、位置或指定球隊，寫在 `shared/data/overrides.json`，每次更新都會套用。
+- 每隊保持 5–10 人；表現比先發差的新人放板凳，比較強的會頂替最弱的先發。
+- 名單一變，伺服器和網頁的協定版本就會跟著變，開著舊網頁的人加入房間時會被提醒重新整理。
+
+### 金鑰安全
+
+- 金鑰只會出現在 Render 的環境變數，或本機的 `.env`（已在 `.gitignore`，任何 `.env.*` 也都不會進 git，只有 `.env.example` 例外）。
+- 變數名稱沒有 `VITE_` 前綴，所以前端建置永遠不會把它們打包進網頁。
+- 工具輸出的所有訊息都會遮蔽金鑰，錯誤訊息只有路徑和狀態碼，不含請求標頭。
+- 推送用的 `GITHUB_TOKEN` 請建立 fine-grained token，只授權 WebNBA 這個 repo 的 **Contents: Read and write**，並設定到期日。
+
+## 部署到 Render
+
+`render.yaml` 定義了兩個服務：
+
+| 服務 | 方案 | 內容 |
+| --- | --- | --- |
+| `webnba`（Web Service） | Free | 遊戲伺服器，也提供完整網頁（這個網址可以直接線上對戰） |
+| `webnba-roster`（Cron Job） | Starter（按分鐘計費，每月最低 $1 美元） | 每 7 天（台灣時間週一 04:00）更新名單、跑測試、推回 GitHub |
+
+名單推回 GitHub 後，GitHub Pages 會自動重建、Render 伺服器也會自動重新部署，兩邊名單保持一致。
+
+設定步驟：
+
+1. 登入 Render → **New → Blueprint** → 選這個 repo，Render 會讀 `render.yaml`。
+2. 它會要求填 `BALLDONTLIE_API_KEY` 和 `GITHUB_TOKEN`（只填在 Render，不要寫進任何檔案）。
+3. 部署完成後記下網址，例如 `https://webnba.onrender.com`。
+4. 到 GitHub repo → Settings → Secrets and variables → Actions → **Variables**，新增 `VITE_SERVER_URL = wss://webnba.onrender.com/ws`，再重新執行 Pages 部署，GitHub Pages 上的線上對戰就會打開。
+
+免費的 Web Service 閒置 15 分鐘會休眠，下一個人連線時要等 30–60 秒喚醒，網頁會顯示「伺服器啟動中」。
 
 ## 進度
 
@@ -112,6 +155,6 @@ npm run typecheck
 - [x] 第 3 階段：灌籃、犯規與罰球、加罰、3 秒／8 秒／回場／5 秒違例、體力與換人、暫停、規則開關
 - [x] 第 4 階段：連線對戰（房間代碼與連結、權威伺服器、本機預測與修正、斷線 AI 接手與 60 秒重連）
 - [x] 第 5 階段：手機觸控（虛擬搖桿、隨攻守切換的按鈕、點號碼傳球、直／橫向版面）
-- [ ] 第 6 階段：名單更新工具＋部署
+- [x] 第 6 階段：名單更新工具＋部署（GitHub Pages、Render 伺服器、每週自動更新名單）
 
 非官方粉絲作品，與 NBA 及其球隊無關。

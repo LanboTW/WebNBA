@@ -1,0 +1,12 @@
+{
+  "name": "@webnba/tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "roster:update": "tsx src/update.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.19.0"
+  }
+}

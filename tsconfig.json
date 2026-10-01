@@ -23,6 +23,8 @@
     "shared/test",
     "client/src",
     "server/src",
-    "server/test"
+    "server/test",
+    "tools/src",
+    "tools/test"
   ]
 }

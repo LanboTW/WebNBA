@@ -1,0 +1,3 @@
+{
+  "$comment": "Manual tweaks applied by npm run roster:update. Key = player name; any of ratings (partial, by rating key), number, heightM, position, team. Example: \"Some Rookie\": { \"ratings\": { \"three\": 82, \"speed\": 85 } }"
+}

@@ -1,6 +1,10 @@
 import { PROTOCOL_VERSION, REJOIN_SECONDS, type ClientMessage, type RoomSettings, type ServerMessage } from '@webnba/shared';
 
-export type NetStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
+export type NetStatus = 'connecting' | 'waking' | 'open' | 'reconnecting' | 'closed';
+
+/** How long to keep knocking while a sleeping free-tier server boots. */
+const WAKE_MS = 90_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface NetHandlers {
   onMessage(msg: ServerMessage): void;
@@ -12,6 +16,11 @@ export function serverUrl(): string {
   const env = import.meta.env.VITE_SERVER_URL as string | undefined;
   if (env) return env;
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+}
+
+/** The server's /health endpoint, next to its WebSocket. */
+function healthUrl(): string {
+  return serverUrl().replace(/^ws/, 'http').replace(/\/ws$/, '/health');
 }
 
 const tokenKey = (code: string) => `webnba.token.${code}`;
@@ -59,12 +68,12 @@ export class NetClient {
 
   create(name: string, abbr: string, settings: RoomSettings): void {
     this.name = name;
-    this.connect({ t: 'create', v: PROTOCOL_VERSION, name, abbr, settings });
+    void this.connect({ t: 'create', v: PROTOCOL_VERSION, name, abbr, settings });
   }
 
   join(code: string, name: string, abbr: string): void {
     this.name = name;
-    this.connect({ t: 'join', v: PROTOCOL_VERSION, code, name, abbr, token: storedToken(code) });
+    void this.connect({ t: 'join', v: PROTOCOL_VERSION, code, name, abbr, token: storedToken(code) });
   }
 
   send(msg: ClientMessage): void {
@@ -81,8 +90,46 @@ export class NetClient {
     this.ws = null;
   }
 
-  private connect(first: ClientMessage): void {
+  /**
+   * Free hosting puts the server to sleep when idle. Ping /health until it
+   * answers (reporting 'waking' if that takes a while), and check that it
+   * runs the same game and roster as this page.
+   */
+  private async wake(): Promise<'ok' | 'mismatch' | 'down'> {
+    const start = performance.now();
+    let told = false;
+    while (!this.closed && performance.now() - start < WAKE_MS) {
+      try {
+        const res = await fetch(healthUrl(), { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          const body = (await res.json()) as { version?: string };
+          return body.version === PROTOCOL_VERSION ? 'ok' : 'mismatch';
+        }
+      } catch {
+        // Not up yet (or a proxy error while it boots): try again.
+      }
+      if (!told && performance.now() - start > 2000) {
+        told = true;
+        this.handlers.onStatus('waking');
+      }
+      await sleep(2500);
+    }
+    return 'down';
+  }
+
+  private async connect(first: ClientMessage): Promise<void> {
     this.handlers.onStatus(this.lostAt ? 'reconnecting' : 'connecting');
+    const awake = await this.wake();
+    if (this.closed) return;
+    if (awake === 'mismatch') {
+      this.closed = true;
+      this.handlers.onMessage({ t: 'closed', msg: '遊戲或名單已更新，請重新整理頁面' });
+      return;
+    }
+    if (awake === 'down' && !this.lostAt) {
+      this.handlers.onStatus('closed');
+      return;
+    }
     const ws = new WebSocket(serverUrl());
     this.ws = ws;
     ws.onopen = () => {
@@ -125,7 +172,7 @@ export class NetClient {
       this.handlers.onStatus('reconnecting');
       const code = this.code;
       this.retry = setTimeout(
-        () => this.connect({ t: 'join', v: PROTOCOL_VERSION, code, name: this.name, token: this.token ?? undefined }),
+        () => void this.connect({ t: 'join', v: PROTOCOL_VERSION, code, name: this.name, token: this.token ?? undefined }),
         1500,
       );
     };

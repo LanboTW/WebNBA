@@ -5,7 +5,8 @@
   "workspaces": [
     "shared",
     "client",
-    "server"
+    "server",
+    "tools"
   ],
   "scripts": {
     "dev": "npm run dev -w client",
@@ -13,7 +14,8 @@
     "start": "npm run build && npm run start -w server",
     "build": "npm run build -w client",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "roster:update": "npm run roster:update -w tools --"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
