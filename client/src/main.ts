@@ -22,6 +22,7 @@ import { Input } from './input';
 import { LineupPanel } from './lineup';
 import { NetClient, storedToken, type NetStatus } from './net';
 import { Session, type OnlineLink } from './session';
+import { TouchControls, isTouchDevice } from './touch';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
@@ -38,6 +39,19 @@ const input = new Input(window);
 const sfx = new Sfx();
 window.addEventListener('keydown', () => sfx.unlock());
 window.addEventListener('pointerdown', () => sfx.unlock());
+
+// Touch controls: on phones/tablets from the start, elsewhere after the first touch.
+const touch = new TouchControls(document.body);
+$('#hud').after(touch.root); // under the menus and score screens
+let touchOn = false;
+function enableTouch(): void {
+  if (touchOn) return;
+  touchOn = true;
+  input.touch = touch;
+  document.body.classList.add('touch');
+}
+if (isTouchDevice()) enableTouch();
+window.addEventListener('touchstart', enableTouch, { passive: true });
 
 let session: Session | null = null;
 
@@ -191,6 +205,13 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
   $('#boxscore').classList.add('hidden');
   (document.activeElement as HTMLElement | null)?.blur();
   input.clearPresses();
+  if (touchOn && !document.fullscreenElement) {
+    // Full screen and landscape when the browser allows it (needs a tap; ignored otherwise).
+    document.documentElement
+      .requestFullscreen?.()
+      .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+      .catch(() => {});
+  }
 }
 
 function makeSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, online?: OnlineLink): Session {
@@ -446,6 +467,8 @@ function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (input.consumePress('Escape')) togglePause();
+  const overlay = !$('#boxscore').classList.contains('hidden') || !$('#timeoutPanel').classList.contains('hidden');
+  touch.show(touchOn && !!session && !overlay);
   if (session) {
     session.frame(dt);
     renderer.render(session.scene, session.cam.camera);

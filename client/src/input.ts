@@ -1,4 +1,5 @@
 import type { PlayerInput } from '@webnba/shared';
+import type { TouchControls } from './touch';
 
 const PREVENT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
@@ -9,6 +10,9 @@ const PREVENT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRig
 export class Input {
   private readonly keys = new Set<string>();
   private readonly pressed = new Set<string>();
+  /** On-screen controls, when the device is a touch screen. */
+  touch: TouchControls | null = null;
+  private iconTap = -1;
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -26,7 +30,22 @@ export class Input {
   consumePress(code: string): boolean {
     const had = this.pressed.has(code);
     this.pressed.delete(code);
-    return had;
+    // The touch menu and camera buttons stand in for Esc and C.
+    const tap = code === 'Escape' ? 'menu' : code === 'KeyC' ? 'camera' : null;
+    const tapped = !!tap && !!this.touch?.consumeTap(tap);
+    return had || tapped;
+  }
+
+  /** A pass icon over a teammate was tapped (index 0-3). */
+  tapIcon(i: number): void {
+    this.iconTap = i;
+  }
+
+  /** The tapped icon, once. */
+  takeIconTap(): number {
+    const i = this.iconTap;
+    this.iconTap = -1;
+    return i;
   }
 
   isDown(code: string): boolean {
@@ -35,6 +54,8 @@ export class Input {
 
   clearPresses(): void {
     this.pressed.clear();
+    this.iconTap = -1;
+    this.touch?.reset();
   }
 
   sample(): PlayerInput {
@@ -65,6 +86,8 @@ export class Input {
       intenseD ||= btn(6); // LT / L2
       timeout ||= btn(8); // Back / Share
     }
-    return { moveX, moveZ, sprint, shoot, jump, pass, switchPlayer, intenseD, timeout };
+    const inp: PlayerInput = { moveX, moveZ, sprint, shoot, jump, pass, switchPlayer, intenseD, timeout };
+    this.touch?.apply(inp);
+    return inp;
   }
 }

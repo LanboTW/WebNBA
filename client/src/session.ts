@@ -172,6 +172,11 @@ export class Session {
       const el = document.createElement('div');
       el.className = 'picon hidden';
       el.innerHTML = `<b>${n}</b><span></span>`;
+      // Touch screens pass by tapping the icon.
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.input.tapIcon(n - 1);
+      });
       iconRoot.appendChild(el);
       return el;
     });
@@ -298,8 +303,13 @@ export class Session {
       this.resumePress = false;
     }
     const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] : undefined;
+    const tapped = this.input.takeIconTap();
     if (me && s.ball.mode === 'held' && s.ball.holderId === me.id) {
       const mates = passIcons(s, me);
+      if (mates[tapped]) {
+        inp.pass = true;
+        inp.passTarget = mates[tapped].id;
+      }
       for (let i = 0; i < mates.length; i++) {
         if (this.input.isDown(`Digit${i + 1}`) || this.input.isDown(`Numpad${i + 1}`)) {
           inp.pass = true;
@@ -384,6 +394,7 @@ export class Session {
 
     const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] ?? null : null;
     this.hud.update(s, me);
+    this.input.touch?.setMode(me && s.settings.mode === 'game' ? (offense === me.team ? 'offense' : 'defense') : me ? 'offense' : 'none');
     if (me && s.settings.mode === 'game' && s.settings.rules.fatigue && s.phase !== 'timeout') {
       const feet = this.ring.position.clone().project(this.cam.camera);
       this.hud.setStamina(me.energy, { x: ((feet.x + 1) / 2) * window.innerWidth, y: ((1 - feet.y) / 2) * window.innerHeight });

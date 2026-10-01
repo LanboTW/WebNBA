@@ -397,7 +397,8 @@ body {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  /* Auto margins on the panel centre it, yet a panel taller than the screen still scrolls from its top. */
+  align-items: flex-start;
   justify-content: center;
   background: radial-gradient(ellipse at center, rgba(20, 24, 40, 0.75), rgba(4, 5, 9, 0.92));
   padding: 16px;
@@ -405,6 +406,7 @@ body {
 }
 
 .panel {
+  margin: auto 0;
   background: var(--panel-solid);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -799,6 +801,211 @@ button.small {
 .box tr.total td {
   font-weight: 700;
   border-bottom: none;
+}
+
+/* ---------------------------------------------------------------- touch */
+
+#touch {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#touch .tzone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 50%;
+  height: 72%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#touch .tstick {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+}
+
+#touch .tstick i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+#touch button {
+  pointer-events: auto;
+  touch-action: none;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(10, 12, 20, 0.55);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#touch button.on {
+  background: rgba(255, 122, 26, 0.75);
+  border-color: var(--accent);
+  color: #1a0d00;
+}
+
+#touch .tbig {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: 210px;
+  height: 190px;
+}
+
+#touch .tb {
+  position: absolute;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 15px;
+}
+
+#touch .tb.shoot {
+  right: 0;
+  bottom: 0;
+  width: 96px;
+  height: 96px;
+  font-size: 17px;
+  border-color: rgba(255, 122, 26, 0.7);
+}
+
+#touch .tb.pass {
+  right: 104px;
+  bottom: 0;
+  width: 78px;
+  height: 78px;
+}
+
+#touch .tb.jump {
+  right: 14px;
+  bottom: 106px;
+  width: 72px;
+  height: 72px;
+}
+
+#touch .tsmall {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  top: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+#touch .tsmall button {
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  border-width: 1px;
+}
+
+#touch .trotate {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: 40%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(10, 12, 20, 0.7);
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+@media (orientation: portrait) {
+  #touch .trotate {
+    display: block;
+  }
+}
+
+/* Pass icons become buttons on touch screens. */
+body.touch .picon {
+  pointer-events: auto;
+  touch-action: none;
+  padding: 5px 12px 5px 5px;
+  font-size: 13px;
+}
+
+body.touch .picon b {
+  width: 26px;
+  height: 26px;
+}
+
+body.touch #help {
+  display: none;
+}
+
+body.touch #statline {
+  font-size: 11px;
+}
+
+/* Phones in portrait: utility buttons go below the scoreboard. */
+@media (max-width: 500px) {
+  #touch .tsmall {
+    flex-direction: column;
+    top: 112px;
+    gap: 5px;
+  }
+  #touch .tsmall button {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+  body.touch #statline {
+    max-width: 96vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Phones in landscape: compact HUD, utility buttons stacked down the left edge. */
+@media (max-height: 500px) {
+  #scoreboard {
+    top: 6px;
+    transform: translateX(-50%) scale(0.78);
+    transform-origin: top center;
+  }
+  #teaminfo {
+    top: 50px;
+    font-size: 11px;
+  }
+  #statline {
+    top: 68px;
+  }
+  #banner {
+    top: 96px;
+  }
+  #touch .tsmall {
+    flex-direction: column;
+    top: 8px;
+    gap: 5px;
+  }
+  #touch .tsmall button {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+  #touch .tbig {
+    transform: scale(0.85);
+    transform-origin: bottom right;
+  }
 }
 
 @media (max-width: 700px) {
