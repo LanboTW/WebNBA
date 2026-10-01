@@ -1,20 +1,18 @@
 /**
- * npm run roster:update [-- --yes] [-- --commit]
+ * npm run roster:update [-- --yes]
  *
  * Pulls current teams from balldontlie, merges them into
  * shared/data/roster.json (ratings are kept; overrides.json is applied),
- * shows the changes and writes after confirmation.
+ * shows the changes, writes after confirmation and runs the tests.
+ * Publishing is a normal commit + push, which redeploys Pages and the server.
  *
- *   --yes     no confirmation prompt (scheduled runs)
- *   --commit  run the tests, then commit the new roster to GitHub
- *             (needs GITHUB_TOKEN; pushing redeploys Pages and the server)
+ *   --yes  no confirmation prompt
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { BallDontLie } from './balldontlie';
-import { commitFile } from './github';
 import { describe, formatRoster, mergeRoster, validateRoster, type Overrides, type RawRoster } from './roster';
 import { fail, loadLocalEnv, log, redact, secret } from './secrets';
 
@@ -26,10 +24,7 @@ const args = new Set(process.argv.slice(2).filter((a) => a !== '--'));
 async function main(): Promise<void> {
   loadLocalEnv(`${root}.env`);
   const key = secret('BALLDONTLIE_API_KEY');
-  if (!key) fail('沒有 BALLDONTLIE_API_KEY。本機請寫在專案根目錄的 .env（不會進 git），Render 請設在環境變數。');
-  const commit = args.has('--commit');
-  const token = secret('GITHUB_TOKEN');
-  if (commit && !token) fail('--commit 需要 GITHUB_TOKEN（只給 WebNBA repo Contents 讀寫權限的 fine-grained token）。');
+  if (!key) fail('沒有 BALLDONTLIE_API_KEY。請寫在專案根目錄的 .env（格式見 .env.example，.env 不會進 git）。');
 
   const path = (p: string) => `${root}${p}`;
   const before = readFileSync(path(ROSTER), 'utf8');
@@ -62,28 +57,14 @@ async function main(): Promise<void> {
     }
   }
 
-  const next = formatRoster(roster);
-  writeFileSync(path(ROSTER), next);
-  log(`已寫入 ${ROSTER}`);
-  if (!commit) return;
-
-  log('執行測試…');
+  writeFileSync(path(ROSTER), formatRoster(roster));
+  log(`已寫入 ${ROSTER}，執行測試…`);
   const test = spawnSync('npx', ['vitest', 'run'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
   if (test.status !== 0) {
     writeFileSync(path(ROSTER), before);
-    fail('測試失敗，已還原名單，不推送。');
+    fail('測試失敗，已還原名單。');
   }
-
-  const summary = changes.filter((c) => c.kind !== 'warn').map(describe);
-  const sha = await commitFile({
-    token: token!,
-    repo: process.env.GITHUB_REPO || 'LanboTW/WebNBA',
-    branch: process.env.GITHUB_BRANCH || 'main',
-    path: ROSTER,
-    content: next,
-    message: `Roster update ${roster.updated}\n\n${summary.join('\n')}\n`,
-  });
-  log(sha === 'unchanged' ? 'GitHub 上的名單已是最新。' : `已推送到 GitHub（${sha.slice(0, 7)}），網頁與伺服器會自動重新部署。`);
+  log('測試通過。確認沒問題後 commit 並 push，GitHub Pages 和 Render 伺服器會自動重新部署。');
 }
 
 main().catch((e: unknown) => fail('名單更新失敗：', redact(e instanceof Error ? e.message : String(e))));

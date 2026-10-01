@@ -1,6 +1,7 @@
-# Render Blueprint: the game server, and a weekly roster update.
-# New -> Blueprint in the Render dashboard, pick this repo, then fill in the
-# secret values when Render asks (they are never stored in the repo).
+# Render Blueprint: the game server (free plan).
+# New -> Blueprint in the Render dashboard, pick this repo.
+# Roster updates are done by hand (npm run roster:update, then push); every
+# push to main redeploys this service and GitHub Pages.
 services:
   # Game server + the full game page (online play works on this URL too).
   - type: web
@@ -14,21 +15,3 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-
-  # Every 7 days: pull teams from balldontlie, run the tests, and commit the
-  # new roster to GitHub, which redeploys GitHub Pages and the server above.
-  - type: cron
-    name: webnba-roster
-    runtime: node
-    plan: starter
-    # Mondays 04:00 Taiwan time (Sunday 20:00 UTC).
-    schedule: "0 20 * * 0"
-    buildCommand: npm ci
-    startCommand: npm run roster:update -- --yes --commit
-    envVars:
-      - key: NODE_VERSION
-        value: "22"
-      - key: BALLDONTLIE_API_KEY
-        sync: false
-      - key: GITHUB_TOKEN
-        sync: false

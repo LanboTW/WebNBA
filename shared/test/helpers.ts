@@ -1,7 +1,7 @@
 import {
   NO_INPUT,
   createGame,
-  findTeam,
+  parseRoster,
   giveBall,
   placePlayer,
   step,
@@ -9,10 +9,15 @@ import {
   type GameSettings,
   type GameState,
   type PlayerInput,
+  type RawRoster,
 } from '../src';
+import fixture from './fixture-roster.json';
 
-export const GSW = findTeam('GSW');
-export const LAL = findTeam('LAL');
+// Tests run on a frozen copy of the roster, so real roster updates (trades,
+// new players) never break them.
+const TEAMS = parseRoster(fixture as RawRoster);
+export const GSW = TEAMS.find((t) => t.abbr === 'GSW')!;
+export const LAL = TEAMS.find((t) => t.abbr === 'LAL')!;
 
 export function practice(x: number, z: number, seed = 1): GameState {
   const state = createGame({

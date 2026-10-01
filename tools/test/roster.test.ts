@@ -12,7 +12,8 @@ import {
 } from '../src/roster';
 import { redact } from '../src/secrets';
 
-const real = JSON.parse(readFileSync(new URL('../../shared/data/roster.json', import.meta.url), 'utf8')) as RawRoster;
+// A frozen copy, so these tests keep passing after real roster updates.
+const real = JSON.parse(readFileSync(new URL('../../shared/test/fixture-roster.json', import.meta.url), 'utf8')) as RawRoster;
 
 /** The current roster as an "active players" feed: nothing changes. */
 function feed(r: RawRoster): SourcePlayer[] {
@@ -24,10 +25,11 @@ const team = (r: RawRoster, abbr: string) => r.teams.find((t) => t.abbr === abbr
 const names = (r: RawRoster, abbr: string) => team(r, abbr).players.map((p) => p[0]);
 
 describe('roster update', () => {
-  it('reprints the hand-written file byte for byte', () => {
+  it('the live roster is valid and in the tool layout', () => {
     const text = readFileSync(new URL('../../shared/data/roster.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-    expect(formatRoster(real)).toBe(text);
-    expect(validateRoster(real)).toEqual([]);
+    const live = JSON.parse(text) as RawRoster;
+    expect(formatRoster(live)).toBe(text);
+    expect(validateRoster(live)).toEqual([]);
   });
 
   it('changes nothing when the source agrees', () => {

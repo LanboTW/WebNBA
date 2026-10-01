@@ -167,11 +167,11 @@ describe('game server', () => {
     const { host, guest } = await twoPlayerRoom();
     host.send({ t: 'start' });
     await guest.next('start');
-    guest.send({ t: 'sub', slotId: 5, rosterIdx: 6 });
+    guest.send({ t: 'sub', slotId: 5, rosterIdx: 5 });
     // Guest must not be able to queue subs for the other team.
-    guest.send({ t: 'sub', slotId: 0, rosterIdx: 6 });
+    guest.send({ t: 'sub', slotId: 0, rosterIdx: 5 });
     const snap = await host.next('snap', (m) => m.state.includes('"subQueue":[{'));
     const state = decodeState(snap.state, [findTeam('GSW'), findTeam('GSW')]);
-    expect(state.subQueue).toEqual([{ team: 1, slotId: 5, rosterIdx: 6 }]);
+    expect(state.subQueue).toEqual([{ team: 1, slotId: 5, rosterIdx: 5 }]);
   });
 });

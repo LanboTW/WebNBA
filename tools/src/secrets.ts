@@ -1,13 +1,13 @@
 /**
- * Secrets come only from the environment (Render's env vars, or a local
- * .env that git ignores). They are never logged: everything this tool
+ * The API key comes only from the environment or the local .env (which git
+ * ignores). It is never logged: everything this tool
  * prints goes through `redact`, and errors never include request headers.
  */
 
-const NAMES = ['BALLDONTLIE_API_KEY', 'GITHUB_TOKEN'] as const;
+const NAMES = ['BALLDONTLIE_API_KEY'] as const;
 export type SecretName = (typeof NAMES)[number];
 
-/** Load the repo's .env for local runs (Render injects variables directly). */
+/** Load the repo's .env (a real environment variable wins if both are set). */
 export function loadLocalEnv(path: string): void {
   try {
     process.loadEnvFile(path);
