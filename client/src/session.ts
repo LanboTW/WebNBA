@@ -371,7 +371,12 @@ export class Session {
         lerpAngle(a.facing, p.facing, alpha),
         {
           hasBall: holder === p.id,
-          defending: s.settings.mode === 'game' && p.team !== offense && s.phase === 'live',
+          // Only a defender with an opponent close by gets into a stance with the arms out.
+          defending:
+            s.settings.mode === 'game' &&
+            p.team !== offense &&
+            s.phase === 'live' &&
+            s.players.some((o) => o.team !== p.team && Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z) < GUARD_RANGE),
           inbounding: s.phase === 'inbound' && s.inbound?.passerId === p.id,
           catching: s.ball.mode === 'pass' && s.ball.pass?.targetId === p.id,
           rebounding: s.ball.mode === 'flight' || s.ball.mode === 'loose',
@@ -580,6 +585,9 @@ function disposeTree(root: THREE.Object3D): void {
     }
   });
 }
+
+/** How close an opponent must be for a defender to be "guarding" him (stance, arms out). */
+const GUARD_RANGE = 2.5;
 
 function lerpV(a: Vec3, b: Vec3, t: number, out: THREE.Vector3): THREE.Vector3 {
   return out.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);

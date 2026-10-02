@@ -152,12 +152,14 @@ export class PlayerView {
     Object.assign(t, restPose());
     const shooting = p.action === 'shooting' || p.action === 'release';
     const k = p.action === 'release' ? 1 : clamp01(Math.max(0, p.shotMeter) / SHOT_SWEET);
-    const sliding = (ctx.defending || p.intenseD) && !airborne && speed > 0.6 && Math.abs(vRight) > Math.abs(vFwd) * 0.9;
+    // Pressure D only shows while actually guarding someone.
+    const pressure = p.intenseD && ctx.defending;
+    const sliding = ctx.defending && !airborne && speed > 0.6 && Math.abs(vRight) > Math.abs(vFwd) * 0.9;
 
     // ---------------------------------------------------------------- legs and body
-    if (sliding) this.slide(dt, speed, vRight, p.intenseD);
+    if (sliding) this.slide(dt, speed, vRight, pressure);
     else if (speed > 0.3) this.run(dt, speed, vFwd);
-    else this.idle(ctx.defending || p.intenseD);
+    else this.idle(ctx.defending);
 
     if (airborne) {
       t.legL = [-0.45, 0.8, 0.06, 0.45];
@@ -220,7 +222,7 @@ export class PlayerView {
       this.dribble(p, pos, fx, fz, speed, vRight);
     } else if (ctx.rebounding && !airborne && this.boxOut(pos, ctx.lookAt)) {
       // Boxing out.
-    } else if (p.intenseD) {
+    } else if (pressure) {
       // Pressure: low, one hand up to contest, the other active at the ball.
       const flick = Math.sin(this.clock * 9) * 0.25;
       t.armL = [-2.2, 0.45, -0.3, 0];
