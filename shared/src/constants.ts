@@ -51,3 +51,6 @@ export function isThreePoint(x: number, z: number, hoopX: number): boolean {
 export function isInBounds(x: number, z: number): boolean {
   return Math.abs(x) <= COURT.halfLength && Math.abs(z) <= COURT.halfWidth;
 }
+
+/** Defenders moving faster than this (m/s) are running, not set: they start to lose effectiveness. */
+export const DEFENSE_SET_SPEED = 3;

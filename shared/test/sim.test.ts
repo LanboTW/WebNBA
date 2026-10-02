@@ -17,6 +17,7 @@ import {
   teamRating,
   type GameState,
 } from '../src';
+import { contestAt, defenderSet } from '../src/players';
 import { GSW, LAL, liveGame, practice, run, shootAt } from './helpers';
 
 const curry = GSW.players[0];
@@ -288,5 +289,24 @@ describe('full AI game', () => {
     const b = playFull(9);
     expect(a.score).toEqual(b.score);
     expect(a.tick).toBe(b.tick);
+  });
+});
+
+describe('defenders on the move', () => {
+  it('a defender running past contests and steals less than a set one', () => {
+    const state = liveGame(5, 0);
+    const hoop = attackHoopX(0, state.period);
+    const d = state.players.find((p) => p.team === 1)!;
+    placePlayer(state, d.id, 5 + Math.sign(hoop - 5) * 0.9, 0);
+    const set = contestAt(state, 0, state.players[0].pos, state.players[0].info.heightM);
+    expect(set).toBeGreaterThan(0.2);
+    expect(defenderSet(d)).toBe(1);
+    d.vel.x = 6;
+    const running = contestAt(state, 0, state.players[0].pos, state.players[0].info.heightM);
+    expect(defenderSet(d)).toBeCloseTo(0.6);
+    expect(running).toBeCloseTo(set * 0.6);
+    // A normal defensive slide is still fully set.
+    d.vel.x = 2.5;
+    expect(defenderSet(d)).toBe(1);
   });
 });

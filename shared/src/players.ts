@@ -1,6 +1,7 @@
 import {
   BALL_RADIUS,
   COURT,
+  DEFENSE_SET_SPEED,
   DT,
   GRAVITY,
   HOOP,
@@ -32,6 +33,15 @@ const MOVE_RESPONSE = 10;
 const PASS_SPEED_BASE = 11;
 
 export const hdist = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
+
+/**
+ * How well a defender can defend right now: 1 when set (standing or sliding at
+ * a normal pace), down to 0.6 when running flat out (5.5 m/s and up).
+ */
+export function defenderSet(p: PlayerState): number {
+  const run = Math.min(1, Math.max(0, (Math.hypot(p.vel.x, p.vel.z) - DEFENSE_SET_SPEED) / 2.5));
+  return 1 - 0.4 * run;
+}
 
 export function lerpAngle(a: number, b: number, t: number): number {
   let d = b - a;
@@ -409,7 +419,7 @@ function topContest(
     const front = cos > 0.2 ? 1 : 0.45;
     const closeness = Math.min(1, (2.2 - d) / 1.6);
     const height = Math.max(0.5, Math.min(1.3, 0.8 + (o.info.heightM - shooterHeight) * 0.8 + (o.onGround ? 0 : 0.25)));
-    const c = closeness * front * height * (0.7 + o.info.ratings.defense * 0.004) * (o.intenseD ? 1.2 : 1);
+    const c = closeness * front * height * (0.7 + o.info.ratings.defense * 0.004) * (o.intenseD ? 1.2 : 1) * defenderSet(o);
     if (c > best) {
       best = c;
       by = o;
@@ -585,7 +595,7 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
     .filter((c) => c.u > 0.2 && c.u < 0.92 && c.d < 0.8)
     .sort((a, b) => a.u - b.u);
   for (const c of lanes) {
-    const chance = (1 - c.d / 0.8) * (0.12 + c.o.info.ratings.steal * 0.004) * (ll > 6 ? 1.3 : 1);
+    const chance = (1 - c.d / 0.8) * (0.12 + c.o.info.ratings.steal * 0.004) * (ll > 6 ? 1.3 : 1) * defenderSet(c.o);
     if (nextRandom(state) < chance) {
       receiver = c.o.id;
       intercepted = true;
@@ -620,13 +630,14 @@ function attemptSteal(state: GameState, d: PlayerState): void {
   state.events.push({ type: 'reach', playerId: d.id });
   const dist = hdist(d.pos, ball.pos);
   if (dist > 1.4) return;
-  const chance = Math.min(
-    0.4,
-    Math.max(
-      0.03,
-      0.1 + (d.info.ratings.steal - h.info.ratings.handle) * 0.004 + (1.4 - dist) * 0.08 + (d.intenseD ? 0.05 : 0),
-    ),
-  );
+  const chance =
+    Math.min(
+      0.4,
+      Math.max(
+        0.03,
+        0.1 + (d.info.ratings.steal - h.info.ratings.handle) * 0.004 + (1.4 - dist) * 0.08 + (d.intenseD ? 0.05 : 0),
+      ),
+    ) * defenderSet(d);
   if (nextRandom(state) >= chance) {
     // A missed swipe sometimes catches the arm instead.
     const foul = 0.07 + (d.intenseD ? 0.05 : 0) + (1.4 - dist) * 0.05 - d.info.ratings.steal * 0.0005;

@@ -6,7 +6,7 @@ import type { Difficulty, GameEvent, GameState, PlayerInput, RuleToggles, TeamIn
  * Wire format version plus the roster fingerprint: a page left open across a
  * roster update is told to reload instead of joining with mismatched players.
  */
-export const PROTOCOL_VERSION = `2-${ROSTER_VERSION}`;
+export const PROTOCOL_VERSION = `3-${ROSTER_VERSION}`;
 export const SNAPSHOT_HZ = 20;
 /** A disconnected player's seat is held this long; the AI plays meanwhile. */
 export const REJOIN_SECONDS = 60;
