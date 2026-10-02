@@ -1,5 +1,17 @@
 {
   "$comment": "Custom teams (historical, Taiwan, fun...). Same player format as roster.json; the roster update tool never touches this file. Each team: abbr (unique, up to 5 letters/digits), name, primary/secondary (#RRGGBB), optional group (menu heading), 5-10 players, first five start.",
   "ratingKeys": ["speed", "jump", "close", "mid", "three", "ft", "handle", "pass", "steal", "block", "defense", "rebound", "stamina"],
-  "teams": []
+  "teams": [
+  {
+    "group": "台灣", "abbr": "TPE", "name": "台北夢幻隊", "primary": "#003DA5", "secondary": "#FFD100",
+    "players": [
+      ["郭柏呈", 1, 1.93, "PG", [82, 70, 72, 75, 80, 85, 84, 80, 70, 30, 70, 45, 85]],
+      ["黃敬昊", 7, 1.63, "SG", [99, 72, 74, 78, 82, 80, 75, 70, 68, 35, 72, 50, 85]],
+      ["柏諭", 23, 2.01, "SF", [78, 75, 78, 72, 74, 75, 70, 68, 70, 50, 75, 60, 85]],
+      ["李承佑", 32, 2.06, "PF", [70, 76, 82, 68, 65, 70, 60, 62, 60, 65, 74, 78, 82]],
+      ["李忠瑾", 55, 2.13, "C", [60, 72, 85, 60, 50, 62, 50, 55, 50, 82, 76, 85, 78]],
+      ["陳司洋", 11, 1.90, "SG", [99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99]]
+    ]
+  }
+]
 }
