@@ -41,11 +41,14 @@
       <div class="panel">
         <h1>WebNBA</h1>
         <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
-        <div class="row">
-          <label>你的隊伍<select id="homeSel"></select></label>
-          <label id="awayLabel">對手<select id="awaySel"></select></label>
+        <div class="hidden"><select id="homeSel"></select><select id="awaySel"></select></div>
+        <div class="matchup">
+          <button type="button" class="side" id="homeSide"><span class="seatname">你的隊伍</span><div id="homeCard" class="card"></div></button>
+          <div class="vs">VS</div>
+          <button type="button" class="side" id="awaySide"><span class="seatname">對手</span><div id="awayCard" class="card"></div></button>
         </div>
-        <div class="matchup"><div id="homeCard" class="card"></div><div class="vs">VS</div><div id="awayCard" class="card"></div></div>
+        <p class="hint" id="pickHint">點上面的卡片切換要選哪一邊，再點下面的隊徽選隊</p>
+        <div id="menuPicker"></div>
         <div class="row">
           <label>模式
             <select id="modeSel">
@@ -62,20 +65,6 @@
               <option value="hard">困難</option>
             </select>
           </label>
-          <label>視角
-            <select id="viewSel">
-              <option value="broadcast">轉播視角（側面）</option>
-              <option value="end">後場視角（跟著進攻方向）</option>
-            </select>
-          </label>
-          <label>畫質
-            <select id="qualitySel">
-              <option value="auto">自動</option>
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-            </select>
-          </label>
           <label>每節長度
             <select id="quarterSel">
               <option value="60">1 分鐘</option>
@@ -86,12 +75,31 @@
             </select>
           </label>
         </div>
-        <div class="row toggles">
-          <label class="check"><input type="checkbox" id="ruleFouls" checked />犯規與罰球</label>
-          <label class="check"><input type="checkbox" id="ruleViolations" checked />違例（3 秒／8 秒／回場／5 秒）</label>
-          <label class="check"><input type="checkbox" id="ruleFatigue" checked />體力與自動換人</label>
-          <label class="check"><input type="checkbox" id="officialLogos" checked />顯示官方隊徽</label>
-        </div>
+        <details id="advanced">
+          <summary>進階設定</summary>
+          <div class="row">
+            <label>視角
+              <select id="viewSel">
+                <option value="broadcast">轉播視角（側面）</option>
+                <option value="end">後場視角（跟著進攻方向）</option>
+              </select>
+            </label>
+            <label>畫質
+              <select id="qualitySel">
+                <option value="auto">自動</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </label>
+          </div>
+          <div class="row toggles">
+            <label class="check"><input type="checkbox" id="ruleFouls" checked />犯規與罰球</label>
+            <label class="check"><input type="checkbox" id="ruleViolations" checked />違例（3 秒／8 秒／回場／5 秒）</label>
+            <label class="check"><input type="checkbox" id="ruleFatigue" checked />體力與自動換人</label>
+            <label class="check"><input type="checkbox" id="officialLogos" checked />顯示官方隊徽</label>
+          </div>
+        </details>
         <div id="onlineBox" class="row hidden">
           <label>暱稱<input id="nameInput" maxlength="16" placeholder="玩家" autocomplete="off" /></label>
           <label>房間代碼（加入朋友的房間）<input id="codeInput" maxlength="6" placeholder="例如 K7QX2M" autocomplete="off" /></label>
@@ -114,9 +122,9 @@
           <div class="vs">VS</div>
           <div class="seat"><div class="seatname" id="seatName1"></div><div id="seatCard1" class="card"></div></div>
         </div>
-        <div class="row">
-          <label>你的隊伍（雙方可以選同一隊）<select id="lobbyTeam"></select></label>
-        </div>
+        <p class="hint">選你的隊伍（雙方可以選同一隊）</p>
+        <select id="lobbyTeam" class="hidden"></select>
+        <div id="lobbyPicker"></div>
         <p class="fine left" id="lobbySettings"></p>
         <p class="msg" id="lobbyStatus"></p>
         <div class="buttons">

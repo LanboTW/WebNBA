@@ -15,6 +15,7 @@ import {
   type ServerMessage,
   type TeamInfo,
 } from '@webnba/shared';
+import { Attract } from './attract';
 import { Sfx } from './audio';
 import { esc, renderBoxScore } from './boxscore';
 import { Graphics, type QualitySetting } from './graphics';
@@ -25,6 +26,7 @@ import { Input } from './input';
 import { LineupPanel } from './lineup';
 import { NetClient, storedToken, type NetStatus } from './net';
 import { Session, type OnlineLink } from './session';
+import { TeamPicker } from './teamPicker';
 import { TouchControls, isTouchDevice } from './touch';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -96,6 +98,7 @@ logoBox.addEventListener('change', () => {
   save('officialLogos', logoBox.checked ? '1' : '0');
   setOfficialLogos(logoBox.checked);
   refreshCards();
+  lobbyPicker.render();
 });
 qualitySel.value = load('quality', 'auto');
 graphics.setSetting(qualitySel.value as QualitySetting);
@@ -104,7 +107,26 @@ qualitySel.addEventListener('change', () => {
   graphics.setSetting(qualitySel.value as QualitySetting);
 });
 nameInput.value = load('name', '');
+const advanced = $<HTMLDetailsElement>('#advanced');
+advanced.open = load('advanced', '0') === '1';
+advanced.addEventListener('toggle', () => save('advanced', advanced.open ? '1' : '0'));
 for (const [key, box] of Object.entries(ruleBoxes)) box.checked = load(`rule.${key}`, '1') === '1';
+
+// Team pickers: the menu one edits whichever side's card is selected.
+const menuPicker = new TeamPicker($('#menuPicker'), teamGroups, homeSel);
+const lobbyPicker = new TeamPicker($('#lobbyPicker'), teamGroups, lobbyTeam);
+let pickSide: 'home' | 'away' = 'home';
+function setPickSide(side: 'home' | 'away'): void {
+  pickSide = side;
+  menuPicker.bind(side === 'home' ? homeSel : awaySel);
+  $('#homeSide').classList.toggle('active', side === 'home');
+  $('#awaySide').classList.toggle('active', side === 'away');
+}
+$('#homeSide').addEventListener('click', () => setPickSide('home'));
+$('#awaySide').addEventListener('click', () => {
+  if (!awaySel.disabled) setPickSide('away');
+});
+setPickSide('home');
 
 // A shared room link (?room=CODE) opens the join form.
 const linkCode = normaliseRoomCode(new URLSearchParams(location.search).get('room') ?? '');
@@ -155,9 +177,11 @@ function refreshCards(): void {
   renderCard($('#awayCard'), findTeam(awaySel.value));
   for (const box of Object.values(ruleBoxes)) box.disabled = practice;
   awaySel.disabled = practice;
-  $('#awayLabel').classList.toggle('hidden', online);
-  $('#awayCard').style.opacity = practice ? '0.35' : '1';
-  $('#awayCard').classList.toggle('hidden', online);
+  if ((practice || online) && pickSide === 'away') setPickSide('home');
+  menuPicker.render();
+  $('#awaySide').style.opacity = practice ? '0.35' : '1';
+  $('#awaySide').classList.toggle('hidden', online);
+  $('#pickHint').classList.toggle('hidden', practice || online);
   $('.matchup .vs').classList.toggle('hidden', online);
   $('#onlineBox').classList.toggle('hidden', !online);
   $('#joinBtn').classList.toggle('hidden', !online);
@@ -166,6 +190,29 @@ function refreshCards(): void {
 }
 [homeSel, awaySel, modeSel].forEach((s) => s.addEventListener('change', refreshCards));
 refreshCards();
+
+// ----------------------------------------------------------------- menu background
+let attract: Attract | null = null;
+let attractTimer = 0;
+function startAttract(): void {
+  stopAttract();
+  attract = new Attract([findTeam(homeSel.value), findTeam(awaySel.value)], hud, window.innerWidth / window.innerHeight);
+  graphics.attach(attract.session.scene, attract.session.arena);
+  document.body.classList.add('attract');
+}
+function stopAttract(): void {
+  attract?.dispose();
+  attract = null;
+  document.body.classList.remove('attract');
+}
+// Picking teams restages the background game (after a short pause, so browsing stays smooth).
+[homeSel, awaySel].forEach((s) =>
+  s.addEventListener('change', () => {
+    clearTimeout(attractTimer);
+    attractTimer = window.setTimeout(() => !session && startAttract(), 400);
+  }),
+);
+startAttract();
 
 function showMenuMsg(text: string): void {
   $('#onlineMsg').textContent = text;
@@ -223,6 +270,7 @@ $('#joinBtn').addEventListener('click', () => {
 });
 
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, online?: OnlineLink): void {
+  stopAttract();
   session?.dispose();
   session = makeSession(teams, settings, online);
   graphics.attach(session.scene, session.arena);
@@ -268,6 +316,7 @@ function backToMenu(): void {
   $('#lobby').classList.add('hidden');
   $('#netinfo').classList.add('hidden');
   $('#menu').classList.remove('hidden');
+  startAttract();
 }
 
 // --------------------------------------------------------------- online
@@ -405,6 +454,7 @@ function showLobby(): void {
     card.style.opacity = seat.taken ? '1' : '0.35';
   });
   lobbyTeam.value = room.seats[mySeat].abbr;
+  lobbyPicker.sync();
   const s = room.settings;
   const rules = [s.rules.fouls && '犯規', s.rules.violations && '違例', s.rules.fatigue && '體力'].filter(Boolean).join('／') || '全關';
   $('#lobbySettings').textContent = `每節 ${s.quarterSeconds / 60} 分鐘 · 電腦隊友難度 ${DIFF_TEXT[s.difficulty]} · 規則：${rules}`;
@@ -508,6 +558,10 @@ function frame(now: number): void {
   if (session) {
     session.frame(dt);
     graphics.render(session.scene, session.cam.camera, dt);
+  } else if (attract) {
+    if (attract.finished) startAttract();
+    attract.frame(dt);
+    graphics.render(attract.session.scene, attract.camera, dt);
   } else {
     graphics.clear();
   }
@@ -517,5 +571,6 @@ requestAnimationFrame(frame);
 
 window.addEventListener('resize', () => {
   graphics.resize();
+  attract?.resize(window.innerWidth / window.innerHeight);
   session?.resize(window.innerWidth / window.innerHeight);
 });
