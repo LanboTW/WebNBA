@@ -12,6 +12,8 @@ import {
   type SourcePlayer,
 } from '../src/roster';
 import { ESPN_ABBR, toSource } from '../src/espn';
+import { analyzeHeadshot, defaultLook, lookErrors, rollAccessories } from '../src/looks';
+import { fillCustomLooks } from '../src/looksFill';
 import { redact } from '../src/secrets';
 
 // A frozen copy, so these tests keep passing after real roster updates.
@@ -168,5 +170,65 @@ describe('custom teams', () => {
     expect(errors.some((e) => e.includes('#RRGGBB'))).toBe(true);
     expect(errors.some((e) => e.includes('有 3 人'))).toBe(true);
     expect(errors.some((e) => e.includes('logo'))).toBe(true);
+  });
+});
+
+describe('player looks', () => {
+  /** A cut-out "headshot": head, neck and shoulders on transparent, with a hair cap of the given depth. */
+  function headshot(skin: [number, number, number], hairPx: number) {
+    const W = 260;
+    const H = 190;
+    const data = new Uint8Array(W * H * 4);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const head = ((x - 130) / 40) ** 2 + ((y - 75) / 52) ** 2 <= 1;
+        const neck = x >= 115 && x <= 145 && y >= 120 && y < 145;
+        const body = x >= 40 && x <= 220 && y >= 145;
+        if (!head && !neck && !body) continue;
+        const hair = head && y < 23 + hairPx;
+        const c = body ? [30, 60, 160] : hair ? [25, 20, 18] : skin;
+        data.set([...c, 255], (y * W + x) * 4);
+      }
+    return { width: W, height: H, data };
+  }
+
+  it('reads skin tone and hair from a headshot', () => {
+    expect(analyzeHeadshot(headshot([236, 196, 170], 20))).toMatchObject({ skin: 1, hair: 'short', beard: 'none' });
+    expect(analyzeHeadshot(headshot([82, 52, 38], 0))).toMatchObject({ skin: 6, hair: 'bald' });
+    expect(analyzeHeadshot({ width: 260, height: 190, data: new Uint8Array(260 * 190 * 4) })).toBeNull();
+  });
+
+  it('rolls the same accessories for the same name', () => {
+    expect(rollAccessories('Stephen Curry')).toEqual(rollAccessories('Stephen Curry'));
+    expect(lookErrors(defaultLook('x'))).toEqual([]);
+    expect(lookErrors({ ...defaultLook('x'), skin: 9, hair: 'mullet', cape: true })).toHaveLength(3);
+    expect(lookErrors({ hair: 'afro' }, true)).toEqual([]);
+  });
+
+  it('keeps a look when a player is traded', () => {
+    const withLook = structuredClone(real);
+    withLook.teams[0].players[0][5] = defaultLook(withLook.teams[0].players[0][0]);
+    const name = withLook.teams[0].players[0][0];
+    const src = feed(withLook).map((p) => (p.name === name ? { ...p, team: 'BOS' } : p));
+    const { roster } = mergeRoster(withLook, src, 'active');
+    expect(team(roster, 'BOS').players.find((p) => p[0] === name)![5]).toEqual(withLook.teams[0].players[0][5]);
+    expect(formatRoster(roster)).toContain('"skin": 3, "hair": "short"');
+  });
+
+  it('looks:fill adds looks only where missing and leaves the rest of the file alone', () => {
+    const text = [
+      '{',
+      '  "teams": [{ "abbr": "AB", "players": [',
+      '      ["甲", 1, 1.9, "PG", [50, 50]],',
+      '      ["乙", 2, 1.9, "SG", [50, 50], {"skin": 5, "hair": "afro"}]',
+      '  ]}]',
+      '}',
+    ].join('\n');
+    const { text: out, added } = fillCustomLooks(text);
+    expect(added).toEqual(['甲']);
+    const players = JSON.parse(out).teams[0].players;
+    expect(players[0][5]).toEqual(defaultLook('甲'));
+    expect(players[1][5]).toEqual({ skin: 5, hair: 'afro' });
+    expect(out.split('\n')[1]).toBe(text.split('\n')[1]);
   });
 });

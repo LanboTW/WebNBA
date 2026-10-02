@@ -7,7 +7,9 @@
  * position-based default ratings until someone tunes them in overrides.json.
  */
 
-export type RawPlayer = [string, number, number, string, number[]];
+import { lookErrors, type Look } from './looks';
+
+export type RawPlayer = [string, number, number, string, number[], Look?];
 
 export interface RawTeam {
   abbr: string;
@@ -38,6 +40,8 @@ export interface SourcePlayer {
   position: string | null;
   /** Draft year, used to break ties between namesakes (newer wins). */
   draftYear: number | null;
+  /** Headshot URL, for reading the player's look. */
+  photo?: string;
 }
 
 /**
@@ -54,6 +58,8 @@ export interface Override {
   position?: string;
   /** Pin a player to a team regardless of the source. */
   team?: string;
+  /** Model appearance; applied by the game itself, so the tool only checks it. */
+  look?: Partial<Look>;
 }
 export type Overrides = Record<string, Override>;
 
@@ -164,6 +170,7 @@ export function mergeRoster(
   for (const team of current.teams) {
     for (const player of team.players) {
       const p: RawPlayer = [player[0], player[1], player[2], player[3], [...player[4]]];
+      if (player[5]) p[5] = { ...player[5] };
       known.add(normaliseName(p[0]));
       const found = lookup(index, bare, p[0], team.abbr);
       let dest = team.abbr;
@@ -314,6 +321,7 @@ export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [
       if (p[4].length !== ratingKeys.length || p[4].some((v) => !(v >= 1 && v <= 99))) errors.push(`${p[0]} 能力值不正確`);
       if (!(p[2] >= heights[0] && p[2] <= heights[1])) errors.push(`${p[0]} 身高 ${p[2]} 不合理`);
       if (!['PG', 'SG', 'SF', 'PF', 'C'].includes(p[3])) errors.push(`${p[0]} 位置 ${p[3]} 不正確`);
+      if (p[5] !== undefined) for (const e of lookErrors(p[5])) errors.push(`${p[0]} 外觀：${e}`);
     }
   }
   return errors;
@@ -337,6 +345,14 @@ export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTe
   return errors;
 }
 
+const LOOK_ORDER: (keyof Look)[] = ['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks'];
+
+/** A look on one line, fields always in the same order. */
+export function formatLook(look: Look): string {
+  const fields = LOOK_ORDER.filter((k) => look[k] !== undefined).map((k) => `${JSON.stringify(k)}: ${JSON.stringify(look[k])}`);
+  return `{${fields.join(', ')}}`;
+}
+
 /** Same layout as the hand-written file: one player per line. */
 export function formatRoster(r: RawRoster): string {
   const q = JSON.stringify;
@@ -345,7 +361,9 @@ export function formatRoster(r: RawRoster): string {
       '    {',
       `      "abbr": ${q(t.abbr)}, "name": ${q(t.name)}, "primary": ${q(t.primary)}, "secondary": ${q(t.secondary)},`,
       '      "players": [',
-      t.players.map((p) => `        [${q(p[0])}, ${p[1]}, ${p[2]}, ${q(p[3])}, [${p[4].join(', ')}]]`).join(',\n'),
+      t.players
+        .map((p) => `        [${q(p[0])}, ${p[1]}, ${p[2]}, ${q(p[3])}, [${p[4].join(', ')}]${p[5] ? `, ${formatLook(p[5])}` : ''}]`)
+        .join(',\n'),
       '      ]',
       '    }',
     ].join('\n');

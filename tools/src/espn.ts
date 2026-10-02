@@ -18,6 +18,7 @@ export interface ApiAthlete {
   height?: number;
   position?: { abbreviation?: string };
   experience?: { years?: number };
+  headshot?: { href?: string };
 }
 
 interface ApiRoster {
@@ -73,5 +74,6 @@ export function toSource(a: ApiAthlete, team: string, seasonYear: number | null)
     heightM: a.height ? Math.round(a.height * 2.54) / 100 : null,
     position: a.position?.abbreviation ?? null,
     draftYear: seasonYear !== null && years !== undefined ? seasonYear - 1 - years : null,
+    ...(a.headshot?.href ? { photo: a.headshot.href } : {}),
   };
 }

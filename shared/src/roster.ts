@@ -1,10 +1,11 @@
 import customJson from '../data/custom-teams.json';
+import overridesJson from '../data/overrides.json';
 import rosterJson from '../data/roster.json';
-import type { PlayerInfo, Position, Ratings, TeamInfo } from './types';
+import type { Look, PlayerInfo, Position, Ratings, TeamInfo } from './types';
 
 /**
  * The roster file stores each player compactly as
- * [name, number, heightM, position, [ratings in RATING_KEYS order]].
+ * [name, number, heightM, position, [ratings in RATING_KEYS order], look?].
  */
 export const RATING_KEYS: (keyof Ratings)[] = [
   'speed',
@@ -22,7 +23,14 @@ export const RATING_KEYS: (keyof Ratings)[] = [
   'stamina',
 ];
 
-type RawPlayer = [string, number, number, string, number[]];
+type RawPlayer = [string, number, number, string, number[], Look?];
+
+/** Looks set by hand in overrides.json win over the roster's, without running the update tool. */
+const LOOK_OVERRIDES = new Map(
+  Object.entries(overridesJson as Record<string, { look?: Partial<Look> }>).flatMap(([name, o]) =>
+    typeof o === 'object' && o?.look ? [[name, o.look] as const] : [],
+  ),
+);
 
 export interface RawRoster {
   season: string;
@@ -46,11 +54,13 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
     secondary: t.secondary,
     ...(t.group ? { group: t.group } : {}),
     ...(t.logo ? { logo: t.logo } : {}),
-    players: t.players.map(([name, number, heightM, position, values]): PlayerInfo => {
+    players: t.players.map(([name, number, heightM, position, values, look]): PlayerInfo => {
       const ratings = {} as Ratings;
       for (const k of RATING_KEYS) ratings[k] = 50;
       keys.forEach((k, i) => (ratings[k] = values[i] ?? 50));
-      return { name, number, heightM, position: position as Position, ratings };
+      const extra = LOOK_OVERRIDES.get(name);
+      const merged = look || extra ? ({ ...look, ...extra } as Look) : undefined;
+      return { name, number, heightM, position: position as Position, ratings, ...(merged ? { look: merged } : {}) };
     }),
   }));
 }
@@ -84,8 +94,12 @@ export const ROSTER_UPDATED: string | undefined = (rosterJson as RawRoster).upda
 /**
  * Fingerprint of the roster. Server and page decode each other's game state
  * by roster index, so both must run the same roster (see PROTOCOL_VERSION).
+ * Looks are left out: they only change how players are drawn.
  */
-export const ROSTER_VERSION = fnv1a(JSON.stringify([(rosterJson as RawRoster).teams, (customJson as unknown as RawCustomTeams).teams]));
+const simTeams = (teams: RawRoster['teams']) => teams.map((t) => ({ ...t, players: t.players.map((p) => p.slice(0, 5)) }));
+export const ROSTER_VERSION = fnv1a(
+  JSON.stringify([simTeams((rosterJson as RawRoster).teams), simTeams((customJson as unknown as RawCustomTeams).teams)]),
+);
 
 function fnv1a(text: string): string {
   let h = 0x811c9dc5;

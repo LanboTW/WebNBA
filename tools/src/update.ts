@@ -1,5 +1,5 @@
 /**
- * npm run roster:update [-- --yes] [-- --source balldontlie]
+ * npm run roster:update [-- --yes] [-- --source balldontlie] [-- --relook]
  *
  * Pulls current team rosters (ESPN by default, no key needed; balldontlie
  * as a fallback, key in .env), merges them into
@@ -9,6 +9,8 @@
  *
  *   --yes                 no confirmation prompt
  *   --source balldontlie  use balldontlie instead of ESPN
+ *   --relook              re-read skin, hair and beard from every headshot
+ *                         (normally only players without a look are read)
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -16,10 +18,12 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { BallDontLie } from './balldontlie';
 import { espnPlayers } from './espn';
+import { fillLooks } from './lookPhotos';
 import {
   describe,
   formatRoster,
   mergeRoster,
+  normaliseName,
   validateRoster,
   type Overrides,
   type RawRoster,
@@ -61,6 +65,9 @@ async function main(): Promise<void> {
   log(`取得 ${players.length} 名球員（${kind === 'active' ? '現役名單' : '全部歷史球員，只追蹤轉隊'}）`);
 
   const { roster, changes } = mergeRoster(current, players, kind, overrides);
+  const photos = new Map(players.flatMap((p) => (p.photo ? [[normaliseName(p.name), p.photo] as const] : [])));
+  const looks = await fillLooks(roster.teams, (name) => photos.get(normaliseName(name)), args.has('--relook'));
+  if (looks.analysed + looks.defaults) log(`外觀：分析 ${looks.analysed} 人的照片${looks.defaults ? `，${looks.defaults} 人沒有可用照片，用預設值` : ''}`);
   if (season && season !== current.season) {
     log(`球季：${current.season} → ${season}`);
     roster.season = season;

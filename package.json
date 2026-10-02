@@ -16,7 +16,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
     "roster:update": "npm run roster:update -w tools --",
-    "logos:update": "npm run logos:update -w tools"
+    "logos:update": "npm run logos:update -w tools",
+    "looks:fill": "npm run looks:fill -w tools"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

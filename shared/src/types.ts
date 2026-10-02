@@ -29,6 +29,23 @@ export interface PlayerInfo {
   heightM: number;
   position: Position;
   ratings: Ratings;
+  /** Model appearance; absent for players nobody has given a look yet. */
+  look?: Look;
+}
+
+/** How a player's model looks (the data, not the sim). */
+export interface Look {
+  /** 1 (lightest) to 6 (darkest), or an exact #RRGGBB. */
+  skin: number | string;
+  hair: 'bald' | 'buzz' | 'short' | 'afro' | 'twists' | 'dreads' | 'long' | 'mohawk';
+  /** #RRGGBB; dark brown-black when absent. */
+  hairColor?: string;
+  beard: 'none' | 'stubble' | 'full';
+  headband: boolean;
+  sleeve: 'none' | 'left' | 'right' | 'both';
+  kneepad: boolean;
+  shoe: 'white' | 'black' | 'team';
+  socks: 'low' | 'high';
 }
 
 export interface TeamInfo {

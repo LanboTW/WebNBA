@@ -103,7 +103,7 @@ npm run typecheck
 ## 名單
 
 `shared/data/roster.json` 以 2025-26 開季名單為底，每位球員格式為
-`[名字, 背號, 身高(m), 位置, [能力值…]]`，能力值順序見檔案內的 `ratingKeys`。
+`[名字, 背號, 身高(m), 位置, [能力值…], {外觀}]`，能力值順序見檔案內的 `ratingKeys`，外觀見下方「球員外觀」。
 
 ### 手動更新名單
 
@@ -116,6 +116,7 @@ npm run typecheck
 npm run roster:update                              # 顯示差異，確認後寫入並自動跑測試
 npm run roster:update -- --yes                     # 不詢問直接寫入
 npm run roster:update -- --source balldontlie      # 改用備用來源 balldontlie（需要 .env 裡的金鑰）
+npm run roster:update -- --relook                  # 重新分析所有人的大頭照（換髮型、留鬍子時）
 ```
 
 （Windows PowerShell 請打 `npm.cmd`。）
@@ -167,6 +168,33 @@ npm run roster:update -- --source balldontlie      # 改用備用來源 balldont
 | `players` | 5–10 人、前 5 人先發；格式同 `roster.json`；名字可以用中文；身高 1.4–2.6 公尺 |
 
 改完執行 `npm test`，裡面有一項會檢查這個檔案（縮寫重複、顏色格式、人數、能力值範圍、隊徽檔案是否存在和大小都會擋下來），通過後 commit、push 即可。新增隊伍也會改變連線版本，開著舊網頁的人會被提醒重新整理。
+
+### 球員外觀
+
+每位球員最後一欄是外觀，例如：
+
+```json
+{"skin": 3, "hair": "short", "beard": "none", "headband": false, "sleeve": "none", "kneepad": false, "shoe": "white", "socks": "low"}
+```
+
+| 欄位 | 可用的值 |
+| --- | --- |
+| `skin` | 膚色 `1`（最淺）～`6`（最深），或 `#RRGGBB` |
+| `hair` | `bald` 光頭、`buzz` 平頭、`short` 短髮、`afro` 爆炸頭、`twists` 小辮、`dreads` 髒辮、`long` 長髮、`mohawk` 莫霍克 |
+| `hairColor` | 選填，`#RRGGBB`；沒寫是黑色 |
+| `beard` | `none`、`stubble` 鬍渣、`full` 落腮鬍 |
+| `headband` / `kneepad` | 頭帶、護膝：`true` / `false` |
+| `sleeve` | 袖套：`none`、`left`、`right`、`both` |
+| `shoe` | 球鞋：`white`、`black`、`team`（隊色） |
+| `socks` | `low` 短襪、`high` 長襪 |
+
+- **NBA 球員**：更新工具會讀 ESPN 大頭照，自動判斷膚色、髮型和鬍子（照片只在記憶體裡分析，不會存檔）；配件第一次隨機產生。之後交易會跟著球員走，更新不會改掉已經有的外觀；加 `--relook` 才會重新分析。自動判斷不一定準，可以直接改 `roster.json`。
+- **想永久指定某人的外觀**：寫在 `overrides.json`，例如 `"Stephen Curry": { "look": { "beard": "full" } }`，只寫要改的欄位，遊戲會直接套用，不用跑更新。
+- **自訂隊伍**：在 `custom-teams.json` 新增球員後執行下面指令，沒有外觀的人會補上預設值（膚色 3、短髮、無鬍子）和隨機配件，已經寫好的不會動，其他內容也不會被重新排版：
+
+```bash
+npm run looks:fill
+```
 
 ### 隊徽
 
