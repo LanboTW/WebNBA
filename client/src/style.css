@@ -69,6 +69,13 @@ body {
   justify-content: space-between;
 }
 
+#scoreboard .logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  margin: -4px 0;
+}
+
 #scoreboard .team.right {
   border-left: none;
   border-right: 6px solid var(--team, #888);
@@ -498,6 +505,19 @@ select {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
+}
+
+.card .thead .logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  margin-right: 8px;
+  flex: none;
+}
+
+.card .thead b {
+  flex: 1;
+  min-width: 0;
 }
 
 .card .tovr {

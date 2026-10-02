@@ -38,6 +38,8 @@ export interface TeamInfo {
   secondary: string;
   /** Menu group for custom teams (historical, Taiwan, fun...); NBA teams have none. */
   group?: string;
+  /** Logo image under logos/: nba/ABBR.png for NBA teams, the "logo" field for custom ones. */
+  logo?: string;
   /** First five are the starters. */
   players: PlayerInfo[];
 }

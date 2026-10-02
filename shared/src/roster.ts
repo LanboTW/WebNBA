@@ -28,7 +28,7 @@ export interface RawRoster {
   season: string;
   updated?: string;
   ratingKeys: string[];
-  teams: { abbr: string; name: string; primary: string; secondary: string; group?: string; players: RawPlayer[] }[];
+  teams: { abbr: string; name: string; primary: string; secondary: string; group?: string; logo?: string; players: RawPlayer[] }[];
 }
 
 /** shared/data/custom-teams.json: hand-made teams the roster update tool never touches. */
@@ -45,6 +45,7 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
     primary: t.primary,
     secondary: t.secondary,
     ...(t.group ? { group: t.group } : {}),
+    ...(t.logo ? { logo: t.logo } : {}),
     players: t.players.map(([name, number, heightM, position, values]): PlayerInfo => {
       const ratings = {} as Ratings;
       for (const k of RATING_KEYS) ratings[k] = 50;
@@ -55,7 +56,7 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
 }
 
 export const ROSTER_SEASON = (rosterJson as RawRoster).season;
-export const NBA_TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster);
+export const NBA_TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster).map((t) => ({ ...t, logo: `nba/${t.abbr}.png` }));
 export const CUSTOM_TEAMS: TeamInfo[] = parseRoster({ season: '', ...(customJson as unknown as RawCustomTeams) }).map((t) => ({
   ...t,
   group: t.group ?? '自訂隊伍',

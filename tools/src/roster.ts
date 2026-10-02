@@ -16,6 +16,8 @@ export interface RawTeam {
   secondary: string;
   /** Menu heading for custom teams. */
   group?: string;
+  /** Custom teams: logo image path under client/public/logos/. */
+  logo?: string;
   players: RawPlayer[];
 }
 
@@ -329,6 +331,8 @@ export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTe
     if (seen.has(t.abbr)) errors.push(`${t.abbr}：縮寫和其他隊伍重複`);
     seen.add(t.abbr);
     if (!t.name) errors.push(`${t.abbr}：缺少隊名`);
+    if (t.logo !== undefined && (typeof t.logo !== 'string' || !/^[w./-]+.(png|webp|svg)$/i.test(t.logo) || t.logo.includes('..')))
+      errors.push(`${t.abbr}：logo 要寫成 logos/ 底下的 .png／.webp／.svg 路徑，例如 "taiwan/tpe.png"`);
   }
   return errors;
 }

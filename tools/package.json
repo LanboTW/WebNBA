@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "roster:update": "tsx src/update.ts"
+    "roster:update": "tsx src/update.ts",
+    "logos:update": "tsx src/logos.ts"
   },
   "dependencies": {
     "tsx": "^4.19.0"

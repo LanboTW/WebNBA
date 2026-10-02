@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { BOARD_X, COURT, HOOP, HOOP_X, THREE_CORNER_DX, type TeamInfo } from '@webnba/shared';
 import type { Quality, QualityAware } from './graphics';
+import { loadLogo } from './logos';
 
 const PX_PER_M = 72;
 
@@ -117,7 +118,23 @@ function buildFloor(home: TeamInfo): { group: THREE.Object3D; setReflection(on: 
   apron.receiveShadow = true;
   group.add(apron);
 
-  const tex = new THREE.CanvasTexture(drawCourt(home));
+  const canvas = drawCourt(home);
+  const tex = new THREE.CanvasTexture(canvas);
+  // The centre shows the abbreviation until the logo arrives (or for good if there is none).
+  loadLogo(home).then((img) => {
+    if (!img) return;
+    const ctx = canvas.getContext('2d')!;
+    const r = (COURT.centerCircleRadius - 0.03) * PX_PER_M;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = home.primary;
+    ctx.fill();
+    const size = r * 1.55;
+    ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+    tex.needsUpdate = true;
+  });
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   const court = new THREE.Mesh(

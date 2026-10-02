@@ -1,3 +1,4 @@
+import { logoHtml } from './logos';
 import {
   GOOD_WINDOW,
   METER_MAX,
@@ -53,6 +54,8 @@ export class Hud {
     this.root.classList.remove('hidden');
     teams.forEach((t, i) => {
       this.teamEls[i].querySelector('.abbr')!.textContent = t.abbr;
+      this.teamEls[i].querySelector('.logo')?.remove();
+      this.teamEls[i].insertAdjacentHTML(i === 0 ? 'afterbegin' : 'beforeend', logoHtml(t));
       this.teamEls[i].style.setProperty('--team', t.primary === '#000000' ? t.secondary : t.primary);
     });
     this.teamEls[1].classList.toggle('hidden', practice);

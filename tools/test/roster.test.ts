@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   formatRoster,
@@ -145,12 +145,21 @@ describe('custom teams', () => {
     expect(validateCustomTeams(custom, live.teams)).toEqual([]);
   });
 
+  it('every logo file exists and is at most 300 KB', () => {
+    const logo = (path: string) => new URL(`../../client/public/logos/${path}`, import.meta.url);
+    const paths = [...live.teams.map((t) => `nba/${t.abbr}.png`), ...custom.teams.flatMap((t: { logo?: string }) => (t.logo ? [t.logo] : []))];
+    for (const p of paths) {
+      expect(existsSync(logo(p)), `找不到 client/public/logos/${p}`).toBe(true);
+      expect(statSync(logo(p)).size, `${p} 超過 300KB`).toBeLessThanOrEqual(300 * 1024);
+    }
+  });
+
   it('catches clashing abbreviations, bad colours and short benches', () => {
     const bad = {
       ratingKeys: real.ratingKeys,
       teams: [
         { abbr: 'GSW', name: 'Fake', primary: '#112233', secondary: '#445566', players: real.teams[0].players },
-        { abbr: 'toolong', name: 'X', primary: 'red', secondary: '#445566', players: real.teams[0].players.slice(0, 3) },
+        { abbr: 'toolong', name: 'X', primary: 'red', secondary: '#445566', logo: '../x.gif', players: real.teams[0].players.slice(0, 3) },
       ],
     };
     const errors = validateCustomTeams(bad, real.teams);
@@ -158,5 +167,6 @@ describe('custom teams', () => {
     expect(errors.some((e) => e.includes('2–5'))).toBe(true);
     expect(errors.some((e) => e.includes('#RRGGBB'))).toBe(true);
     expect(errors.some((e) => e.includes('有 3 人'))).toBe(true);
+    expect(errors.some((e) => e.includes('logo'))).toBe(true);
   });
 });

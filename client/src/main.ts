@@ -19,6 +19,7 @@ import { Sfx } from './audio';
 import { esc, renderBoxScore } from './boxscore';
 import { Graphics, type QualitySetting } from './graphics';
 import { Hud } from './hud';
+import { logoHtml, setOfficialLogos } from './logos';
 import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
@@ -60,6 +61,7 @@ const diffSel = $<HTMLSelectElement>('#diffSel');
 const quarterSel = $<HTMLSelectElement>('#quarterSel');
 const viewSel = $<HTMLSelectElement>('#viewSel');
 const qualitySel = $<HTMLSelectElement>('#qualitySel');
+const logoBox = $<HTMLInputElement>('#officialLogos');
 const nameInput = $<HTMLInputElement>('#nameInput');
 const codeInput = $<HTMLInputElement>('#codeInput');
 const lobbyTeam = $<HTMLSelectElement>('#lobbyTeam');
@@ -88,6 +90,13 @@ modeSel.value = load('mode', 'game');
 diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
 viewSel.value = load('view', 'broadcast');
+logoBox.checked = load('officialLogos', '1') === '1';
+setOfficialLogos(logoBox.checked);
+logoBox.addEventListener('change', () => {
+  save('officialLogos', logoBox.checked ? '1' : '0');
+  setOfficialLogos(logoBox.checked);
+  refreshCards();
+});
 qualitySel.value = load('quality', 'auto');
 graphics.setSetting(qualitySel.value as QualitySetting);
 qualitySel.addEventListener('change', () => {
@@ -133,7 +142,7 @@ function renderCard(el: HTMLElement, t: TeamInfo): void {
   const row = (p: TeamInfo['players'][number]) =>
     `<div class="prow"><span>${p.position}　${esc(p.name)}</span><b class="ovr">${playerRating(p)}</b></div>`;
   el.innerHTML =
-    `<div class="thead"><b>${esc(t.name)}</b><span class="tovr" title="先發五人平均">${teamRating(t)}</span></div>` +
+    `<div class="thead">${logoHtml(t)}<b>${esc(t.name)}</b><span class="tovr" title="先發五人平均">${teamRating(t)}</span></div>` +
     t.players.slice(0, 5).map(row).join('') +
     `<div class="benchlbl">替補</div>` +
     t.players.slice(5).map(row).join('');

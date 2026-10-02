@@ -163,9 +163,24 @@ npm run roster:update -- --source balldontlie      # 改用備用來源 balldont
 | `abbr` | 2–5 個大寫英文或數字，不能和其他隊重複；會顯示在記分板和中場地板 |
 | `name` | 隊名，可以用中文 |
 | `primary` / `secondary` | `#RRGGBB`；主隊時球場和觀眾席會用主色 |
+| `logo` | 選填。隊徽圖片路徑，相對於 `client/public/logos/`，例如 `"taiwan/tpe.png"`；PNG／WebP／SVG、300KB 以內、建議正方形透明背景。沒寫就只顯示縮寫 |
 | `players` | 5–10 人、前 5 人先發；格式同 `roster.json`；名字可以用中文；身高 1.4–2.6 公尺 |
 
-改完執行 `npm test`，裡面有一項會檢查這個檔案（縮寫重複、顏色格式、人數、能力值範圍都會擋下來），通過後 commit、push 即可。新增隊伍也會改變連線版本，開著舊網頁的人會被提醒重新整理。
+改完執行 `npm test`，裡面有一項會檢查這個檔案（縮寫重複、顏色格式、人數、能力值範圍、隊徽檔案是否存在和大小都會擋下來），通過後 commit、push 即可。新增隊伍也會改變連線版本，開著舊網頁的人會被提醒重新整理。
+
+### 隊徽
+
+隊徽會顯示在選單與大廳的隊伍卡片、記分板和主隊的中場地板。
+
+- **NBA 30 隊**：存在 `client/public/logos/nba/縮寫.png`，依縮寫自動對應。圖檔來自 ESPN，球隊換隊徽或改名時執行一次：
+
+```bash
+npm run logos:update
+```
+
+- **自訂隊伍**：把圖檔放進 `client/public/logos/`（可以自己建子資料夾），再在 `custom-teams.json` 寫 `logo` 欄位，請使用你有權使用的圖片。
+- 選單的「顯示官方隊徽」可以關掉 NBA 隊徽（自訂隊伍的圖不受影響），關掉或圖檔讀不到時改顯示縮寫。
+- NBA 隊徽是 NBA 與各球隊的註冊商標；本專案是非官方粉絲作品，如被要求移除，把 `main.ts` 裡 `officialLogos` 的預設值改成 `'0'` 即可全部隱藏。
 
 ## 部署到 Render
 
