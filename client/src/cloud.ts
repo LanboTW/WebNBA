@@ -6,10 +6,25 @@ import type { Backend, CareerSave, CloudRow, Slot } from './saves';
  * and publishable key are public by design; row level security keeps every
  * player to their own rows. No secret key ever reaches the page.
  */
-const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+/** A setting as typed into .env or a CI variable, forgiving "NAME=value" pastes and stray spaces or quotes. */
+function setting(raw: string | undefined): string {
+  return (raw ?? '').trim().replace(/^[A-Z_]+=/, '').replace(/^["']|["']$/g, '').trim();
+}
+const URL = setting(import.meta.env.VITE_SUPABASE_URL);
+const KEY = setting(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 
-export const cloud: SupabaseClient | null = URL && KEY ? createClient(URL, KEY) : null;
+/** A bad setting must never take the game down: without a client the menus fall back to guest saves. */
+function connect(): SupabaseClient | null {
+  if (!URL || !KEY) return null;
+  try {
+    return createClient(URL, KEY);
+  } catch (e) {
+    console.error('Cloud saves are off: the Supabase settings are not valid.', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+export const cloud: SupabaseClient | null = connect();
 
 const TABLE = 'career_saves';
 
