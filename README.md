@@ -45,7 +45,7 @@ npm run typecheck
 2. **Authentication → URL Configuration**：Site URL 填 `https://lanbotw.github.io/WebNBA/`；Redirect URLs 加上 `https://lanbotw.github.io/WebNBA/` 和 `http://localhost:5173/`。
 3. **Authentication → Sign In / Providers**：Email 預設已開啟（登入連結）。Google 要先到 Google Cloud Console 建立 OAuth 用戶端（網頁應用程式），授權重新導向 URI 填 Supabase 那頁顯示的 Callback URL，再把 Client ID／Secret 貼回 Supabase 的 Google 設定。Client Secret 只貼在 Supabase 後台，不放進專案。
 4. 本機：`.env` 填 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`（Project Settings → API Keys 的 publishable key，格式見 `.env.example`）。
-5. GitHub Pages：repo → Settings → Secrets and variables → Actions → **Variables**，新增同名的兩個變數，重新部署。
+5. GitHub Pages：repo → Settings → Secrets and variables → Actions → **Variables**，新增 `SUPABASE_URL` 和 `SUPABASE_PUBLISHABLE_KEY`（值同上），重新部署。
 
 金鑰說明：publishable key 本來就設計成放在網頁裡，安全靠資料表的列層級安全（RLS）。**secret key（service_role）不要放進專案、.env 或 GitHub**，這個遊戲用不到它。
 
