@@ -4,10 +4,12 @@ import {
   CUSTOM_TEAMS,
   NBA_TEAMS,
   findTeam,
+  playOut,
   playerRating,
   teamRating,
   type Difficulty,
   type GameSettings,
+  type GameState,
   type PlayerInfo,
   type TeamInfo,
 } from '@webnba/shared';
@@ -67,8 +69,10 @@ function save(key: string, value: string): void {
 
 // ----------------------------------------------------------------- screens
 
-type Screen = 'home' | 'quick' | 'practice' | 'settings' | 'career' | 'account';
-const SCREENS: Screen[] = ['home', 'quick', 'practice', 'settings', 'career', 'account'];
+type Screen = 'home' | 'quick' | 'practice' | 'settings' | 'career' | 'account' | 'create' | 'hub';
+const SCREENS: Screen[] = ['home', 'quick', 'practice', 'settings', 'career', 'account', 'create', 'hub'];
+/** Screens with your career player on the court behind them. */
+const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 let current: Screen = 'home';
 
 function show(next: Screen): void {
@@ -77,10 +81,12 @@ function show(next: Screen): void {
   if (next === 'quick') refreshCards();
   if (next === 'practice') renderPractice();
   if (next === 'career') void renderCareer();
+  // Leaving the career screens: back to the rotating stars.
+  if (!session && showcase?.hold && !CAREER_SCREENS.includes(next)) startShowcase();
 }
 
 document.querySelectorAll<HTMLElement>('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go as Screen)));
-document.querySelectorAll<HTMLElement>('.screen .back').forEach((b) => b.addEventListener('click', () => show('home')));
+document.querySelectorAll<HTMLElement>('.screen .back:not([data-to])').forEach((b) => b.addEventListener('click', () => show('home')));
 
 $('#season').textContent = ROSTER_UPDATED ? `${ROSTER_SEASON}（${ROSTER_UPDATED} 更新）` : ROSTER_SEASON;
 
@@ -272,11 +278,12 @@ $('#practiceBtn').addEventListener('click', () => {
 
 let showcase: Showcase | null = null;
 
-function startShowcase(): void {
+/** A random NBA player, or (`pinned`) the career player, who stays until replaced. */
+function startShowcase(pinned?: { player: PlayerInfo; team: TeamInfo }): void {
   stopShowcase();
-  const team = NBA_TEAMS[Math.floor(Math.random() * NBA_TEAMS.length)];
-  const player = team.players[Math.floor(Math.random() * team.players.length)];
-  showcase = new Showcase(player, team, hud, window.innerWidth / window.innerHeight);
+  const team = pinned?.team ?? NBA_TEAMS[Math.floor(Math.random() * NBA_TEAMS.length)];
+  const player = pinned?.player ?? team.players[Math.floor(Math.random() * team.players.length)];
+  showcase = new Showcase(player, team, hud, window.innerWidth / window.innerHeight, !!pinned);
   graphics.attach(showcase.session.scene, showcase.session.arena);
   document.body.classList.add('attract');
   if (import.meta.env.DEV) (window as unknown as { __showcase: Showcase }).__showcase = showcase;
@@ -287,6 +294,25 @@ function stopShowcase(): void {
   showcase = null;
   document.body.classList.remove('attract');
   $('#fade').style.opacity = '0';
+}
+
+let restyle: PlayerInfo | null = null;
+
+/** The career screens' live preview: same team, so just restyle him (once per frame at most). */
+function previewCareer(player: PlayerInfo, team: TeamInfo): void {
+  if (session) return;
+  if (showcase?.hold && showcase.team.abbr === team.abbr && showcase.team.primary === team.primary) {
+    if (!restyle) {
+      requestAnimationFrame(() => {
+        if (restyle && showcase?.hold) showcase.setPlayer(restyle);
+        restyle = null;
+        showTag();
+      });
+    }
+    restyle = player;
+    return;
+  }
+  startShowcase({ player, team });
 }
 
 /** Who is on the court behind the home screen. */
@@ -304,6 +330,9 @@ function showTag(): void {
 }
 
 // ----------------------------------------------------------------- matches
+
+/** A career game in progress: who you are and what to do with the result. */
+let careerPlay: { rosterIdx: number; done: (state: GameState) => void } | null = null;
 
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
   stopShowcase();
@@ -339,11 +368,32 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
 }
 
 function backToMenu(): void {
+  const career = careerPlay;
+  careerPlay = null;
+  // Leaving a career game early: the computer plays out the rest.
+  if (career && session && session.state.phase !== 'final') playOut(session.state);
+  const state = session?.state;
   session?.dispose();
   session = null;
   $('#boxscore').classList.add('hidden');
-  show(current);
-  startShowcase();
+  $('#quitBtn').textContent = '回主選單';
+  if (career && state) {
+    show('hub');
+    career.done(state);
+  } else {
+    show(current);
+    startShowcase();
+  }
+}
+
+/** Starts a career game with you on team 0 and the controls on you. */
+function playCareer(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, rosterIdx: number, done: (state: GameState) => void): void {
+  sfx.unlock();
+  startSession(teams, settings);
+  careerPlay = { rosterIdx, done };
+  $('#quitBtn').textContent = '離開（電腦打完這場）';
+  const me = session!.state.players.find((p) => p.team === 0 && p.rosterIdx === rosterIdx);
+  if (me) session!.state.controlled[0] = me.id;
 }
 
 // ------------------------------------------------------------ box score
@@ -369,6 +419,7 @@ function showFinal(): void {
   const [a, b] = session.state.score;
   const [ta, tb] = session.teams;
   showBox(`終場　${ta.abbr} ${a} : ${b} ${tb.abbr}`, false);
+  if (careerPlay) $('#quitBtn').textContent = '回生涯';
 }
 
 function togglePause(): void {
@@ -389,6 +440,7 @@ function frame(now: number): void {
   last = now;
   if (input.consumePress('Escape')) {
     if (session) togglePause();
+    else if (CAREER_SCREENS.includes(current)) show('career');
     else if (current !== 'home') show('home');
   }
   const overlay = !$('#boxscore').classList.contains('hidden') || !$('#timeoutPanel').classList.contains('hidden');
@@ -407,7 +459,7 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-initCareerMenu(show);
+initCareerMenu(show, { preview: previewCareer, play: playCareer });
 show('home');
 startShowcase();
 requestAnimationFrame(frame);

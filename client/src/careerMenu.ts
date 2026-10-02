@@ -1,6 +1,9 @@
+import { ROSTER_SEASON, ROSTER_VERSION, newCareer, type CareerState } from '@webnba/shared';
 import { esc } from './boxscore';
+import { CareerHub, careerSummary, type CareerHost } from './careerHub';
+import { CreateForm } from './careerCreate';
 import { cloud, cloudBackend, signInEmail, signInGoogle, signOut, watchAccount, type Account } from './cloud';
-import { SLOTS, SaveStore, type Conflict, type SlotInfo } from './saves';
+import { SLOTS, SaveStore, type Conflict, type Slot, type SlotInfo } from './saves';
 
 /** localStorage, or a stand-in when the browser blocks it (saves then last until the tab closes). */
 function storage(): Storage | Map<string, string> {
@@ -23,13 +26,25 @@ const when = (iso: string) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' });
 };
 
+export type CareerScreen = 'account' | 'career' | 'create' | 'hub';
+
+/** The career slot being played. */
+let activeSlot: Slot = 1;
+let hub: CareerHub;
+let form: CreateForm;
+
 /**
- * The account screen (sign in with Google or an e-mail link, sign out) and the
- * career screen's three save slots. Starting and continuing a career arrive
- * with the next batches; the slots, sync and conflicts work now.
+ * The account screen (sign in with Google or an e-mail link, sign out), the
+ * career screen's three save slots, creating a player and opening a career.
  */
-export function initCareerMenu(show: (screen: 'account') => void): void {
+export function initCareerMenu(show: (screen: CareerScreen) => void, page: Omit<CareerHost, 'save'>): void {
   go = show;
+  hub = new CareerHub({ ...page, save: saveCareer });
+  form = new CreateForm($('#createForm'), (player) => page.preview(player, CREATE_TEAM));
+  $('#createBtn').addEventListener('click', () => void createCareer());
+  document.querySelectorAll<HTMLElement>('[data-to=career]').forEach((b) =>
+    b.addEventListener('click', () => show('career')),
+  );
   $('#authStatus').addEventListener('click', () => openAccount());
   $('#careerAccount').addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-act=login]')) openAccount();
@@ -68,14 +83,21 @@ export function initCareerMenu(show: (screen: 'account') => void): void {
         careerMsg('刪除失敗：連不上雲端，請稍後再試', true);
       }
       void renderCareer();
-    } else if (b.dataset.act === 'test') {
-      // Dev builds only: a stand-in career to exercise saving and sync.
-      const res = await store.save(slot, {
-        summary: { player: `測試球員 ${slot}`, team: 'GSW', detail: `測試存檔 · ${when(new Date().toISOString())}` },
-        state: { test: true },
-      });
-      if (!res.ok && 'conflict' in res) showConflict(res.conflict);
-      void renderCareer();
+    } else if (b.dataset.act === 'create') {
+      activeSlot = slot;
+      createMsg('');
+      show('create');
+      form.reset();
+    } else if (b.dataset.act === 'open') {
+      const info = await store.load(slot);
+      const career = info?.save.state as CareerState | undefined;
+      if (!career || career.v !== 1) {
+        careerMsg('這個存檔是舊版或已損壞，無法開啟', true);
+        return;
+      }
+      activeSlot = slot;
+      show('hub');
+      hub.open(career);
     }
   });
 
@@ -105,7 +127,42 @@ function careerMsg(text: string, bad = false): void {
   el.classList.toggle('hidden', !text);
 }
 
-let go: (screen: 'account') => void = () => {};
+let go: (screen: CareerScreen) => void = () => {};
+
+/** Colours the player wears while being created: the combine's blue squad. */
+const CREATE_TEAM = { abbr: 'BLUE', name: '試訓藍隊', primary: '#1d4ed8', secondary: '#f4f4f4', players: [] };
+
+function createMsg(text: string): void {
+  const el = $('#createMsg');
+  el.textContent = text;
+  el.classList.toggle('hidden', !text);
+}
+
+async function createCareer(): Promise<void> {
+  const problem = form.problem();
+  if (problem) {
+    createMsg(problem);
+    return;
+  }
+  const d = form.draft;
+  const career = newCareer({
+    ...d,
+    rosterVersion: ROSTER_VERSION,
+    year: Number(ROSTER_SEASON.slice(0, 4)) || new Date().getFullYear(),
+    seed: (Math.random() * 2 ** 31) | 0,
+  });
+  go('hub');
+  hub.open(career);
+  await hub.save();
+  void renderCareer();
+}
+
+async function saveCareer(career: CareerState): Promise<string | null> {
+  const res = await store.save(activeSlot, { summary: careerSummary(career), state: career });
+  if (res.ok) return null;
+  if ('conflict' in res) return '別台裝置有比較新的存檔，回「存檔」選擇要保留哪一份';
+  return '連不上雲端，已先存在這台裝置，連上後會自動同步';
+}
 
 function openAccount(): void {
   go('account');
@@ -137,14 +194,16 @@ export async function renderCareer(): Promise<void> {
 
 function slotCard(slot: number, info: SlotInfo | null): string {
   if (!info) {
-    const test = import.meta.env.DEV ? `<button type="button" class="small" data-slot="${slot}" data-act="test">（開發）建立測試存檔</button>` : '';
-    return `<div class="slot empty"><span class="slotno">${slot}</span><div class="slotbody"><b>空的存檔欄位</b><span>建立球員即將開放</span></div>${test}</div>`;
+    return (
+      `<div class="slot empty"><span class="slotno">${slot}</span><div class="slotbody"><b>空的存檔欄位</b><span>建立新球員，從選秀試訓開始</span></div>` +
+      `<div class="slotbtns"><button type="button" class="primary" data-slot="${slot}" data-act="create">建立球員</button></div></div>`
+    );
   }
   const s = info.save.summary;
   return (
     `<div class="slot"><span class="slotno">${slot}</span><div class="slotbody"><b>${esc(s.player)}</b>` +
     `<span>${esc(s.team)} · ${esc(s.detail)}</span><span class="when">最後儲存 ${when(info.updatedAt)}</span></div>` +
-    `<div class="slotbtns"><button type="button" class="primary" disabled title="即將開放">繼續</button>` +
+    `<div class="slotbtns"><button type="button" class="primary" data-slot="${slot}" data-act="open">繼續</button>` +
     `<button type="button" data-slot="${slot}" data-act="delete">刪除</button></div></div>`
   );
 }

@@ -1562,3 +1562,419 @@ button.link {
     flex: 1;
   }
 }
+
+/* --------------------------------------------------------------- create a player & career hub */
+
+/* The player stands on the right, so the panel stays narrow enough to leave him room. */
+.career-panel .panel {
+  width: min(560px, 100%);
+}
+
+.row label.grow {
+  flex: 3 1 200px;
+}
+
+.row label.narrow {
+  flex: 1 1 70px;
+}
+
+input[type='number'] {
+  background: #1b1f2e;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 15px;
+  width: 100%;
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.field b {
+  color: var(--text);
+}
+
+.field small {
+  font-size: 11.5px;
+}
+
+.field.look {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.field.look > span {
+  flex: none;
+  width: 34px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip.on {
+  border-color: var(--accent);
+  background: rgba(255, 122, 26, 0.18);
+  color: var(--text);
+}
+
+.chip:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.swatches .chip {
+  padding: 3px;
+  border-width: 2px;
+}
+
+.swatches .chip i {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+.archetypes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.arch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border-width: 2px;
+  text-align: left;
+}
+
+.arch span {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.arch.on {
+  border-color: var(--accent);
+  background: rgba(255, 122, 26, 0.14);
+}
+
+.arch:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ratingbars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+}
+
+.ovrline {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ovrline b {
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.rbar {
+  display: grid;
+  grid-template-columns: 44px 1fr 24px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rbar b {
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rbar .track {
+  position: relative;
+  height: 7px;
+  border-radius: 4px;
+  background: #252a3b;
+}
+
+.rbar .track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+/* Highest this rating can be trained to. */
+.rbar .track em {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  border-left: 2px dotted rgba(255, 255, 255, 0.55);
+}
+
+.panel h3 button.small {
+  vertical-align: middle;
+}
+
+.panel .sub.tight {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.mehead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #171b28;
+}
+
+.mehead div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mehead b {
+  font-size: 18px;
+}
+
+.mehead span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.menum {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.mehead .meovr {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.games {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #171b28;
+  font-size: 13px;
+}
+
+.game.todo {
+  border-style: dashed;
+  background: none;
+  color: var(--muted);
+}
+
+.game > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.game span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.game small {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.game .win {
+  color: var(--perfect);
+}
+
+.game .loss {
+  color: var(--bad);
+}
+
+.gno {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #252a3b;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.grade {
+  flex: none;
+  min-width: 40px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 800;
+  background: #252a3b;
+}
+
+.grade.gA {
+  background: var(--perfect);
+  color: #062814;
+}
+
+.grade.gB {
+  background: var(--good);
+  color: #1e2606;
+}
+
+.grade.gC {
+  background: #ffb347;
+  color: #2b1a00;
+}
+
+.grade.gD,
+.grade.gF {
+  background: var(--bad);
+  color: #2b0500;
+}
+
+.draftcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 18px;
+  border-radius: 14px;
+  border-top: 5px solid var(--team);
+  background: color-mix(in srgb, var(--team) 22%, #151925);
+  text-align: center;
+}
+
+.draftcard small,
+.draftcard span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.draftteam {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.draftteam b {
+  font-size: 26px;
+}
+
+.draftlogo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.draftcard.reveal {
+  animation: reveal 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.7) translateY(20px);
+  }
+}
+
+.card.roster .prow.me {
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(255, 122, 26, 0.2);
+  color: var(--text);
+}
+
+.soon {
+  margin-top: 14px !important;
+}
+
+/* Phones: the panel takes the bottom of the screen, the player stands above it. */
+@media (max-width: 860px) {
+  .career-panel {
+    align-items: flex-end;
+    padding: 0;
+    overflow: hidden;
+    background: linear-gradient(0deg, rgba(4, 5, 9, 0.9) 0%, rgba(4, 5, 9, 0.4) 55%, rgba(4, 5, 9, 0) 70%);
+  }
+
+  .career-panel .panel {
+    width: 100%;
+    max-height: 60vh;
+    max-height: 60dvh;
+    overflow-y: auto;
+    margin: 0;
+    padding: 18px 16px;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .ratingbars {
+    grid-template-columns: 1fr;
+  }
+
+  .field.look {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}

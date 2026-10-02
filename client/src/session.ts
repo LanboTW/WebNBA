@@ -13,6 +13,7 @@ import {
   type GameEvent,
   type GameSettings,
   type GameState,
+  type PlayerInfo,
   type PlayerInput,
   type ShotQuality,
   type TeamInfo,
@@ -352,6 +353,14 @@ export class Session {
     document.querySelector('#timeoutTitle')!.textContent = `暫停　${who.abbr}`;
     document.querySelector('#timeoutSub')!.textContent =
       `${who.name} 喊的暫停 · 剩 ${left} 秒 · 我方剩餘暫停 ${s.timeoutsLeft[this.team as 0 | 1]} 次`;
+  }
+
+  /** Gives a player a new look or build (the career creation preview) and redraws him. */
+  restyle(slotId: number, info: PlayerInfo): void {
+    const p = this.state.players[slotId];
+    if (!p) return;
+    p.info = info;
+    this.rebuildView(slotId);
   }
 
   /** A substitution swaps who is in the slot: rebuild that player's model. */

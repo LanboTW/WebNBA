@@ -169,11 +169,16 @@ export class Showcase {
   private angle = Math.random() * Math.PI * 2;
   private readonly focus = new THREE.Vector3();
 
+  /**
+   * `hold` keeps this player on until told otherwise (the career screens show
+   * your own player, and let you restyle him live).
+   */
   constructor(
-    readonly player: PlayerInfo,
+    public player: PlayerInfo,
     readonly team: TeamInfo,
     hud: Hud,
     aspect: number,
+    readonly hold = false,
   ) {
     const lineup: TeamInfo = { ...team, players: [player, ...team.players.filter((p) => p !== player)] };
     this.session = new Session(
@@ -200,13 +205,20 @@ export class Showcase {
   }
 
   get finished(): boolean {
-    return this.t >= SHOW_SECONDS;
+    return !this.hold && this.t >= SHOW_SECONDS;
+  }
+
+  /** Swaps in a restyled player without restarting the show. */
+  setPlayer(info: PlayerInfo): void {
+    this.player = info;
+    this.session.restyle(0, info);
+    this.session.views[0].flair = 0.5;
   }
 
   /** 0 = clear, 1 = black: fades in at the start and out at the end. */
   get fade(): number {
     const a = 1 - this.t / FADE_SECONDS;
-    const b = 1 - (SHOW_SECONDS - this.t) / FADE_SECONDS;
+    const b = this.hold ? 0 : 1 - (SHOW_SECONDS - this.t) / FADE_SECONDS;
     return Math.max(0, Math.min(1, Math.max(a, b)));
   }
 
