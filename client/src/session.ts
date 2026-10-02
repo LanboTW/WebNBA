@@ -374,6 +374,7 @@ export class Session {
           defending: s.settings.mode === 'game' && p.team !== offense && s.phase === 'live',
           inbounding: s.phase === 'inbound' && s.inbound?.passerId === p.id,
           catching: s.ball.mode === 'pass' && s.ball.pass?.targetId === p.id,
+          rebounding: s.ball.mode === 'flight' || s.ball.mode === 'loose',
           lookAt: ballPos,
         },
         this.frozen ? 0 : dt,
@@ -383,7 +384,9 @@ export class Session {
         (this.ring.material as THREE.MeshBasicMaterial).color.set(p.intenseD ? 0xff3b3b : 0xff7a1a);
       }
     });
-    tmp.copy(ballPos);
+    // While dribbling, the ball is drawn in whichever hand the holder's dribble moves put it.
+    const dribbler = holder >= 0 ? this.playerViews[holder] : null;
+    tmp.copy(dribbler?.dribbling ? dribbler.dribbleBall : ballPos);
     this.ballView.update(tmp, s.ball.vel, this.frozen ? 0 : dt);
 
     // Follow the ball toward the hoop the offence is attacking.
@@ -487,9 +490,13 @@ export class Session {
         if (s.pendingFT?.total === 1 && s.pendingFT.shooterId === e.playerId) hud.toast('進算加罰！', 'accent');
         break;
       }
-      case 'pass':
-        this.playerViews[e.playerId]?.trigger('pass');
+      case 'pass': {
+        // Long passes go over the top.
+        const [a, b] = [s.players[e.playerId], s.players[e.targetId]];
+        const far = a && b && Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) > 9;
+        this.playerViews[e.playerId]?.trigger(far ? 'lob' : 'pass');
         break;
+      }
       case 'reach':
         this.playerViews[e.playerId]?.trigger('reach');
         break;
