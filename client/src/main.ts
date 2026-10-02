@@ -19,6 +19,7 @@ import { logoHtml, setOfficialLogos } from './logos';
 import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
+import { initCareerMenu, renderCareer } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
 import { TeamPicker } from './teamPicker';
@@ -66,8 +67,8 @@ function save(key: string, value: string): void {
 
 // ----------------------------------------------------------------- screens
 
-type Screen = 'home' | 'quick' | 'practice' | 'settings' | 'career';
-const SCREENS: Screen[] = ['home', 'quick', 'practice', 'settings', 'career'];
+type Screen = 'home' | 'quick' | 'practice' | 'settings' | 'career' | 'account';
+const SCREENS: Screen[] = ['home', 'quick', 'practice', 'settings', 'career', 'account'];
 let current: Screen = 'home';
 
 function show(next: Screen): void {
@@ -75,6 +76,7 @@ function show(next: Screen): void {
   for (const s of SCREENS) $(`#${s}`).classList.toggle('hidden', s !== next || !!session);
   if (next === 'quick') refreshCards();
   if (next === 'practice') renderPractice();
+  if (next === 'career') void renderCareer();
 }
 
 document.querySelectorAll<HTMLElement>('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go as Screen)));
@@ -405,6 +407,7 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+initCareerMenu(show);
 show('home');
 startShowcase();
 requestAnimationFrame(frame);

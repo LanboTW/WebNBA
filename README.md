@@ -29,11 +29,27 @@ npm run typecheck
 首頁有四個按鈕：
 
 - **快速模式**：選兩隊（東區／西區／自訂隊伍分組，或按「隨機對戰」），對戰電腦或觀戰。手機上分兩步：先選你的隊伍，再選對手。
-- **生涯模式**：開發中。
+- **生涯模式**：開發中。目前有 3 個存檔欄位、登入與雲端同步（見下方「雲端存檔」）。
 - **練習**：選一支球隊再選一名球員，單人、沒有時鐘，R 鍵拿回球。
 - **設定**：畫質、視角、官方隊徽、比賽規則（只影響快速模式）與操作說明。
 
 多人連線已經移除（免費主機延遲太高）。
+
+## 雲端存檔（Supabase）
+
+生涯存檔放在 Supabase（登入＋Postgres）。不登入也能玩，存檔只在這台瀏覽器；登入後，訪客存檔會搬到雲端的空欄位。每次存檔都有版本號，另一台裝置存過比較新的進度時，會讓你選「載入雲端」或「用這台覆蓋」。
+
+設定步驟（只要做一次）：
+
+1. Supabase 後台 → **SQL Editor** → New query，貼上 `supabase/schema.sql` 全部內容 → Run。這會建立 `career_saves` 資料表和「每人只能讀寫自己的存檔」規則。
+2. **Authentication → URL Configuration**：Site URL 填 `https://lanbotw.github.io/WebNBA/`；Redirect URLs 加上 `https://lanbotw.github.io/WebNBA/` 和 `http://localhost:5173/`。
+3. **Authentication → Sign In / Providers**：Email 預設已開啟（登入連結）。Google 要先到 Google Cloud Console 建立 OAuth 用戶端（網頁應用程式），授權重新導向 URI 填 Supabase 那頁顯示的 Callback URL，再把 Client ID／Secret 貼回 Supabase 的 Google 設定。Client Secret 只貼在 Supabase 後台，不放進專案。
+4. 本機：`.env` 填 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`（Project Settings → API Keys 的 publishable key，格式見 `.env.example`）。
+5. GitHub Pages：repo → Settings → Secrets and variables → Actions → **Variables**，新增同名的兩個變數，重新部署。
+
+金鑰說明：publishable key 本來就設計成放在網頁裡，安全靠資料表的列層級安全（RLS）。**secret key（service_role）不要放進專案、.env 或 GitHub**，這個遊戲用不到它。
+
+Supabase 內建的寄信服務每小時只能寄少量信件，玩家多了要在 Authentication → SMTP 設定自己的寄信服務。
 
 ## 操作
 

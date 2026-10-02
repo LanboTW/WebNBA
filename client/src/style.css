@@ -1420,3 +1420,145 @@ body.attract #hud {
   font-size: 13px;
   color: var(--muted);
 }
+
+/* --------------------------------------------------------------- career & account */
+
+button.auth {
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button.auth:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+button.link {
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+}
+
+.msg.bad {
+  color: var(--bad);
+}
+
+.emailform {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.emailform input {
+  width: 100%;
+  margin-top: 6px;
+  background: #1b1f2e;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #171b28;
+}
+
+.slot.empty {
+  border-style: dashed;
+  background: none;
+}
+
+.slotno {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #252a3b;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.slotbody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.slotbody span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.slotbody .when {
+  font-size: 11px;
+}
+
+.slotbtns {
+  display: flex;
+  gap: 6px;
+}
+
+.slotbtns button {
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+
+.slotbtns button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.conflict {
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid #ffb347;
+  border-radius: 12px;
+  background: rgba(255, 179, 71, 0.08);
+}
+
+.conflict p {
+  margin: 0 0 6px;
+}
+
+.conflict ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+@media (max-width: 480px) {
+  .slot {
+    flex-wrap: wrap;
+  }
+
+  .slotbtns {
+    width: 100%;
+  }
+
+  .slotbtns button {
+    flex: 1;
+  }
+}

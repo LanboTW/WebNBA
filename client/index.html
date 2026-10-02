@@ -38,7 +38,7 @@
     </div>
 
     <div id="home" class="overlay screen">
-      <div class="homebar"><span id="authStatus" class="auth">訪客</span></div>
+      <div class="homebar"><button type="button" id="authStatus" class="auth">訪客</button></div>
       <div class="homemain">
         <h1>WebNBA</h1>
         <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
@@ -149,10 +149,37 @@
       </div>
     </div>
 
+    <div id="account" class="overlay screen side-panel hidden">
+      <div class="panel">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>帳號</h2></div>
+        <div id="accountNoCloud" class="hidden">
+          <p class="sub">這個網址還沒設定雲端存檔，目前只能用訪客模式（存檔只在這台瀏覽器）。</p>
+        </div>
+        <div id="accountGuest" class="hidden">
+          <p class="sub">登入後，生涯存檔會同步到雲端，換電腦或手機也能接著玩。不登入也能玩，存檔只會留在這台瀏覽器。</p>
+          <div class="buttons stack">
+            <button type="button" id="googleBtn" class="primary">使用 Google 登入</button>
+          </div>
+          <form id="emailForm" class="emailform">
+            <label>或用 e-mail 登入連結（不需要密碼）<input id="emailInput" type="email" autocomplete="email" placeholder="you@example.com" /></label>
+            <button type="submit">寄送登入連結</button>
+          </form>
+        </div>
+        <div id="accountUser" class="hidden">
+          <p class="sub">已登入：<b id="accountName"></b></p>
+          <div class="buttons"><button type="button" id="signOutBtn">登出</button></div>
+        </div>
+        <p id="accountMsg" class="msg"></p>
+      </div>
+    </div>
+
     <div id="career" class="overlay screen side-panel hidden">
       <div class="panel">
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>生涯模式</h2></div>
-        <div id="careerBody"><p class="sub">生涯模式正在建置中，敬請期待。</p></div>
+        <p id="careerAccount" class="sub"></p>
+        <p id="careerMsg" class="msg hidden"></p>
+        <div id="conflict" class="conflict hidden"></div>
+        <div id="careerSlots" class="slots"></div>
       </div>
     </div>
 
