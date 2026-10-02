@@ -239,7 +239,11 @@ export type GameEvent =
   | { type: 'tipoff' }
   | { type: 'buzzer' }
   | { type: 'periodEnd'; period: number }
-  | { type: 'final'; winner: 0 | 1 };
+  | { type: 'final'; winner: 0 | 1 }
+  /** Solo player's calls: for the ball, for a pick, for a defensive switch (ok = someone answers). */
+  | { type: 'call'; kind: CallKind; playerId: number; ok: boolean };
+
+export type CallKind = 'ball' | 'pick' | 'switch';
 
 export interface GameSettings {
   /** 'practice' disables clocks, possession rules and inbounds. */
@@ -250,6 +254,13 @@ export interface GameSettings {
   humanTeams: (0 | 1)[];
   seed: number;
   rules: RuleToggles;
+  /**
+   * Career games: the human plays only this team-0 player (roster index),
+   * wherever he is. Teammates, substitutions and timeouts are left to the AI;
+   * the switch button calls a pick or a defensive switch, pass without the
+   * ball calls for it. On the bench, nobody is controlled.
+   */
+  solo?: number;
 }
 
 /** Host-configurable rule groups. */
@@ -340,6 +351,8 @@ export interface GameState {
   switchLatch: [boolean, boolean];
   /** Defensive assignment: player id -> opponent id they guard. */
   assign: number[];
+  /** Solo player asking a teammate for the ball: who, and seconds left before the ask lapses. */
+  ballCall: { playerId: number; timer: number } | null;
   events: GameEvent[];
 }
 

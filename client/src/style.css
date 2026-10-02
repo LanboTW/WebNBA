@@ -398,6 +398,42 @@ body {
   color: var(--text);
 }
 
+#help .help-solo,
+#help.solo .help-team {
+  display: none;
+}
+
+#help.solo .help-solo {
+  display: block;
+}
+
+/* Career games: shown while your player sits and the game fast-forwards. */
+#benchNote {
+  position: absolute;
+  top: 128px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 22px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--panel);
+  white-space: nowrap;
+}
+
+#benchNote b {
+  font-size: 18px;
+  color: var(--accent);
+}
+
+#benchNote span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* ------------------------------------------------------------- overlays */
 
 .overlay {

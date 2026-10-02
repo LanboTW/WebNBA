@@ -320,11 +320,12 @@ export function combineTeams(me: PlayerInfo, seed: number): [TeamInfo, TeamInfo]
 
 // ----------------------------------------------------------------- games
 
-/** Game settings for a career game (the player's team is always team 0). */
-export function careerGameSettings(career: CareerState, seed: number): Partial<GameSettings> {
+/** Game settings for a career game: the player's team is team 0, and he is at roster index `me`. */
+export function careerGameSettings(career: CareerState, seed: number, me: number): Partial<GameSettings> {
   return {
     mode: 'game',
     humanTeams: [0],
+    solo: me,
     difficulty: career.settings.difficulty,
     quarterSeconds: career.settings.quarterSeconds,
     seed,
@@ -335,6 +336,8 @@ export function careerGameSettings(career: CareerState, seed: number): Partial<G
 /** Plays a game to the final buzzer with nobody at the controls. */
 export function playOut(state: GameState, maxTicks = 30 * 60 * 120): GameState {
   state.settings.humanTeams = [];
+  // The career player too: the AI takes him over.
+  delete state.settings.solo;
   state.controlled = [-1, -1];
   for (let i = 0; i < maxTicks && state.phase !== 'final'; i++) step(state, {});
   return state;

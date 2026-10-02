@@ -103,7 +103,7 @@ describe('draft combine', () => {
 
   it('plays a combine game to the end headless and records the player', () => {
     const c = career();
-    const state = simulateGame(combineMatch(c), careerGameSettings(c, 3));
+    const state = simulateGame(combineMatch(c), careerGameSettings(c, 3, combineIndex(c)));
     expect(state.phase).toBe('final');
     const g = careerGame(state, combineIndex(c), true);
     expect(g.stats.secs).toBeGreaterThan(0);

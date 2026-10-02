@@ -220,6 +220,8 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
     // Settle, then shoot.
     return state.freeThrow && state.freeThrow.timer > 1.0 && !state.freeThrow.released ? shootNow(state, p, sk) : NO_INPUT;
   }
+  const called = answerCall(state, p);
+  if (called) return called;
   if (isInbounder(state, p)) {
     if (state.phaseTimer < 0.9) return NO_INPUT;
     const t = bestPass(state, p, true);
@@ -303,15 +305,36 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
   return steer(p, jitter);
 }
 
-function callScreen(state: GameState, handler: PlayerState): void {
+/**
+ * A teammate (the solo player) is calling for the ball: give it up unless the
+ * lane is jammed or it would be a backcourt violation.
+ */
+function answerCall(state: GameState, p: PlayerState): PlayerInput | null {
+  const call = state.ballCall;
+  if (!call || call.playerId === p.id) return null;
+  const m = state.players[call.playerId];
+  if (!m || m.team !== p.team) return null;
+  const inbound = isInbounder(state, p);
+  if (inbound ? state.phaseTimer < 0.6 : state.phase !== 'live') return null;
+  const s = Math.sign(attackHoopX(p.team, state.period));
+  if (!inbound && state.frontcourt && s * m.pos.x < 0.3) return null;
+  if (laneRisk(state, p, m) > 0.6) return null;
+  state.ballCall = null;
+  return passTo(m);
+}
+
+/** Sends a big (or, for a solo player's call, anyone free) to set a screen. Returns whether someone comes. */
+export function callScreen(state: GameState, handler: PlayerState): boolean {
+  const human = state.controlled[handler.team] === handler.id;
   const screener = teammates(state, handler)
-    .filter((m) => m.slot >= 3 && m.ai.mode === 'none' && hdist(m.pos, handler.pos) < 10)
-    .sort((a, b) => b.slot - a.slot)[0];
-  if (!screener) return;
+    .filter((m) => (m.slot >= 3 || human) && m.ai.mode === 'none' && hdist(m.pos, handler.pos) < (human ? 14 : 10))
+    .sort((a, b) => (human ? hdist(a.pos, handler.pos) - hdist(b.pos, handler.pos) : b.slot - a.slot))[0];
+  if (!screener) return false;
   screener.ai.mode = 'screen';
   screener.ai.modeTimer = 3.5;
   screener.ai.arrived = false;
   screener.ai.screenSide = Math.sign(screener.pos.z - handler.pos.z) || 1;
+  return true;
 }
 
 // ------------------------------------------------------------ off the ball
@@ -377,7 +400,7 @@ function screenAi(state: GameState, p: PlayerState, holder: PlayerState | null):
   if (p.ai.arrived) {
     if (p.ai.modeTimer <= 0.05) {
       // Handler turns the corner away from the screen side; screener rolls.
-      if (holder.ai.mode === 'none' && !state.settings.humanTeams.includes(holder.team)) {
+      if (holder.ai.mode === 'none' && state.controlled[holder.team] !== holder.id) {
         holder.ai.mode = 'drive';
         holder.ai.modeTimer = 1.6;
         holder.ai.screenSide = -side;

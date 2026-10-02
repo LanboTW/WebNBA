@@ -9,6 +9,7 @@ import {
   giveBall,
   requestSub,
   step,
+  type CallKind,
   type FoulKind,
   type GameEvent,
   type GameSettings,
@@ -50,6 +51,17 @@ const VIOLATION_TEXT: Partial<Record<string, string>> = {
   backcourt: '回場違例',
   fiveSec: '5 秒違例',
 };
+
+const CALL_TEXT: Record<CallKind, [string, string]> = {
+  ball: ['要球！', ''],
+  pick: ['叫擋拆', '沒有隊友能來擋'],
+  switch: ['換防！', '附近沒有可以換防的隊友'],
+};
+
+/** How much faster the game runs while the career player sits on the bench. */
+const BENCH_SPEED = 10;
+/** Events still handled while fast-forwarding. */
+const QUIET_OK = new Set<GameEvent['type']>(['sub', 'final', 'periodEnd', 'timeout']);
 
 interface Snapshot {
   players: { pos: Vec3; facing: number }[];
@@ -96,6 +108,9 @@ export class Session {
   /** "Continue" clicked on the timeout screen: sent as a timeout press on the next tick. */
   private resumePress = false;
   paused = false;
+  /** Career game: you play one player; on the bench the game fast-forwards. */
+  readonly solo: boolean;
+  private readonly benchNote = document.querySelector<HTMLElement>('#benchNote')!;
 
   constructor(
     readonly teams: [TeamInfo, TeamInfo],
@@ -111,6 +126,8 @@ export class Session {
     const practice = settings.mode === 'practice';
     this.state = createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
     this.team = this.state.settings.humanTeams.includes(0) ? 0 : -1;
+    this.solo = this.state.settings.solo !== undefined;
+    this.hud.setHelpMode(this.solo);
     this.builtFor = this.state.players.map((p) => p.rosterIdx);
     this.arena = buildArena(this.scene, teams[0], !!options.showcase);
     this.cam = new GameCamera(aspect, view);
@@ -172,7 +189,7 @@ export class Session {
     const s = this.state;
     if (this.input.consumePress('KeyH')) this.hud.toggleHelp();
     if (this.input.consumePress('KeyC')) {
-      const next: CameraMode = this.cam.mode === 'broadcast' ? 'end' : 'broadcast';
+      const next: CameraMode = this.cam.mode !== 'broadcast' ? 'broadcast' : this.solo ? 'player' : 'end';
       this.cam.setMode(next);
       this.hud.toast(CAMERA_LABEL[next], '', true);
       this.callbacks.onViewChange?.(next);
@@ -181,13 +198,17 @@ export class Session {
       if (s.players[0].action === 'normal') giveBall(s, 0);
     }
 
+    // Sitting on the bench: play on at BENCH_SPEED until the coach sends you back in.
+    const benched = this.solo && s.controlled[0] < 0 && s.phase !== 'final';
+    this.benchNote.classList.toggle('hidden', !benched || this.paused);
     if (!this.paused) {
-      this.acc += Math.min(0.25, dt);
+      this.acc += Math.min(0.25, dt) * (benched ? BENCH_SPEED : 1);
       while (this.acc >= DT) {
         this.prev = this.snapshot();
         const inputs = this.team === 0 ? { 0: this.humanInput() } : {};
         step(s, inputs);
-        s.events.forEach((e) => this.handleEvent(e));
+        // Fast-forwarding: only what still matters (no sounds or play-by-play toasts).
+        for (const e of s.events) if (!benched || QUIET_OK.has(e.type)) this.handleEvent(e);
         this.acc -= DT;
       }
     }
@@ -308,15 +329,37 @@ export class Session {
     tmp.copy(dribbler?.dribbling ? dribbler.dribbleBall : ballPos);
     this.ballView.update(tmp, s.ball.vel, this.frozen ? 0 : dt);
 
-    // Follow the ball toward the hoop the offence is attacking.
-    this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoopX(s.possession, s.period)), dt);
+    // Follow the ball toward the hoop the offence is attacking; the player view follows you.
+    const mine = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] : undefined;
+    const follow = mine
+      ? {
+          x: mine.pos.x,
+          z: mine.pos.z,
+          toward: offense === mine.team ? { x: attackHoopX(mine.team, s.period), z: 0 } : { x: tmp.x, z: tmp.z },
+        }
+      : null;
+    this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoopX(s.possession, s.period)), dt, follow);
+    // Your ring goes with you to the bench.
+    if (this.solo) this.ring.visible = !!mine;
     this.arena.update(dt);
     this.renderPassIcons();
     this.renderTimeout();
 
     const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] ?? null : null;
-    this.hud.update(s, me);
-    this.input.touch?.setMode(me && s.settings.mode === 'game' ? (offense === me.team ? 'offense' : 'defense') : me ? 'offense' : 'none');
+    // A benched career player still sees his own line.
+    const solo = s.settings.solo;
+    this.hud.update(s, me ?? (solo !== undefined ? (s.bench[0].find((b) => b.rosterIdx === solo) ?? null) : null));
+    const touchMode =
+      me && s.settings.mode === 'game'
+        ? offense !== me.team
+          ? 'defense'
+          : this.solo && holder !== me.id
+            ? 'offball'
+            : 'offense'
+        : me
+          ? 'offense'
+          : 'none';
+    this.input.touch?.setMode(touchMode, this.solo);
     if (me && s.settings.mode === 'game' && s.settings.rules.fatigue && s.phase !== 'timeout') {
       const feet = this.ring.position.clone().project(this.cam.camera);
       this.hud.setStamina(me.energy, { x: ((feet.x + 1) / 2) * window.innerWidth, y: ((1 - feet.y) / 2) * window.innerHeight });
@@ -345,7 +388,9 @@ export class Session {
       this.timeoutShown = show;
       this.lineupKey = key;
       this.timeoutPanel.classList.toggle('hidden', !show);
-      if (show) this.timeoutLineup.render(s, this.team as 0 | 1, this.subActions);
+      // In career games the coach makes the changes; you just wait to go back out.
+      document.querySelector('#timeoutLineup')!.classList.toggle('hidden', this.solo);
+      if (show && !this.solo) this.timeoutLineup.render(s, this.team as 0 | 1, this.subActions);
     }
     if (!t || !show) return;
     const who = this.teams[t.team];
@@ -470,6 +515,9 @@ export class Session {
       case 'sub':
         hud.toast(`換人：${e.inName} 上，${e.outName} 下`, '', true);
         break;
+      case 'call':
+        if (e.playerId === s.controlled[0]) hud.toast(CALL_TEXT[e.kind][e.ok ? 0 : 1], e.ok ? '' : 'bad', true);
+        break;
       case 'timeout':
         this.sfx.whistle();
         hud.toast(`${this.teams[e.team].abbr} 喊暫停（剩 ${e.left} 次）`, 'accent');
@@ -488,6 +536,8 @@ export class Session {
   }
 
   dispose(): void {
+    this.benchNote.classList.add('hidden');
+    this.hud.setHelpMode(false);
     disposeTree(this.scene);
     this.hud.hide();
     this.icons.forEach((el) => el.remove());

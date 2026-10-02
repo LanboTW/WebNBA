@@ -149,7 +149,7 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   } else if (mine && shootPressed && p.onGround && canPlay && !inbounder) {
     startShot(state, p, inp);
   } else if (!mine && passPressed && canPlay) {
-    attemptSteal(state, p);
+    if (!callForBall(state, p)) attemptSteal(state, p);
   } else if (jumpPressed && p.onGround && !planted) {
     p.vel.y = jumpSpeed(p);
     p.onGround = false;
@@ -620,6 +620,17 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
 }
 
 // ---------------------------------------------------------------- steals
+
+/** Solo games: pass without the ball while a teammate has it = "give me the ball". */
+function callForBall(state: GameState, p: PlayerState): boolean {
+  const b = state.ball;
+  if (state.settings.solo === undefined || state.controlled[p.team] !== p.id || b.mode !== 'held') return false;
+  const h = state.players[b.holderId];
+  if (h.team !== p.team) return false;
+  state.ballCall = { playerId: p.id, timer: 1.5 };
+  state.events.push({ type: 'call', kind: 'ball', playerId: p.id, ok: true });
+  return true;
+}
 
 function attemptSteal(state: GameState, d: PlayerState): void {
   const ball = state.ball;

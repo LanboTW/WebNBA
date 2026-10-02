@@ -1,5 +1,6 @@
 import { DT } from './constants';
 import { fouledOut } from './fouls';
+import { humanCoach } from './rules';
 import { baseRunSpeed } from './players';
 import type { BenchPlayer, GameState, PlayerInfo, PlayerState, Position } from './types';
 
@@ -108,7 +109,7 @@ export function applySubs(state: GameState, keep: number[] = []): void {
     const bench = state.bench[p.team];
     const mustLeave = fouls && fouledOut(p);
     const tired = fatigueOn(state) && p.energy < TIRED;
-    const ai = !state.settings.humanTeams.includes(p.team);
+    const ai = !humanCoach(state, p.team);
     let bestIdx = -1;
     let bestScore = -Infinity;
     bench.forEach((b, i) => {

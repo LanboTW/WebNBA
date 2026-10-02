@@ -1,9 +1,20 @@
 import * as THREE from 'three';
 
-/** 'broadcast': TV sideline view. 'end': behind the offence looking at the basket they attack. */
-export type CameraMode = 'broadcast' | 'end';
+/**
+ * 'broadcast': TV sideline view. 'end': behind the offence looking at the
+ * basket they attack. 'player': close behind your own player (career games).
+ */
+export type CameraMode = 'broadcast' | 'end' | 'player';
 
-export const CAMERA_LABEL: Record<CameraMode, string> = { broadcast: '轉播視角', end: '後場視角' };
+export const CAMERA_LABEL: Record<CameraMode, string> = { broadcast: '轉播視角', end: '後場視角', player: '球員視角' };
+
+/** For the player view: who to stand behind and what he is looking at. */
+export interface Follow {
+  x: number;
+  z: number;
+  /** Point the camera looks past him toward (the hoop on offence, the ball on defence). */
+  toward: { x: number; z: number };
+}
 
 export class GameCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -28,11 +39,23 @@ export class GameCamera {
    * focus: where the action is (the ball). attackDir: +1 / -1, the direction the
    * team with the ball is going, which the end view looks toward.
    */
-  update(focus: THREE.Vector3, attackDir: number, dt: number): void {
+  update(focus: THREE.Vector3, attackDir: number, dt: number, follow: Follow | null = null): void {
     const narrow = this.camera.aspect < 1;
     let desiredPos: THREE.Vector3;
     let desiredLook: THREE.Vector3;
-    if (this.mode === 'end') {
+    if (this.mode === 'player' && follow) {
+      const dx = follow.toward.x - follow.x;
+      const dz = follow.toward.z - follow.z;
+      // Right under the target the direction is meaningless: keep the old heading.
+      const target = Math.hypot(dx, dz) > 2.2 ? Math.atan2(dz, dx) : this.yaw;
+      this.yaw = this.initialised ? lerpAngle(this.yaw, target, 1 - Math.exp(-dt * 1.8)) : target;
+      const fx = Math.cos(this.yaw);
+      const fz = Math.sin(this.yaw);
+      const back = narrow ? 9.5 : 7.5;
+      desiredPos = new THREE.Vector3(follow.x - fx * back, narrow ? 5.6 : 4.4, follow.z - fz * back);
+      desiredLook = new THREE.Vector3(follow.x + fx * 4, 1, follow.z + fz * 4);
+      this.camera.fov = 55;
+    } else if (this.mode === 'end' || this.mode === 'player') {
       const target = attackDir >= 0 ? 0 : Math.PI;
       this.yaw = this.initialised ? lerpAngle(this.yaw, target, 1 - Math.exp(-dt * 2.2)) : target;
       const fx = Math.cos(this.yaw);
@@ -56,7 +79,7 @@ export class GameCamera {
       this.look.copy(desiredLook);
       this.initialised = true;
     }
-    const k = 1 - Math.exp(-dt * 3.5);
+    const k = 1 - Math.exp(-dt * (this.mode === 'player' && follow ? 6 : 3.5));
     this.camera.position.lerp(desiredPos, k);
     this.look.lerp(desiredLook, k);
     this.camera.lookAt(this.look);
@@ -68,6 +91,7 @@ export class GameCamera {
    */
   toWorld(moveX: number, moveZ: number): { x: number; z: number } {
     if (this.mode === 'broadcast') return { x: moveX, z: moveZ };
+    // (The player view on the bench falls back to the end view, which also uses the yaw.)
     const fx = Math.cos(this.yaw);
     const fz = Math.sin(this.yaw);
     // right = (-fz, fx), forward = (fx, fz); screen up is -moveZ.

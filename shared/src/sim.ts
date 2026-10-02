@@ -1,7 +1,7 @@
-import { aiInput } from './ai';
+import { aiInput, callScreen } from './ai';
 import { giveBall, updateBall } from './ball';
 import { updateEnergy } from './bench';
-import { BALL_RADIUS, SHOT_CLOCK, attackHoopX } from './constants';
+import { BALL_RADIUS, DT, SHOT_CLOCK, attackHoopX } from './constants';
 import { hdist, resolveCollisions, updatePlayer } from './players';
 import { TIMEOUTS_PER_GAME, handleTimeoutInput, isHuman, startPeriod, updateRules } from './rules';
 import {
@@ -158,6 +158,7 @@ export function createGame(setup: GameSetup): GameState {
     controlled: [-1, -1],
     switchLatch: [false, false],
     assign,
+    ballCall: null,
     events: [],
   };
   for (const team of [0, 1] as const) {
@@ -190,7 +191,10 @@ export function placePlayer(state: GameState, id: number, x: number, z: number):
 export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput>>): void {
   state.events = [];
   state.tick++;
-  handleSwitching(state, inputs);
+  lockSolo(state);
+  if (state.settings.solo !== undefined) handleSoloCalls(state, inputs[0]);
+  else handleSwitching(state, inputs);
+  if (state.ballCall && (state.ballCall.timer -= DT) <= 0) state.ballCall = null;
   if (state.settings.mode === 'game') handleTimeoutInput(state, inputs);
 
   const frozen =
@@ -208,6 +212,51 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
   updateBall(state);
   updateRules(state);
   updateEnergy(state);
+  lockSolo(state);
+}
+
+/** Solo games: the controls stay on your player (none while he sits). */
+function lockSolo(state: GameState): void {
+  const solo = state.settings.solo;
+  if (solo === undefined) return;
+  state.controlled[0] = state.players.find((p) => p.team === 0 && p.rosterIdx === solo)?.id ?? -1;
+}
+
+/** Your player alone has the switch button: with the ball it calls a pick, on defence a switch. */
+function handleSoloCalls(state: GameState, inp: PlayerInput | undefined): void {
+  const pressed = !!inp?.switchPlayer;
+  const edge = pressed && !state.switchLatch[0];
+  state.switchLatch[0] = pressed;
+  const me = state.players[state.controlled[0]];
+  if (!edge || !me || state.phase !== 'live') return;
+  const b = state.ball;
+  const holder = b.mode === 'held' ? state.players[b.holderId] : null;
+  if (holder === me) {
+    state.events.push({ type: 'call', kind: 'pick', playerId: me.id, ok: callScreen(state, me) });
+  } else if (holder && holder.team !== me.team) {
+    state.events.push({ type: 'call', kind: 'switch', playerId: me.id, ok: callSwitch(state, me) });
+  }
+}
+
+/** Trade men with the teammate whose man is closest to you. */
+function callSwitch(state: GameState, me: PlayerState): boolean {
+  const mine = state.assign[me.id];
+  let best: PlayerState | null = null;
+  let bestD = Infinity;
+  for (const t of state.players) {
+    if (t.team !== me.team || t === me) continue;
+    const man = state.players[state.assign[t.id]];
+    if (!man || man.id === mine) continue;
+    const d = hdist(man.pos, me.pos);
+    if (d < bestD) {
+      bestD = d;
+      best = t;
+    }
+  }
+  if (!best || bestD > 4) return false;
+  state.assign[me.id] = state.assign[best.id];
+  state.assign[best.id] = mine;
+  return true;
 }
 
 /** Switch button: jump to the teammate nearest the ball (next nearest if already there). */

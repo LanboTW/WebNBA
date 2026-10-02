@@ -7,12 +7,22 @@ const SPRINT_AT = 0.92;
 type ButtonId = 'shoot' | 'pass' | 'jump' | 'switch' | 'timeout' | 'menu' | 'camera';
 
 /** What the player is doing right now, so the big buttons can say what they do. */
-export type TouchMode = 'offense' | 'defense' | 'none';
+export type TouchMode = 'offense' | 'offball' | 'defense' | 'none';
 
 const LABELS: Record<TouchMode, Record<'shoot' | 'pass' | 'jump', string>> = {
   offense: { shoot: '投籃', pass: '傳球', jump: '跳' },
+  // Career games: a teammate has the ball.
+  offball: { shoot: '投籃', pass: '要球', jump: '跳' },
   defense: { shoot: '緊迫防守', pass: '抄截', jump: '蓋帽' },
   none: { shoot: '投籃', pass: '傳球', jump: '跳' },
+};
+
+/** The small switch button: change player, or in career games call a pick / a switch. */
+const SWITCH_LABEL: Record<TouchMode, [string, string]> = {
+  offense: ['換人', '擋拆'],
+  offball: ['換人', '擋拆'],
+  defense: ['換人', '換防'],
+  none: ['換人', '換人'],
 };
 
 /**
@@ -31,6 +41,7 @@ export class TouchControls {
   private readonly held = new Set<ButtonId>();
   private readonly buttons = new Map<ButtonId, HTMLElement>();
   private mode: TouchMode = 'none';
+  private solo = false;
   /** One-shot UI presses (menu, camera) for the frame loop to pick up. */
   private readonly taps = new Set<ButtonId>();
 
@@ -127,10 +138,14 @@ export class TouchControls {
     for (const el of this.buttons.values()) el.classList.remove('on');
   }
 
-  setMode(mode: TouchMode): void {
-    if (mode === this.mode) return;
+  setMode(mode: TouchMode, solo = false): void {
+    if (mode === this.mode && solo === this.solo) return;
     this.mode = mode;
+    this.solo = solo;
     for (const id of ['shoot', 'pass', 'jump'] as const) this.buttons.get(id)!.textContent = LABELS[mode][id];
+    this.buttons.get('switch')!.textContent = SWITCH_LABEL[mode][solo ? 1 : 0];
+    // Nobody to call timeouts for in a career game: the coach does that.
+    this.buttons.get('timeout')!.classList.toggle('hidden', solo);
   }
 
   /** UI buttons pressed since last asked (menu, camera). */

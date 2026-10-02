@@ -102,8 +102,8 @@ export class CareerHub {
     if (act === 'play' || act === 'sim') {
       if (combineDone(c)) return;
       const teams = combineMatch(c);
-      const settings = careerGameSettings(c, (Math.random() * 2 ** 31) | 0);
       const idx = combineIndex(c);
+      const settings = careerGameSettings(c, (Math.random() * 2 ** 31) | 0, idx);
       if (act === 'sim') {
         this.busy = true;
         this.msg('模擬比賽中…');

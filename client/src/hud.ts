@@ -10,6 +10,8 @@ import {
   type TeamInfo,
 } from '@webnba/shared';
 
+type StatLine = Pick<PlayerState, 'info' | 'stats' | 'energy'>;
+
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 export function formatClock(secs: number): string {
@@ -75,7 +77,8 @@ export class Hud {
     this.setStamina(-1, null);
   }
 
-  update(state: GameState, me: PlayerState | null): void {
+  /** me: the line shown under the scoreboard (your player, also while he sits); null = spectating. */
+  update(state: GameState, me: StatLine | null): void {
     this.pts[0].textContent = String(state.score[0]);
     this.pts[1].textContent = String(state.score[1]);
     if (state.settings.mode === 'practice') {
@@ -108,7 +111,7 @@ export class Hud {
     else this.statline.textContent = '觀戰模式';
   }
 
-  private setStats(p: PlayerState, fatigue = false): void {
+  private setStats(p: StatLine, fatigue = false): void {
     const s = p.stats;
     const pct = Math.round(p.energy * 100);
     const energy = fatigue
@@ -151,6 +154,11 @@ export class Hud {
     this.toasts.appendChild(el);
     while (this.toasts.children.length > 4) this.toasts.firstChild?.remove();
     setTimeout(() => el.remove(), 1600);
+  }
+
+  /** Career games show the one-player controls (call for the ball, pick, switch). */
+  setHelpMode(solo: boolean): void {
+    this.help.classList.toggle('solo', solo);
   }
 
   toggleHelp(): void {

@@ -28,6 +28,11 @@ export function isHuman(state: GameState, team: 0 | 1): boolean {
   return state.settings.humanTeams.includes(team);
 }
 
+/** Whether a person makes this team's substitutions and timeouts (not in solo games). */
+export function humanCoach(state: GameState, team: 0 | 1): boolean {
+  return isHuman(state, team) && !(team === 0 && state.settings.solo !== undefined);
+}
+
 export function overtimeSeconds(state: GameState): number {
   return Math.max(60, Math.round((state.settings.quarterSeconds * 5) / 12));
 }
@@ -317,8 +322,10 @@ function startInbound(state: GameState, team: 0 | 1, spot: Vec3): void {
   applySubs(state);
   let passer: PlayerState | null = null;
   let bestD = Infinity;
+  // A career player is never stuck taking the ball out: a teammate inbounds to him.
+  const solo = team === 0 ? state.settings.solo : undefined;
   for (const p of state.players) {
-    if (p.team !== team) continue;
+    if (p.team !== team || (solo !== undefined && p.rosterIdx === solo)) continue;
     const d = hdist(p.pos, spot);
     if (d < bestD) {
       bestD = d;
@@ -500,7 +507,7 @@ export function handleTimeoutInput(state: GameState, inputs: Partial<Record<0 | 
     if (state.phase === 'timeout') {
       const t = state.timeout!;
       if (!t.ready.includes(team)) t.ready.push(team);
-    } else if (canCallTimeout(state, team)) {
+    } else if (humanCoach(state, team) && canCallTimeout(state, team)) {
       callTimeout(state, team);
     }
   }
@@ -600,7 +607,7 @@ function updateTimeout(state: GameState): void {
 /** AI coaches stop an opponent's run at the next dead ball. */
 function maybeAiTimeout(state: GameState): boolean {
   for (const team of [0, 1] as const) {
-    if (isHuman(state, team) || state.timeoutsLeft[team] <= 1) continue;
+    if (humanCoach(state, team) || state.timeoutsLeft[team] <= 1) continue;
     if (state.run.team !== team && state.run.pts >= 8 && canCallTimeout(state, team)) {
       callTimeout(state, team);
       return true;

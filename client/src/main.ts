@@ -337,9 +337,16 @@ let careerPlay: { rosterIdx: number; done: (state: GameState) => void } | null =
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
   stopShowcase();
   session?.dispose();
-  const onViewChange = (view: CameraMode) => {
-    viewSel.value = view;
-    save('view', view);
+  // Career games keep their own camera choice (the player view by default).
+  const career = settings.solo !== undefined;
+  const view = career ? load('careerView', 'player') : viewSel.value;
+  const onViewChange = (next: CameraMode) => {
+    if (career) {
+      save('careerView', next);
+      return;
+    }
+    viewSel.value = next;
+    save('view', next);
   };
   session = new Session(
     teams,
@@ -349,7 +356,7 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
     sfx,
     { onFinal: showFinal, onViewChange },
     window.innerWidth / window.innerHeight,
-    viewSel.value as CameraMode,
+    view as CameraMode,
   );
   graphics.attach(session.scene, session.arena);
   // Dev-only hook for inspecting the sim from the browser console.
@@ -392,8 +399,6 @@ function playCareer(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>
   startSession(teams, settings);
   careerPlay = { rosterIdx, done };
   $('#quitBtn').textContent = '離開（電腦打完這場）';
-  const me = session!.state.players.find((p) => p.team === 0 && p.rosterIdx === rosterIdx);
-  if (me) session!.state.controlled[0] = me.id;
 }
 
 // ------------------------------------------------------------ box score
@@ -406,7 +411,8 @@ function showBox(title: string, canResume: boolean): void {
   $('#boxTables').innerHTML = renderBoxScore(session.state, session.teams);
   const s = session.state;
   const team = session.team;
-  const subs = canResume && s.settings.mode === 'game' && team >= 0;
+  // Career games: the coach handles substitutions.
+  const subs = canResume && s.settings.mode === 'game' && team >= 0 && !session.solo;
   $('#boxLineup').classList.toggle('hidden', !subs);
   if (subs) pauseLineup.render(s, team as 0 | 1, session.subActions);
   $('#resumeBtn').classList.toggle('hidden', !canResume);
