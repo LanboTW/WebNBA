@@ -1,3 +1,4 @@
+import customJson from '../data/custom-teams.json';
 import rosterJson from '../data/roster.json';
 import type { PlayerInfo, Position, Ratings, TeamInfo } from './types';
 
@@ -27,7 +28,13 @@ export interface RawRoster {
   season: string;
   updated?: string;
   ratingKeys: string[];
-  teams: { abbr: string; name: string; primary: string; secondary: string; players: RawPlayer[] }[];
+  teams: { abbr: string; name: string; primary: string; secondary: string; group?: string; players: RawPlayer[] }[];
+}
+
+/** shared/data/custom-teams.json: hand-made teams the roster update tool never touches. */
+export interface RawCustomTeams {
+  ratingKeys: string[];
+  teams: RawRoster['teams'];
 }
 
 export function parseRoster(raw: RawRoster): TeamInfo[] {
@@ -37,6 +44,7 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
     name: t.name,
     primary: t.primary,
     secondary: t.secondary,
+    ...(t.group ? { group: t.group } : {}),
     players: t.players.map(([name, number, heightM, position, values]): PlayerInfo => {
       const ratings = {} as Ratings;
       for (const k of RATING_KEYS) ratings[k] = 50;
@@ -47,7 +55,13 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
 }
 
 export const ROSTER_SEASON = (rosterJson as RawRoster).season;
-export const TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster);
+export const NBA_TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster);
+export const CUSTOM_TEAMS: TeamInfo[] = parseRoster({ season: '', ...(customJson as RawCustomTeams) }).map((t) => ({
+  ...t,
+  group: t.group ?? '自訂隊伍',
+}));
+/** NBA teams first, then custom teams in file order. */
+export const TEAMS: TeamInfo[] = [...NBA_TEAMS, ...CUSTOM_TEAMS];
 
 export function findTeam(abbr: string): TeamInfo {
   return TEAMS.find((t) => t.abbr === abbr) ?? TEAMS[0];
@@ -70,7 +84,7 @@ export const ROSTER_UPDATED: string | undefined = (rosterJson as RawRoster).upda
  * Fingerprint of the roster. Server and page decode each other's game state
  * by roster index, so both must run the same roster (see PROTOCOL_VERSION).
  */
-export const ROSTER_VERSION = fnv1a(JSON.stringify((rosterJson as RawRoster).teams));
+export const ROSTER_VERSION = fnv1a(JSON.stringify([(rosterJson as RawRoster).teams, (customJson as RawCustomTeams).teams]));
 
 function fnv1a(text: string): string {
   let h = 0x811c9dc5;

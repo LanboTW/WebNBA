@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import {
   ROSTER_SEASON,
   ROSTER_UPDATED,
-  TEAMS,
+  CUSTOM_TEAMS,
+  NBA_TEAMS,
   decodeState,
   findTeam,
   normaliseRoomCode,
@@ -75,9 +76,15 @@ const ruleBoxes = {
 const pauseLineup = new LineupPanel($('#boxLineup'));
 $('#season').textContent = ROSTER_UPDATED ? `${ROSTER_SEASON}（${ROSTER_UPDATED} 更新）` : ROSTER_SEASON;
 
+// NBA teams alphabetically, then each custom group (historical, Taiwan, ...) in file order.
+const teamGroups = new Map<string, TeamInfo[]>([[`NBA ${ROSTER_SEASON}`, [...NBA_TEAMS].sort((a, b) => a.name.localeCompare(b.name))]]);
+for (const t of CUSTOM_TEAMS) teamGroups.set(t.group!, [...(teamGroups.get(t.group!) ?? []), t]);
 for (const sel of [homeSel, awaySel, lobbyTeam]) {
-  for (const t of [...TEAMS].sort((a, b) => a.name.localeCompare(b.name))) {
-    sel.add(new Option(`${t.name} (${t.abbr})　${teamRating(t)}`, t.abbr));
+  for (const [label, teams] of teamGroups) {
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const t of teams) group.appendChild(new Option(`${t.name} (${t.abbr})　${teamRating(t)}`, t.abbr));
+    sel.appendChild(group);
   }
 }
 homeSel.value = load('home', 'GSW');

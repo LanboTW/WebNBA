@@ -1,0 +1,5 @@
+{
+  "$comment": "Custom teams (historical, Taiwan, fun...). Same player format as roster.json; the roster update tool never touches this file. Each team: abbr (unique, up to 5 letters/digits), name, primary/secondary (#RRGGBB), optional group (menu heading), 5-10 players, first five start.",
+  "ratingKeys": ["speed", "jump", "close", "mid", "three", "ft", "handle", "pass", "steal", "block", "defense", "rebound", "stamina"],
+  "teams": []
+}

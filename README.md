@@ -134,6 +134,35 @@ npm run roster:update -- --yes   # 不詢問直接寫入
 - 變數名稱沒有 `VITE_` 前綴，前端建置永遠不會把它打包進網頁。
 - 工具輸出的所有訊息都會遮蔽金鑰，錯誤訊息只有路徑和狀態碼，不含請求標頭。
 
+### 自訂隊伍（歷史、台灣、彩蛋隊）
+
+自訂隊伍寫在 `shared/data/custom-teams.json`，名單更新工具永遠不會碰這個檔案。選單會把它們依 `group` 分組，排在 NBA 30 隊後面：
+
+```json
+{
+  "ratingKeys": ["speed", "jump", "close", "mid", "three", "ft", "handle", "pass", "steal", "block", "defense", "rebound", "stamina"],
+  "teams": [
+    {
+      "group": "歷史隊伍", "abbr": "CHI96", "name": "1995-96 Chicago Bulls", "primary": "#CE1141", "secondary": "#000000",
+      "players": [
+        ["Ron Harper", 9, 1.98, "PG", [75, 70, 74, 70, 68, 70, 74, 74, 75, 45, 82, 50, 80]],
+        ["...", 23, 1.98, "SG", [/* 13 個能力值 */]]
+      ]
+    }
+  ]
+}
+```
+
+| 欄位 | 規則 |
+| --- | --- |
+| `group` | 選單分組標題，例如「歷史隊伍」「台灣」「彩蛋隊伍」，沒寫就歸到「自訂隊伍」 |
+| `abbr` | 2–5 個大寫英文或數字，不能和其他隊重複；會顯示在記分板和中場地板 |
+| `name` | 隊名，可以用中文 |
+| `primary` / `secondary` | `#RRGGBB`；主隊時球場和觀眾席會用主色 |
+| `players` | 5–10 人、前 5 人先發；格式同 `roster.json`；名字可以用中文；身高 1.4–2.6 公尺 |
+
+改完執行 `npm test`，裡面有一項會檢查這個檔案（縮寫重複、顏色格式、人數、能力值範圍都會擋下來），通過後 commit、push 即可。新增隊伍也會改變連線版本，開著舊網頁的人會被提醒重新整理。
+
 ## 部署到 Render
 
 `render.yaml` 定義了遊戲伺服器（Free 方案的 Web Service），它也提供完整網頁，這個網址可以直接線上對戰。每次 push 到 `main` 都會自動重新部署。

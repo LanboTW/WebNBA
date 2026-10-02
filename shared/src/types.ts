@@ -36,6 +36,8 @@ export interface TeamInfo {
   name: string;
   primary: string;
   secondary: string;
+  /** Menu group for custom teams (historical, Taiwan, fun...); NBA teams have none. */
+  group?: string;
   /** First five are the starters. */
   players: PlayerInfo[];
 }

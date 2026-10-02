@@ -6,6 +6,7 @@ import {
   mergeRoster,
   normaliseName,
   parseHeight,
+  validateCustomTeams,
   validateRoster,
   type RawRoster,
   type SourcePlayer,
@@ -124,5 +125,29 @@ describe('roster update', () => {
     process.env.BALLDONTLIE_API_KEY = 'secret-key-123456';
     expect(redact('failed with secret-key-123456 in it')).toBe('failed with <BALLDONTLIE_API_KEY> in it');
     delete process.env.BALLDONTLIE_API_KEY;
+  });
+});
+
+describe('custom teams', () => {
+  const custom = JSON.parse(readFileSync(new URL('../../shared/data/custom-teams.json', import.meta.url), 'utf8'));
+  const live = JSON.parse(readFileSync(new URL('../../shared/data/roster.json', import.meta.url), 'utf8')) as RawRoster;
+
+  it('custom-teams.json is valid', () => {
+    expect(validateCustomTeams(custom, live.teams)).toEqual([]);
+  });
+
+  it('catches clashing abbreviations, bad colours and short benches', () => {
+    const bad = {
+      ratingKeys: real.ratingKeys,
+      teams: [
+        { abbr: 'GSW', name: 'Fake', primary: '#112233', secondary: '#445566', players: real.teams[0].players },
+        { abbr: 'toolong', name: 'X', primary: 'red', secondary: '#445566', players: real.teams[0].players.slice(0, 3) },
+      ],
+    };
+    const errors = validateCustomTeams(bad, real.teams);
+    expect(errors).toContain('GSW：縮寫和其他隊伍重複');
+    expect(errors.some((e) => e.includes('2–5'))).toBe(true);
+    expect(errors.some((e) => e.includes('#RRGGBB'))).toBe(true);
+    expect(errors.some((e) => e.includes('有 3 人'))).toBe(true);
   });
 });
