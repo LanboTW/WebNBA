@@ -5,13 +5,10 @@
   "workspaces": [
     "shared",
     "client",
-    "server",
     "tools"
   ],
   "scripts": {
     "dev": "npm run dev -w client",
-    "server": "npm run dev -w server",
-    "start": "npm run build && npm run start -w server",
     "build": "npm run build -w client",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",

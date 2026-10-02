@@ -66,7 +66,13 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
 }
 
 export const ROSTER_SEASON = (rosterJson as RawRoster).season;
-export const NBA_TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster).map((t) => ({ ...t, logo: `nba/${t.abbr}.png` }));
+const EAST = new Set(['ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DET', 'IND', 'MIA', 'MIL', 'NYK', 'ORL', 'PHI', 'TOR', 'WAS']);
+
+export const NBA_TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster).map((t) => ({
+  ...t,
+  logo: `nba/${t.abbr}.png`,
+  conference: EAST.has(t.abbr) ? 'East' : 'West',
+}));
 export const CUSTOM_TEAMS: TeamInfo[] = parseRoster({ season: '', ...(customJson as unknown as RawCustomTeams) }).map((t) => ({
   ...t,
   group: t.group ?? '自訂隊伍',
@@ -92,8 +98,8 @@ export function teamRating(team: TeamInfo): number {
 export const ROSTER_UPDATED: string | undefined = (rosterJson as RawRoster).updated;
 
 /**
- * Fingerprint of the roster. Server and page decode each other's game state
- * by roster index, so both must run the same roster (see PROTOCOL_VERSION).
+ * Fingerprint of the roster. Career saves refer to players by roster index,
+ * so a save remembers which roster it was made with.
  * Looks are left out: they only change how players are drawn.
  */
 const simTeams = (teams: RawRoster['teams']) => teams.map((t) => ({ ...t, players: t.players.map((p) => p.slice(0, 5)) }));

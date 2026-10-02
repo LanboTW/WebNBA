@@ -1,23 +1,19 @@
 import * as THREE from 'three';
 import {
   DT,
-  NO_INPUT,
   attackHoopX,
   cancelSub,
   choosePassTarget,
   createGame,
-  decodeState,
   passIcons,
   giveBall,
   requestSub,
   step,
-  type ClientMessage,
   type FoulKind,
   type GameEvent,
   type GameSettings,
   type GameState,
   type PlayerInput,
-  type ServerMessage,
   type ShotQuality,
   type TeamInfo,
   type Vec3,
@@ -59,15 +55,10 @@ interface Snapshot {
   ball: Vec3;
 }
 
-/** A match played on a server: the state is authoritative there, predicted here. */
-export interface OnlineLink {
-  team: 0 | 1;
-  state: GameState;
-  send(msg: ClientMessage): void;
+export interface SessionOptions {
+  /** Menu background: one player under a spotlight, no crowd. */
+  showcase?: boolean;
 }
-
-/** Unacknowledged inputs kept for replay (about 1.5 s). */
-const MAX_PENDING = 45;
 
 export interface SessionCallbacks {
   onFinal(state: GameState): void;
@@ -87,34 +78,19 @@ export class Session {
   private acc = 0;
   /** The team this screen controls, or -1 when only watching. */
   readonly team: 0 | 1 | -1;
-  private readonly online: OnlineLink | null;
-  private seq = 0;
-  private pending: { seq: number; input: PlayerInput; sent: number }[] = [];
-  private remoteInput: PlayerInput = NO_INPUT;
-  private serverTick = -1;
-  /** Visual error left over from prediction corrections; decays to zero. */
-  private readonly offsets: THREE.Vector3[];
   /** Roster index each player model was built for (substitutions rebuild it). */
   private readonly builtFor: number[];
-  /** Round trip in ms (input sent until the server applied it and said so). */
-  ping = 0;
   private lastInput: PlayerInput | null = null;
   private readonly icons: HTMLElement[];
   private readonly timeoutPanel = document.querySelector<HTMLElement>('#timeoutPanel')!;
   private readonly timeoutLineup = new LineupPanel(document.querySelector<HTMLElement>('#timeoutLineup')!);
   private timeoutShown = false;
   private lineupKey = '';
-  /** Substitution requests from the lineup boards: applied here and, online, sent to the server. */
+  /** Substitution requests from the lineup boards. */
   readonly subActions: SubActions = {
     state: () => this.state,
-    request: (team, slotId, rosterIdx) => {
-      requestSub(this.state, team, slotId, rosterIdx);
-      this.online?.send({ t: 'sub', slotId, rosterIdx });
-    },
-    cancel: (team, slotId) => {
-      cancelSub(this.state, team, slotId);
-      this.online?.send({ t: 'cancelSub', slotId });
-    },
+    request: (team, slotId, rosterIdx) => requestSub(this.state, team, slotId, rosterIdx),
+    cancel: (team, slotId) => cancelSub(this.state, team, slotId),
   };
   /** "Continue" clicked on the timeout screen: sent as a timeout press on the next tick. */
   private resumePress = false;
@@ -129,15 +105,13 @@ export class Session {
     private readonly callbacks: SessionCallbacks,
     aspect: number,
     view: CameraMode = 'broadcast',
-    online: OnlineLink | null = null,
+    options: SessionOptions = {},
   ) {
     const practice = settings.mode === 'practice';
-    this.online = online;
-    this.state = online ? online.state : createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
-    this.team = online ? online.team : this.state.settings.humanTeams.includes(0) ? 0 : -1;
-    this.offsets = [...this.state.players, null].map(() => new THREE.Vector3());
+    this.state = createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
+    this.team = this.state.settings.humanTeams.includes(0) ? 0 : -1;
     this.builtFor = this.state.players.map((p) => p.rosterIdx);
-    this.arena = buildArena(this.scene, teams[0]);
+    this.arena = buildArena(this.scene, teams[0], !!options.showcase);
     this.cam = new GameCamera(aspect, view);
     this.playerViews = this.state.players.map((p) => {
       const v = new PlayerView(p.info, kitFor(teams[p.team], p.team === 0));
@@ -154,7 +128,7 @@ export class Session {
       new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9, depthWrite: false }),
     );
     this.ring.rotation.x = -Math.PI / 2;
-    this.ring.visible = this.team >= 0;
+    this.ring.visible = this.team >= 0 && !options.showcase;
     this.scene.add(this.ring);
 
     if (practice) {
@@ -206,20 +180,7 @@ export class Session {
       if (s.players[0].action === 'normal') giveBall(s, 0);
     }
 
-    if (this.online) {
-      // Online the match never pauses; Esc only opens the stats screen.
-      this.acc += Math.min(0.25, dt);
-      while (this.acc >= DT) {
-        this.prev = this.snapshot();
-        const input = this.humanInput();
-        const seq = ++this.seq;
-        this.pending.push({ seq, input, sent: performance.now() });
-        if (this.pending.length > MAX_PENDING) this.pending.shift();
-        this.online.send({ t: 'input', seq, input });
-        this.predict(this.state, input);
-        this.acc -= DT;
-      }
-    } else if (!this.paused) {
+    if (!this.paused) {
       this.acc += Math.min(0.25, dt);
       while (this.acc >= DT) {
         this.prev = this.snapshot();
@@ -232,62 +193,18 @@ export class Session {
     this.render(this.frozen ? 1 : this.acc / DT, dt);
   }
 
-  /** Stats screen open in a local game stops time; online it does not. */
+  /** The stats screen stops time. */
   get frozen(): boolean {
-    return this.paused && !this.online;
+    return this.paused;
   }
 
-  get isOnline(): boolean {
-    return !!this.online;
+  get views(): readonly PlayerView[] {
+    return this.playerViews;
   }
 
   /** Team whose scores are shown as "ours" in toasts. */
   private get myColor(): 0 | 1 {
     return this.team === 1 ? 1 : 0;
-  }
-
-  /** Local guess at the next tick: our input, plus the other human's last known one. */
-  private predict(state: GameState, input: PlayerInput): void {
-    const team = this.team as 0 | 1;
-    step(state, { [team]: input, [1 - team]: this.remoteInput } as Record<0 | 1, PlayerInput>);
-  }
-
-  /**
-   * Authoritative state from the server: adopt it, replay the inputs it has
-   * not applied yet, and keep the visual difference as a decaying offset so
-   * corrections slide instead of snapping.
-   */
-  applySnapshot(msg: Extract<ServerMessage, { t: 'snap' }>): void {
-    if (msg.tick <= this.serverTick) return;
-    this.serverTick = msg.tick;
-    const team = this.team as 0 | 1;
-    const acked = this.pending.find((p) => p.seq === msg.ack);
-    if (acked) {
-      const rtt = performance.now() - acked.sent;
-      this.ping = this.ping ? this.ping * 0.8 + rtt * 0.2 : rtt;
-    }
-    this.pending = this.pending.filter((p) => p.seq > msg.ack);
-    this.remoteInput = msg.inputs[(1 - team) as 0 | 1] ?? NO_INPUT;
-
-    const old = this.state;
-    const next = decodeState(msg.state, this.teams);
-    this.state = next;
-    this.prev = this.snapshot();
-    this.pending.forEach((p, i) => {
-      if (i === this.pending.length - 1) this.prev = this.snapshot();
-      this.predict(next, p.input);
-    });
-    next.events = [];
-
-    const shift = (o: THREE.Vector3, a: Vec3, b: Vec3) => {
-      o.x += a.x - b.x;
-      o.y += a.y - b.y;
-      o.z += a.z - b.z;
-      if (o.lengthSq() > 9) o.set(0, 0, 0); // a reset (inbound, free throws): just cut
-    };
-    next.players.forEach((p, i) => shift(this.offsets[i], old.players[i].pos, p.pos));
-    shift(this.offsets[next.players.length], old.ball.pos, next.ball.pos);
-    msg.events.forEach((e) => this.handleEvent(e));
   }
 
   /** Keyboard/pad input plus icon passing: digits 1-4 pass straight to that teammate. */
@@ -357,14 +274,10 @@ export class Session {
         this.rebuildView(i);
       }
     });
-    const decay = Math.exp(-dt * 10);
-    for (const o of this.offsets) o.multiplyScalar(decay);
-    // A held ball rides with its holder's correction so it stays in the hand.
-    const ballOffset = this.offsets[holder >= 0 ? holder : s.players.length];
-    const ballPos = lerpV(this.prev.ball, s.ball.pos, alpha, new THREE.Vector3()).add(ballOffset);
+    const ballPos = lerpV(this.prev.ball, s.ball.pos, alpha, new THREE.Vector3());
     s.players.forEach((p, i) => {
       const a = this.prev.players[i];
-      lerpV(a.pos, p.pos, alpha, tmp).add(this.offsets[i]);
+      lerpV(a.pos, p.pos, alpha, tmp);
       this.playerViews[i].update(
         p,
         tmp,
@@ -425,7 +338,7 @@ export class Session {
     const s = this.state;
     const t = s.phase === 'timeout' ? s.timeout : null;
     const show = !!t && this.team >= 0 && !this.paused;
-    // Online the lineup can change under us (server snapshots): redraw when it does.
+    // Redraw when the lineup changes under the open board.
     const key = show ? JSON.stringify([s.subQueue, s.players.map((p) => p.rosterIdx)]) : '';
     if (show !== this.timeoutShown || key !== this.lineupKey) {
       this.timeoutShown = show;

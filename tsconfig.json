@@ -22,8 +22,6 @@
     "shared/src",
     "shared/test",
     "client/src",
-    "server/src",
-    "server/test",
     "tools/src",
     "tools/test"
   ]

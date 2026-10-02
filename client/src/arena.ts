@@ -12,17 +12,24 @@ export interface Arena extends QualityAware {
   swishNet(hoopX: number): void;
   cheer(): void;
   update(dt: number): void;
+  /** Showcase only: centre the spotlight on this spot of the floor. */
+  spotOn(x: number, z: number): void;
 }
 
-export function buildArena(scene: THREE.Scene, home: TeamInfo): Arena {
+/**
+ * The court and everything around it. A showcase arena (the menu background)
+ * has no crowd and is dark apart from one spotlight that follows the player.
+ */
+export function buildArena(scene: THREE.Scene, home: TeamInfo, showcase = false): Arena {
   scene.background = new THREE.Color(0x07080d);
   scene.fog = new THREE.Fog(0x07080d, 40, 80);
 
-  const key = addLights(scene);
+  const lights = addLights(scene, showcase);
+  const key = lights.key;
   const floor = buildFloor(home);
   scene.add(floor.group);
   addCeiling(scene);
-  const crowd = buildStands(scene, home);
+  const crowd: Crowd = showcase ? { root: new THREE.Group(), setDensity() {} } : buildStands(scene, home);
   const nets = [buildHoop(scene, 1, home), buildHoop(scene, -1, home)];
 
   const netAnim = [0, 0];
@@ -39,7 +46,8 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo): Arena {
         key.shadow.map?.dispose();
         key.shadow.map = null;
       }
-      floor.setReflection(q === 'high', renderer);
+      floor.setReflection(q === 'high' && !showcase, renderer);
+      if (showcase) scene.environmentIntensity = 0.12;
       crowd.setDensity(q === 'low' ? 0.55 : q === 'medium' ? 0.8 : 1, q !== 'low');
     },
     swishNet(hoopX) {
@@ -47,6 +55,10 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo): Arena {
     },
     cheer() {
       cheerT = 2.2;
+    },
+    spotOn(x, z) {
+      lights.spot?.position.set(x + 1.5, 9, z + 3);
+      lights.spot?.target.position.set(x, 0, z);
     },
     update(dt) {
       nets.forEach((net, i) => {
@@ -64,9 +76,9 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo): Arena {
   };
 }
 
-function addLights(scene: THREE.Scene): THREE.DirectionalLight {
-  scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x3a2a1a, 0.9));
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+function addLights(scene: THREE.Scene, showcase: boolean): { key: THREE.DirectionalLight; spot: THREE.SpotLight | null } {
+  scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x3a2a1a, showcase ? 0.12 : 0.9));
+  const key = new THREE.DirectionalLight(0xffffff, showcase ? 0.25 : 2.2);
   key.position.set(6, 22, 10);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -79,10 +91,18 @@ function addLights(scene: THREE.Scene): THREE.DirectionalLight {
   c.far = 60;
   key.shadow.bias = -0.0005;
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xfff1dd, 0.6);
+  const fill = new THREE.DirectionalLight(0xfff1dd, showcase ? 0.08 : 0.6);
   fill.position.set(-10, 15, -8);
   scene.add(fill);
-  return key;
+  if (!showcase) return { key, spot: null };
+  // One spotlight carries the scene; it casts the only shadow.
+  key.castShadow = false;
+  const spot = new THREE.SpotLight(0xfff4e2, 260, 30, 0.42, 0.55, 2);
+  spot.castShadow = true;
+  spot.shadow.mapSize.set(1024, 1024);
+  spot.shadow.bias = -0.0005;
+  scene.add(spot, spot.target);
+  return { key, spot };
 }
 
 /** Banks of arena lights over the court; bright enough to bloom on high quality. */

@@ -105,6 +105,8 @@ export class PlayerView {
   /** Where to draw the ball while this player dribbles. */
   readonly dribbleBall = new THREE.Vector3();
   dribbling = false;
+  /** Chance per bounce of a show move while standing (the menu showcase turns it up). */
+  flair = 0.1;
 
   constructor(info: PlayerState['info'], kit: Kit) {
     const model = buildPlayerModel(info, kit);
@@ -394,7 +396,10 @@ export class PlayerView {
     const r = Math.random();
     // Heading away from the ball hand: switch hands.
     if (vRight * this.hand < -1.5 && r < 0.75) return { kind: r < 0.5 ? 'cross' : r < 0.65 ? 'legs' : 'behind', from: this.hand };
-    if (speed < 2.5 && r < 0.1) return { kind: r < 0.045 ? 'cross' : r < 0.085 ? 'legs' : 'behind', from: this.hand };
+    if (speed < 2.5 && r < this.flair) {
+      const k = r / this.flair;
+      return { kind: k < 0.45 ? 'cross' : k < 0.85 ? 'legs' : 'behind', from: this.hand };
+    }
     return null;
   }
 

@@ -8,6 +8,7 @@
   </head>
   <body>
     <div id="app"></div>
+    <div id="fade"></div>
 
     <div id="hud" class="hidden">
       <div id="scoreboard">
@@ -26,7 +27,6 @@
       <div id="meter"><div class="zone good"></div><div class="zone perfect"></div><div class="fill"></div></div>
       <div id="passIcons"></div>
       <div id="toasts"></div>
-      <div id="netinfo" class="hidden"></div>
       <div id="help">
         <b>進攻</b>　WASD 移動　Shift 加速<br />
         J 投籃（按住，綠區放開）　1–4 傳給頭上號碼的隊友<br />
@@ -37,10 +37,25 @@
       </div>
     </div>
 
-    <div id="menu" class="overlay">
-      <div class="panel">
+    <div id="home" class="overlay screen">
+      <div class="homebar"><span id="authStatus" class="auth">訪客</span></div>
+      <div class="homemain">
         <h1>WebNBA</h1>
         <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
+        <nav class="homenav">
+          <button type="button" data-go="quick" class="primary"><b>快速模式</b><small>選兩隊，對戰電腦或觀戰</small></button>
+          <button type="button" data-go="career"><b>生涯模式</b><small>自創球員，從新秀打到名人堂</small></button>
+          <button type="button" data-go="practice"><b>練習</b><small>一個人投籃、運球</small></button>
+          <button type="button" data-go="settings"><b>設定</b><small>畫質、視角、規則</small></button>
+        </nav>
+        <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
+      </div>
+      <div id="showTag" class="showtag"></div>
+    </div>
+
+    <div id="quick" class="overlay screen side-panel hidden">
+      <div class="panel">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>快速模式</h2></div>
         <div class="hidden"><select id="homeSel"></select><select id="awaySel"></select></div>
         <div class="matchup">
           <button type="button" class="side" id="homeSide"><span class="seatname">你的隊伍</span><div id="homeCard" class="card"></div></button>
@@ -49,13 +64,15 @@
         </div>
         <p class="hint" id="pickHint">點上面的卡片切換要選哪一邊，再點下面的隊徽選隊</p>
         <div id="menuPicker"></div>
+        <div class="buttons phone-steps">
+          <button type="button" id="stepBack" class="hidden">← 改你的隊伍</button>
+          <button type="button" id="stepNext">下一步：選對手 →</button>
+        </div>
         <div class="row">
           <label>模式
             <select id="modeSel">
               <option value="game">對戰電腦</option>
               <option value="watch">電腦對戰（觀戰）</option>
-              <option value="practice">投籃練習</option>
-              <option value="online">線上對戰（和朋友）</option>
             </select>
           </label>
           <label>難度
@@ -75,62 +92,67 @@
             </select>
           </label>
         </div>
-        <details id="advanced">
-          <summary>進階設定</summary>
-          <div class="row">
-            <label>視角
-              <select id="viewSel">
-                <option value="broadcast">轉播視角（側面）</option>
-                <option value="end">後場視角（跟著進攻方向）</option>
-              </select>
-            </label>
-            <label>畫質
-              <select id="qualitySel">
-                <option value="auto">自動</option>
-                <option value="low">低</option>
-                <option value="medium">中</option>
-                <option value="high">高</option>
-              </select>
-            </label>
-          </div>
-          <div class="row toggles">
-            <label class="check"><input type="checkbox" id="ruleFouls" checked />犯規與罰球</label>
-            <label class="check"><input type="checkbox" id="ruleViolations" checked />違例（3 秒／8 秒／回場／5 秒）</label>
-            <label class="check"><input type="checkbox" id="ruleFatigue" checked />體力與自動換人</label>
-            <label class="check"><input type="checkbox" id="officialLogos" checked />顯示官方隊徽</label>
-          </div>
-        </details>
-        <div id="onlineBox" class="row hidden">
-          <label>暱稱<input id="nameInput" maxlength="16" placeholder="玩家" autocomplete="off" /></label>
-          <label>房間代碼（加入朋友的房間）<input id="codeInput" maxlength="6" placeholder="例如 K7QX2M" autocomplete="off" /></label>
+        <div class="buttons">
+          <button type="button" id="randomBtn">隨機對戰</button>
+          <button type="button" id="startBtn" class="primary">開始比賽</button>
         </div>
-        <p id="onlineMsg" class="msg hidden"></p>
-        <div class="buttons stack">
-          <button id="startBtn" class="primary">開始比賽</button>
-          <button id="joinBtn" class="hidden">加入房間</button>
-        </div>
-        <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
       </div>
     </div>
 
-    <div id="lobby" class="overlay hidden">
+    <div id="practice" class="overlay screen side-panel hidden">
       <div class="panel">
-        <h2>房間 <span id="lobbyCode" class="code"></span></h2>
-        <p class="sub">把代碼或連結傳給朋友，對方加入後由房主開始。<button id="copyLink" class="small">複製連結</button></p>
-        <div class="matchup">
-          <div class="seat"><div class="seatname" id="seatName0"></div><div id="seatCard0" class="card"></div></div>
-          <div class="vs">VS</div>
-          <div class="seat"><div class="seatname" id="seatName1"></div><div id="seatCard1" class="card"></div></div>
-        </div>
-        <p class="hint">選你的隊伍（雙方可以選同一隊）</p>
-        <select id="lobbyTeam" class="hidden"></select>
-        <div id="lobbyPicker"></div>
-        <p class="fine left" id="lobbySettings"></p>
-        <p class="msg" id="lobbyStatus"></p>
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>練習</h2></div>
+        <p class="hint">選一支球隊，再選要練的球員</p>
+        <select id="practiceTeam" class="hidden"></select>
+        <div id="practicePicker"></div>
+        <div id="practicePlayers" class="plist"></div>
         <div class="buttons">
-          <button id="lobbyStart" class="primary">開始比賽</button>
-          <button id="lobbyLeave">離開房間</button>
+          <button type="button" id="practiceBtn" class="primary">開始練習</button>
         </div>
+      </div>
+    </div>
+
+    <div id="settings" class="overlay screen side-panel hidden">
+      <div class="panel">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>設定</h2></div>
+        <div class="row">
+          <label>畫質
+            <select id="qualitySel">
+              <option value="auto">自動</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+            </select>
+          </label>
+          <label>視角
+            <select id="viewSel">
+              <option value="broadcast">轉播視角（側面）</option>
+              <option value="end">後場視角（跟著進攻方向）</option>
+            </select>
+          </label>
+        </div>
+        <div class="row toggles">
+          <label class="check"><input type="checkbox" id="officialLogos" checked />顯示官方隊徽</label>
+        </div>
+        <h3>比賽規則<small>（只影響快速模式）</small></h3>
+        <div class="row toggles">
+          <label class="check"><input type="checkbox" id="ruleFouls" checked />犯規與罰球</label>
+          <label class="check"><input type="checkbox" id="ruleViolations" checked />違例（3 秒／8 秒／回場／5 秒）</label>
+          <label class="check"><input type="checkbox" id="ruleFatigue" checked />體力與自動換人</label>
+        </div>
+        <h3>操作說明</h3>
+        <p class="keys">
+          <b>進攻</b>　WASD 移動　Shift 加速　J 投籃（按住，綠區放開）　K 傳球　1–4 傳給頭上號碼的隊友　空白鍵 起跳　Shift＋J 灌籃<br />
+          <b>防守</b>　按住 U 加強防守　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
+          <b>其他</b>　T 暫停　Esc 數據／換人　C 切換視角　H 隱藏說明
+        </p>
+      </div>
+    </div>
+
+    <div id="career" class="overlay screen side-panel hidden">
+      <div class="panel">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>生涯模式</h2></div>
+        <div id="careerBody"><p class="sub">生涯模式正在建置中，敬請期待。</p></div>
       </div>
     </div>
 

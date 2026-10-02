@@ -5,4 +5,3 @@ export * from './shot';
 export * from './roster';
 export * from './sim';
 export { overtimeSeconds } from './rules';
-export * from './net';
