@@ -79,7 +79,7 @@ export class Session {
   state: GameState;
   readonly scene = new THREE.Scene();
   readonly cam: GameCamera;
-  private readonly arena: Arena;
+  readonly arena: Arena;
   private readonly playerViews: PlayerView[];
   private readonly ballView: BallView;
   private readonly ring: THREE.Mesh;

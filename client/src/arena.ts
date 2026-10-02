@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { BOARD_X, COURT, HOOP, HOOP_X, THREE_CORNER_DX, type TeamInfo } from '@webnba/shared';
+import type { Quality, QualityAware } from './graphics';
 
 const PX_PER_M = 72;
 
-export interface Arena {
+export interface Arena extends QualityAware {
   /** Index 0 is the +x hoop, index 1 the -x hoop. */
   nets: THREE.Object3D[];
   swishNet(hoopX: number): void;
@@ -15,15 +17,30 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo): Arena {
   scene.background = new THREE.Color(0x07080d);
   scene.fog = new THREE.Fog(0x07080d, 40, 80);
 
-  addLights(scene);
-  scene.add(buildFloor(home));
+  const key = addLights(scene);
+  const floor = buildFloor(home);
+  scene.add(floor.group);
+  addCeiling(scene);
   const crowd = buildStands(scene, home);
   const nets = [buildHoop(scene, 1, home), buildHoop(scene, -1, home)];
 
   const netAnim = [0, 0];
   let cheerT = 0;
+  let quality: Quality | null = null;
   return {
     nets,
+    setQuality(q, renderer) {
+      if (q === quality) return;
+      quality = q;
+      const size = q === 'high' ? 4096 : 2048;
+      if (key.shadow.mapSize.x !== size) {
+        key.shadow.mapSize.set(size, size);
+        key.shadow.map?.dispose();
+        key.shadow.map = null;
+      }
+      floor.setReflection(q === 'high', renderer);
+      crowd.setDensity(q === 'low' ? 0.55 : q === 'medium' ? 0.8 : 1, q !== 'low');
+    },
     swishNet(hoopX) {
       netAnim[hoopX > 0 ? 0 : 1] = 1;
     },
@@ -40,13 +57,13 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo): Arena {
       });
       if (cheerT > 0) {
         cheerT = Math.max(0, cheerT - dt);
-        crowd.position.y = Math.abs(Math.sin(cheerT * 14)) * 0.12 * Math.min(1, cheerT);
+        crowd.root.position.y = Math.abs(Math.sin(cheerT * 14)) * 0.12 * Math.min(1, cheerT);
       }
     },
   };
 }
 
-function addLights(scene: THREE.Scene): void {
+function addLights(scene: THREE.Scene): THREE.DirectionalLight {
   scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x3a2a1a, 0.9));
   const key = new THREE.DirectionalLight(0xffffff, 2.2);
   key.position.set(6, 22, 10);
@@ -64,9 +81,29 @@ function addLights(scene: THREE.Scene): void {
   const fill = new THREE.DirectionalLight(0xfff1dd, 0.6);
   fill.position.set(-10, 15, -8);
   scene.add(fill);
+  return key;
 }
 
-function buildFloor(home: TeamInfo): THREE.Object3D {
+/** Banks of arena lights over the court; bright enough to bloom on high quality. */
+function addCeiling(scene: THREE.Scene): void {
+  const glow = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  glow.color.multiplyScalar(2.2);
+  const frame = new THREE.MeshStandardMaterial({ color: 0x1a1c24, roughness: 0.8 });
+  const bank = new THREE.BoxGeometry(3.2, 0.25, 0.9);
+  const face = new THREE.PlaneGeometry(3.0, 0.7);
+  for (const x of [-12, -4, 4, 12]) {
+    for (const z of [-6, 6]) {
+      const b = new THREE.Mesh(bank, frame);
+      b.position.set(x, 16, z);
+      const f = new THREE.Mesh(face, glow);
+      f.rotation.x = Math.PI / 2;
+      f.position.set(x, 15.87, z);
+      scene.add(b, f);
+    }
+  }
+}
+
+function buildFloor(home: TeamInfo): { group: THREE.Object3D; setReflection(on: boolean, r: THREE.WebGLRenderer): void } {
   const group = new THREE.Group();
   const w = COURT.halfLength * 2;
   const h = COURT.halfWidth * 2;
@@ -76,7 +113,7 @@ function buildFloor(home: TeamInfo): THREE.Object3D {
     new THREE.MeshStandardMaterial({ color: new THREE.Color(home.primary).multiplyScalar(0.6), roughness: 0.8 }),
   );
   apron.rotation.x = -Math.PI / 2;
-  apron.position.y = -0.005;
+  apron.position.y = -0.01;
   apron.receiveShadow = true;
   group.add(apron);
 
@@ -85,12 +122,38 @@ function buildFloor(home: TeamInfo): THREE.Object3D {
   tex.anisotropy = 8;
   const court = new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
-    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.45, metalness: 0.05 }),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, metalness: 0.05 }),
   );
   court.rotation.x = -Math.PI / 2;
   court.receiveShadow = true;
+  // Drawn first among see-through things so floor markers still show on top.
+  court.renderOrder = -1;
   group.add(court);
-  return group;
+
+  // High quality: a mirror just under a slightly see-through court reads as polished wood.
+  let mirror: Reflector | null = null;
+  const courtMat = court.material;
+  return {
+    group,
+    setReflection(on, r) {
+      if (on && !mirror) {
+        const scale = r.getPixelRatio() * 0.5;
+        mirror = new Reflector(new THREE.PlaneGeometry(w, h), {
+          textureWidth: Math.round(window.innerWidth * scale),
+          textureHeight: Math.round(window.innerHeight * scale),
+          color: 0x9a8f86,
+          clipBias: 0.003,
+        });
+        mirror.rotation.x = -Math.PI / 2;
+        mirror.position.y = -0.004;
+        group.add(mirror);
+      }
+      if (mirror) mirror.visible = on;
+      courtMat.transparent = on;
+      courtMat.opacity = on ? 0.82 : 1;
+      courtMat.needsUpdate = true;
+    },
+  };
 }
 
 function drawCourt(home: TeamInfo): HTMLCanvasElement {
@@ -183,7 +246,13 @@ function drawCourt(home: TeamInfo): HTMLCanvasElement {
   return canvas;
 }
 
-function buildStands(scene: THREE.Scene, home: TeamInfo): THREE.Object3D {
+interface Crowd {
+  root: THREE.Object3D;
+  /** Share of seats filled (0-1) and whether fans get heads. */
+  setDensity(share: number, heads: boolean): void;
+}
+
+function buildStands(scene: THREE.Scene, home: TeamInfo): Crowd {
   const stands = new THREE.Group();
   const seatMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(home.primary).multiplyScalar(0.35), roughness: 0.9 });
   const tiers = 9;
@@ -198,7 +267,8 @@ function buildStands(scene: THREE.Scene, home: TeamInfo): THREE.Object3D {
     rows.push({ x: -(endX + off), z: 0, len: 2 * sideZ, alongX: false, outward: -1 });
   }
   const seatGeo = new THREE.BoxGeometry(1, 1, 1);
-  const fanGeo = new THREE.BoxGeometry(0.42, 0.62, 0.32);
+  const fanGeo = new THREE.BoxGeometry(0.42, 0.5, 0.3);
+  const headGeo = new THREE.SphereGeometry(0.12, 8, 6);
   const fans: THREE.Matrix4[] = [];
   const fanColors: THREE.Color[] = [];
   const palette = [home.primary, home.secondary, '#ffffff', '#2b2b33', '#8b1e1e', '#3a5da8', '#d7c6a5'];
@@ -215,11 +285,11 @@ function buildStands(scene: THREE.Scene, home: TeamInfo): THREE.Object3D {
     stands.add(step);
     const count = Math.floor(row.len / 0.62);
     for (let i = 0; i < count; i++) {
-      if (rand() < 0.14) continue;
+      if (rand() < 0.04) continue;
       const t = -row.len / 2 + 0.31 + i * 0.62;
       const m = new THREE.Matrix4().makeTranslation(
         row.alongX ? t : row.x,
-        0.5 + y + 0.31,
+        0.5 + y + 0.25,
         row.alongX ? row.z : t,
       );
       fans.push(m);
@@ -229,13 +299,32 @@ function buildStands(scene: THREE.Scene, home: TeamInfo): THREE.Object3D {
   });
   scene.add(stands);
 
-  const crowd = new THREE.InstancedMesh(fanGeo, new THREE.MeshLambertMaterial(), fans.length);
-  fans.forEach((m, i) => {
-    crowd.setMatrixAt(i, m);
-    crowd.setColorAt(i, fanColors[i]);
+  // Shuffled, so a lower density empties random seats rather than whole rows.
+  const order = fans.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const skinTones = ['#f1c9a5', '#d9a47a', '#b07850', '#8d5a3b', '#5e3a24'].map((c) => new THREE.Color(c));
+  const root = new THREE.Group();
+  const bodies = new THREE.InstancedMesh(fanGeo, new THREE.MeshLambertMaterial(), fans.length);
+  const heads = new THREE.InstancedMesh(headGeo, new THREE.MeshLambertMaterial(), fans.length);
+  const up = new THREE.Matrix4().makeTranslation(0, 0.37, 0);
+  order.forEach((src, i) => {
+    bodies.setMatrixAt(i, fans[src]);
+    bodies.setColorAt(i, fanColors[src]);
+    heads.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(fans[src], up));
+    heads.setColorAt(i, skinTones[Math.floor(rand() * skinTones.length)]);
   });
-  scene.add(crowd);
-  return crowd;
+  root.add(bodies, heads);
+  scene.add(root);
+  return {
+    root,
+    setDensity(share, withHeads) {
+      bodies.count = heads.count = Math.round(fans.length * share);
+      heads.visible = withHeads;
+    },
+  };
 }
 
 function buildHoop(scene: THREE.Scene, s: 1 | -1, home: TeamInfo): THREE.Object3D {

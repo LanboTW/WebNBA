@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import {
   ROSTER_SEASON,
   ROSTER_UPDATED,
@@ -18,6 +17,7 @@ import {
 } from '@webnba/shared';
 import { Sfx } from './audio';
 import { esc, renderBoxScore } from './boxscore';
+import { Graphics, type QualitySetting } from './graphics';
 import { Hud } from './hud';
 import type { CameraMode } from './camera';
 import { Input } from './input';
@@ -28,13 +28,7 @@ import { TouchControls, isTouchDevice } from './touch';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-$('#app').appendChild(renderer.domElement);
+const graphics = new Graphics($('#app'), isTouchDevice());
 
 const hud = new Hud();
 const input = new Input(window);
@@ -65,6 +59,7 @@ const modeSel = $<HTMLSelectElement>('#modeSel');
 const diffSel = $<HTMLSelectElement>('#diffSel');
 const quarterSel = $<HTMLSelectElement>('#quarterSel');
 const viewSel = $<HTMLSelectElement>('#viewSel');
+const qualitySel = $<HTMLSelectElement>('#qualitySel');
 const nameInput = $<HTMLInputElement>('#nameInput');
 const codeInput = $<HTMLInputElement>('#codeInput');
 const lobbyTeam = $<HTMLSelectElement>('#lobbyTeam');
@@ -93,6 +88,12 @@ modeSel.value = load('mode', 'game');
 diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
 viewSel.value = load('view', 'broadcast');
+qualitySel.value = load('quality', 'auto');
+graphics.setSetting(qualitySel.value as QualitySetting);
+qualitySel.addEventListener('change', () => {
+  save('quality', qualitySel.value);
+  graphics.setSetting(qualitySel.value as QualitySetting);
+});
 nameInput.value = load('name', '');
 for (const [key, box] of Object.entries(ruleBoxes)) box.checked = load(`rule.${key}`, '1') === '1';
 
@@ -215,6 +216,7 @@ $('#joinBtn').addEventListener('click', () => {
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, online?: OnlineLink): void {
   session?.dispose();
   session = makeSession(teams, settings, online);
+  graphics.attach(session.scene, session.arena);
   // Dev-only hook for inspecting the sim from the browser console.
   if (import.meta.env.DEV) (window as unknown as { __session: Session }).__session = session;
   $('#menu').classList.add('hidden');
@@ -496,15 +498,15 @@ function frame(now: number): void {
   touch.show(touchOn && !!session && !overlay);
   if (session) {
     session.frame(dt);
-    renderer.render(session.scene, session.cam.camera);
+    graphics.render(session.scene, session.cam.camera, dt);
   } else {
-    renderer.clear();
+    graphics.clear();
   }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  graphics.resize();
   session?.resize(window.innerWidth / window.innerHeight);
 });
