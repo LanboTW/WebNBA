@@ -26,7 +26,7 @@ npm run typecheck
 - `client/` Three.js 畫面、選單、輸入、HUD、數據表、音效
   - `net.ts` 連線協定、狀態編碼、斷線交給 AI
 - `server/` 權威伺服器（Node + ws）：房間、30Hz 模擬、20Hz 快照
-- `tools/` 名單更新工具（balldontlie → roster.json）
+- `tools/` 名單更新工具（ESPN／balldontlie → roster.json）
 - `render.yaml` Render 部署設定（遊戲伺服器）
 
 ## 模式
@@ -110,18 +110,21 @@ npm run typecheck
 名單由你自己決定什麼時候更新，兩種方式都可以：
 
 - **直接改檔案**：編輯 `shared/data/roster.json`（交易就把那一行搬到新球隊），跑 `npm test` 確認沒問題後 commit、push。
-- **用更新工具**從 [balldontlie](https://www.balldontlie.io/) 抓最新球隊：
+- **用更新工具**抓最新球隊，預設來源是 ESPN 的公開名單，不需要金鑰，幾秒鐘就跑完：
 
 ```bash
-npm run roster:update            # 顯示差異，確認後寫入並自動跑測試
-npm run roster:update -- --yes   # 不詢問直接寫入
+npm run roster:update                              # 顯示差異，確認後寫入並自動跑測試
+npm run roster:update -- --yes                     # 不詢問直接寫入
+npm run roster:update -- --source balldontlie      # 改用備用來源 balldontlie（需要 .env 裡的金鑰）
 ```
+
+（Windows PowerShell 請打 `npm.cmd`。）
 
 工具的行為：
 
-- 能力值是手調的，工具不會改；它只會把球員移到新球隊、更新背號，並依金鑰方案處理名單進出：
-  - **免費方案**：只能讀全部歷史球員，所以只追蹤現有球員轉隊（每分鐘限 5 次請求，跑一次約 10–15 分鐘）。
-  - **ALL-STAR 以上**：能讀現役名單，離開聯盟的球員會移除，新球員會用依位置的預設能力值補進來。
+- 能力值是手調的，工具不會改；它只會把球員移到新球隊、更新背號，並處理名單進出：
+  - **ESPN（預設）**：讀 30 隊的現役名單。離開聯盟的球員會移除，新球員會用依位置的預設能力值補進來，球季標籤（例如 2026-27）也會跟著更新。
+  - **balldontlie 備用**：免費方案只能讀全部歷史球員，所以只追蹤現有球員轉隊（每分鐘限 5 次請求，跑一次約 10–15 分鐘）；ALL-STAR 以上方案能讀現役名單，效果和 ESPN 相同。
 - 想調整能力值、背號、位置或指定球隊，寫在 `shared/data/overrides.json`，每次更新都會套用。
 - 每隊保持 5–10 人；表現比先發差的新人放板凳，比較強的會頂替最弱的先發。
 - 寫入後會自動跑測試，失敗就還原名單。測試使用 `shared/test/fixture-roster.json` 這份固定副本，所以真實的交易不會讓測試失敗。
@@ -129,6 +132,7 @@ npm run roster:update -- --yes   # 不詢問直接寫入
 
 ### 金鑰安全
 
+- 只有備用來源 balldontlie 需要金鑰，預設的 ESPN 不需要。
 - `BALLDONTLIE_API_KEY` 只放在本機專案根目錄的 `.env`（格式見 `.env.example`）。`.env` 與任何 `.env.*` 都在 `.gitignore` 裡，只有 `.env.example` 例外，所以金鑰不會被 commit。
 - 這把金鑰只有你電腦上的更新工具會用，伺服器與網頁都不需要它，也不必設定到 Render。
 - 變數名稱沒有 `VITE_` 前綴，前端建置永遠不會把它打包進網頁。

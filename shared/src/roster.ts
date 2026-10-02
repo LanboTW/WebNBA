@@ -56,7 +56,7 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
 
 export const ROSTER_SEASON = (rosterJson as RawRoster).season;
 export const NBA_TEAMS: TeamInfo[] = parseRoster(rosterJson as RawRoster);
-export const CUSTOM_TEAMS: TeamInfo[] = parseRoster({ season: '', ...(customJson as RawCustomTeams) }).map((t) => ({
+export const CUSTOM_TEAMS: TeamInfo[] = parseRoster({ season: '', ...(customJson as unknown as RawCustomTeams) }).map((t) => ({
   ...t,
   group: t.group ?? '自訂隊伍',
 }));
@@ -84,7 +84,7 @@ export const ROSTER_UPDATED: string | undefined = (rosterJson as RawRoster).upda
  * Fingerprint of the roster. Server and page decode each other's game state
  * by roster index, so both must run the same roster (see PROTOCOL_VERSION).
  */
-export const ROSTER_VERSION = fnv1a(JSON.stringify([(rosterJson as RawRoster).teams, (customJson as RawCustomTeams).teams]));
+export const ROSTER_VERSION = fnv1a(JSON.stringify([(rosterJson as RawRoster).teams, (customJson as unknown as RawCustomTeams).teams]));
 
 function fnv1a(text: string): string {
   let h = 0x811c9dc5;

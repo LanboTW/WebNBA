@@ -11,6 +11,7 @@ import {
   type RawRoster,
   type SourcePlayer,
 } from '../src/roster';
+import { ESPN_ABBR, toSource } from '../src/espn';
 import { redact } from '../src/secrets';
 
 // A frozen copy, so these tests keep passing after real roster updates.
@@ -119,6 +120,14 @@ describe('roster update', () => {
     expect(mapPosition('G', 1.85)).toBe('PG');
     expect(mapPosition('F-C', 2.11)).toBe('C');
     expect(mapPosition('C-F', 2.08)).toBe('C');
+  });
+
+  it('reads ESPN athletes and maps their team abbreviations', () => {
+    const p = toSource({ displayName: 'Stephen Curry', jersey: '30', height: 74, position: { abbreviation: 'G' }, experience: { years: 17 } }, 'GSW', 2027);
+    expect(p).toEqual({ name: 'Stephen Curry', team: 'GSW', number: 30, heightM: 1.88, position: 'G', draftYear: 2009 });
+    expect(toSource({ displayName: 'Two Way' }, 'ATL', null)).toMatchObject({ number: null, heightM: null, position: null, draftYear: null });
+    const ours = new Set(real.teams.map((t) => t.abbr));
+    for (const abbr of Object.values(ESPN_ABBR)) expect(ours.has(abbr)).toBe(true);
   });
 
   it('never prints secret values', () => {

@@ -1,42 +1,70 @@
 /**
- * npm run roster:update [-- --yes]
+ * npm run roster:update [-- --yes] [-- --source balldontlie]
  *
- * Pulls current teams from balldontlie, merges them into
+ * Pulls current team rosters (ESPN by default, no key needed; balldontlie
+ * as a fallback, key in .env), merges them into
  * shared/data/roster.json (ratings are kept; overrides.json is applied),
  * shows the changes, writes after confirmation and runs the tests.
  * Publishing is a normal commit + push, which redeploys Pages and the server.
  *
- *   --yes  no confirmation prompt
+ *   --yes                 no confirmation prompt
+ *   --source balldontlie  use balldontlie instead of ESPN
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { BallDontLie } from './balldontlie';
-import { describe, formatRoster, mergeRoster, validateRoster, type Overrides, type RawRoster } from './roster';
+import { espnPlayers } from './espn';
+import {
+  describe,
+  formatRoster,
+  mergeRoster,
+  validateRoster,
+  type Overrides,
+  type RawRoster,
+  type SourceKind,
+  type SourcePlayer,
+} from './roster';
 import { fail, loadLocalEnv, log, redact, secret } from './secrets';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const ROSTER = 'shared/data/roster.json';
 const OVERRIDES = 'shared/data/overrides.json';
-const args = new Set(process.argv.slice(2).filter((a) => a !== '--'));
+const argv = process.argv.slice(2).filter((a) => a !== '--');
+const args = new Set(argv);
+const source = argv.find((a) => a.startsWith('--source='))?.slice(9) ?? (argv.includes('--source') ? argv[argv.indexOf('--source') + 1] : 'espn');
+
+async function fetchSource(ours: string[]): Promise<{ kind: SourceKind; players: SourcePlayer[]; season: string | null }> {
+  if (source === 'espn') {
+    log('讀取 ESPN 各隊現役名單…');
+    return { kind: 'active', ...(await espnPlayers(ours)) };
+  }
+  if (source === 'balldontlie') {
+    loadLocalEnv(`${root}.env`);
+    const key = secret('BALLDONTLIE_API_KEY');
+    if (!key) fail('沒有 BALLDONTLIE_API_KEY。請寫在專案根目錄的 .env（格式見 .env.example，.env 不會進 git）。');
+    log('讀取 balldontlie 球員資料…');
+    return { ...(await new BallDontLie(key).players()), season: null };
+  }
+  return fail(`不認識的資料來源「${source}」，可用 espn（預設）或 balldontlie。`);
+}
 
 async function main(): Promise<void> {
-  loadLocalEnv(`${root}.env`);
-  const key = secret('BALLDONTLIE_API_KEY');
-  if (!key) fail('沒有 BALLDONTLIE_API_KEY。請寫在專案根目錄的 .env（格式見 .env.example，.env 不會進 git）。');
-
   const path = (p: string) => `${root}${p}`;
   const before = readFileSync(path(ROSTER), 'utf8');
   const current = JSON.parse(before) as RawRoster;
   const overrides: Overrides = existsSync(path(OVERRIDES)) ? JSON.parse(readFileSync(path(OVERRIDES), 'utf8')) : {};
   delete (overrides as Record<string, unknown>)['$comment'];
 
-  log('讀取 balldontlie 球員資料…');
-  const { kind, players } = await new BallDontLie(key).players();
+  const { kind, players, season } = await fetchSource(current.teams.map((t) => t.abbr));
   log(`取得 ${players.length} 名球員（${kind === 'active' ? '現役名單' : '全部歷史球員，只追蹤轉隊'}）`);
 
   const { roster, changes } = mergeRoster(current, players, kind, overrides);
+  if (season && season !== current.season) {
+    log(`球季：${current.season} → ${season}`);
+    roster.season = season;
+  }
   const errors = validateRoster(roster);
   if (errors.length) fail(`更新後的名單有問題，不寫入：\n${errors.join('\n')}`);
 
