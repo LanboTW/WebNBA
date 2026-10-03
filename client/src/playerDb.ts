@@ -123,8 +123,11 @@ export class PlayerDb {
   /** [value, label]: everyone, each group, then each team. */
   private scopes(): [string, string][] {
     const groups = [...this.source!.groups];
+    // NBA東 and NBA西 together: the whole league side by side.
+    const nba = groups.filter(([g]) => g.startsWith('NBA')).length > 1 ? [['nba', 'NBA 全聯盟（東西一起比較）'] as [string, string]] : [];
     return [
       ['all', '所有球員'],
+      ...nba,
       ...groups.map(([g]) => [`group:${g}`, `${g}全部`] as [string, string]),
       ...groups.flatMap(([, teams]) => teams.map((t) => [`team:${t.abbr}`, `${t.name}（${t.abbr}）`] as [string, string])),
     ];
@@ -146,7 +149,7 @@ export class PlayerDb {
     const src = this.source!;
     const [kind, key] = this.scope.includes(':') ? [this.scope.slice(0, this.scope.indexOf(':')), this.scope.slice(this.scope.indexOf(':') + 1)] : ['all', ''];
     const teams = [...src.groups]
-      .filter(([g]) => kind !== 'group' || g === key)
+      .filter(([g]) => (kind !== 'group' || g === key) && (this.scope !== 'nba' || g.startsWith('NBA')))
       .flatMap(([, list]) => list)
       .filter((t) => kind !== 'team' || t.abbr === key);
     const q = this.query.trim().toLowerCase();
