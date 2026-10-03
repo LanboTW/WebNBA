@@ -3610,6 +3610,115 @@ button.small.on {
   color: var(--muted);
 }
 
+/* --------------------------------------------------------------- MyTeam games and missions */
+
+.mtlevels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mtlevel,
+.mtmission,
+.mtplay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #151925;
+}
+
+.mtplay {
+  justify-content: space-between;
+  margin: 8px 0;
+}
+
+.mtlevel.boss {
+  border-color: rgba(255, 122, 26, 0.55);
+  background: linear-gradient(90deg, rgba(255, 122, 26, 0.12), #151925 60%);
+}
+
+.mtlevel.done,
+.mtmission.done {
+  opacity: 0.7;
+}
+
+.lvlogo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.lvinfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lvinfo span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mtlevel .small,
+.mtmission .small,
+.mtplay .small {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+button.small.go {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a0d00;
+}
+
+.lock {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.mbar {
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: #252a3b;
+  overflow: hidden;
+}
+
+.mbar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.mtmission {
+  margin: 8px 0;
+}
+
+.tabs .dot {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff3d5a;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 18px;
+}
+
+.mtplay select {
+  margin-left: 6px;
+}
+
 /* --------------------------------------------------------------- pack opening */
 
 #packOpen {

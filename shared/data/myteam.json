@@ -1,5 +1,5 @@
 {
-  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card.",
+  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins).",
   "packs": [
     {
       "id": "standard",
@@ -14,7 +14,16 @@
       "price": 2000,
       "count": 3,
       "guaranteeTop": true,
-      "weights": { "white": 4, "green": 18, "blue": 34, "purple": 26, "gold": 11, "pink": 5, "orange": 1.6, "black": 0.5 },
+      "weights": {
+        "white": 4,
+        "green": 18,
+        "blue": 34,
+        "purple": 26,
+        "gold": 11,
+        "pink": 5,
+        "orange": 1.6,
+        "black": 0.5
+      },
       "rentalChance": 0.08
     },
     {
@@ -22,7 +31,10 @@
       "name": "後場卡包",
       "price": 700,
       "count": 3,
-      "positions": ["PG", "SG"],
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "rentalChance": 0.04
     },
     {
@@ -30,8 +42,408 @@
       "name": "禁區卡包",
       "price": 700,
       "count": 3,
-      "positions": ["PF", "C"],
+      "positions": [
+        "PF",
+        "C"
+      ],
       "rentalChance": 0.04
+    }
+  ],
+  "levels": [
+    {
+      "id": "p1l1",
+      "period": 1,
+      "team": "WAS",
+      "ovr": 68,
+      "difficulty": "easy",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "p1l2",
+      "period": 1,
+      "team": "UTA",
+      "ovr": 71,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "p1l3",
+      "period": 1,
+      "team": "BKN",
+      "ovr": 73,
+      "difficulty": "normal",
+      "reward": { "coins": 250, "rental": "blue" }
+    },
+    {
+      "id": "p1l4",
+      "period": 1,
+      "team": "CHA",
+      "ovr": 75,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "p1l5",
+      "period": 1,
+      "team": "POR",
+      "ovr": 78,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "standard" }
+    },
+    {
+      "id": "p2l1",
+      "period": 2,
+      "team": "NOP",
+      "ovr": 76,
+      "difficulty": "easy",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "p2l2",
+      "period": 2,
+      "team": "SAC",
+      "ovr": 78,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "p2l3",
+      "period": 2,
+      "team": "TOR",
+      "ovr": 80,
+      "difficulty": "normal",
+      "reward": { "coins": 250, "rental": "purple" }
+    },
+    {
+      "id": "p2l4",
+      "period": 2,
+      "team": "PHI",
+      "ovr": 82,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "p2l5",
+      "period": 2,
+      "team": "CHI",
+      "ovr": 84,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    },
+    {
+      "id": "p3l1",
+      "period": 3,
+      "team": "MIA",
+      "ovr": 81,
+      "difficulty": "easy",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "p3l2",
+      "period": 3,
+      "team": "ATL",
+      "ovr": 83,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "p3l3",
+      "period": 3,
+      "team": "MEM",
+      "ovr": 85,
+      "difficulty": "normal",
+      "reward": { "coins": 250, "rental": "gold" }
+    },
+    {
+      "id": "p3l4",
+      "period": 3,
+      "team": "PHX",
+      "ovr": 86,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "p3l5",
+      "period": 3,
+      "team": "DAL",
+      "ovr": 88,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    },
+    {
+      "id": "p4l1",
+      "period": 4,
+      "team": "SAS",
+      "ovr": 85,
+      "difficulty": "easy",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "p4l2",
+      "period": 4,
+      "team": "IND",
+      "ovr": 87,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "p4l3",
+      "period": 4,
+      "team": "ORL",
+      "ovr": 88,
+      "difficulty": "normal",
+      "reward": { "coins": 250, "rental": "pink" }
+    },
+    {
+      "id": "p4l4",
+      "period": 4,
+      "team": "DET",
+      "ovr": 90,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "p4l5",
+      "period": 4,
+      "team": "GSW",
+      "ovr": 92,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    },
+    {
+      "id": "p5l1",
+      "period": 5,
+      "team": "LAL",
+      "ovr": 88,
+      "difficulty": "easy",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "p5l2",
+      "period": 5,
+      "team": "LAC",
+      "ovr": 90,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "p5l3",
+      "period": 5,
+      "team": "MIL",
+      "ovr": 92,
+      "difficulty": "normal",
+      "reward": { "coins": 250, "rental": "orange" }
+    },
+    {
+      "id": "p5l4",
+      "period": 5,
+      "team": "BOS",
+      "ovr": 93,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "p5l5",
+      "period": 5,
+      "team": "HOU",
+      "ovr": 95,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    },
+    {
+      "id": "p6l1",
+      "period": 6,
+      "team": "MIN",
+      "ovr": 91,
+      "difficulty": "easy",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "p6l2",
+      "period": 6,
+      "team": "NYK",
+      "ovr": 93,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "p6l3",
+      "period": 6,
+      "team": "CLE",
+      "ovr": 94,
+      "difficulty": "normal",
+      "reward": { "coins": 250, "rental": "black" }
+    },
+    {
+      "id": "p6l4",
+      "period": 6,
+      "team": "DEN",
+      "ovr": 96,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "p6l5",
+      "period": 6,
+      "team": "OKC",
+      "ovr": 97,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    }
+  ],
+  "missions": [
+    {
+      "id": "g1",
+      "text": "打 1 場 MyTeam 比賽",
+      "stat": "games",
+      "target": 1,
+      "reward": { "coins": 100 }
+    },
+    {
+      "id": "w3",
+      "text": "贏 3 場比賽",
+      "stat": "wins",
+      "target": 3,
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "w10",
+      "text": "贏 10 場比賽",
+      "stat": "wins",
+      "target": 10,
+      "reward": { "coins": 500 }
+    },
+    {
+      "id": "w25",
+      "text": "贏 25 場比賽",
+      "stat": "wins",
+      "target": 25,
+      "reward": { "coins": 1000 }
+    },
+    {
+      "id": "l5",
+      "text": "挑戰之路過 5 關",
+      "stat": "cleared",
+      "target": 5,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "l15",
+      "text": "挑戰之路過 15 關",
+      "stat": "cleared",
+      "target": 15,
+      "reward": { "coins": 600, "rental": "orange" }
+    },
+    {
+      "id": "s1",
+      "text": "街頭 3v3 贏 1 場",
+      "stat": "streetWins",
+      "target": 1,
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "s5",
+      "text": "街頭 3v3 贏 5 場",
+      "stat": "streetWins",
+      "target": 5,
+      "reward": { "coins": 400 }
+    },
+    {
+      "id": "pt300",
+      "text": "累積得 300 分",
+      "stat": "points",
+      "target": 300,
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "pt1500",
+      "text": "累積得 1500 分",
+      "stat": "points",
+      "target": 1500,
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "tp50",
+      "text": "累積投進 50 顆三分",
+      "stat": "threes",
+      "target": 50,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "as100",
+      "text": "累積 100 次助攻",
+      "stat": "assists",
+      "target": 100,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "bk30",
+      "text": "累積 30 次火鍋",
+      "stat": "blocks",
+      "target": 30,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "st50",
+      "text": "累積 50 次抄截",
+      "stat": "steals",
+      "target": 50,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "pk5",
+      "text": "開 5 包卡包",
+      "stat": "packs",
+      "target": 5,
+      "reward": { "coins": 200, "rental": "gold" }
+    },
+    {
+      "id": "pk20",
+      "text": "開 20 包卡包",
+      "stat": "packs",
+      "target": 20,
+      "reward": { "coins": 600, "rental": "pink" }
+    },
+    {
+      "id": "c40",
+      "text": "收藏 40 張卡",
+      "stat": "cards",
+      "target": 40,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "c100",
+      "text": "收藏 100 張卡",
+      "stat": "cards",
+      "target": 100,
+      "reward": { "coins": 1000 }
+    },
+    {
+      "id": "d80",
+      "text": "自有卡（不含租借）的最佳先發評分達到 80",
+      "stat": "deckRating",
+      "target": 80,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "d88",
+      "text": "自有卡（不含租借）的最佳先發評分達到 88",
+      "stat": "deckRating",
+      "target": 88,
+      "reward": { "coins": 800 }
+    },
+    {
+      "id": "bw",
+      "text": "單場贏 20 分以上",
+      "stat": "bigWins",
+      "target": 1,
+      "reward": { "coins": 400 }
     }
   ]
 }

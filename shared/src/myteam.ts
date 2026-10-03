@@ -1,8 +1,8 @@
 import headshotsJson from '../data/headshots.json';
 import myteamJson from '../data/myteam.json';
 import { POSITIONS, toOverall } from './career';
-import { NBA_TEAMS, RATING_KEYS, findTeam, overallOf, playerRating } from './roster';
-import type { Look, PlayerInfo, Position, Ratings, TeamInfo } from './types';
+import { NBA_TEAMS, RATING_KEYS, findTeam, overallOf, playerRating, teamRating } from './roster';
+import type { Difficulty, Look, PlayerInfo, Position, Ratings, TeamInfo } from './types';
 
 /**
  * MyTeam: collect player cards with coins, build a deck, play with it.
@@ -310,10 +310,16 @@ export interface MyTeamSave {
   /** Next rental number. */
   next: number;
   packsOpened: number;
+  /** Ladder levels beaten (ids). */
+  cleared: string[];
+  /** Missions whose reward was taken (ids). */
+  claimed: string[];
+  /** Running totals the missions count. */
+  stats: Partial<Record<MissionStat, number>>;
 }
 
 export function emptyMyTeam(): MyTeamSave {
-  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0 };
+  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {} };
 }
 
 /** Accepts anything that looks like a save, filling what is missing. */
@@ -328,6 +334,9 @@ export function upgradeMyTeam(raw: unknown): MyTeamSave | null {
     period: Math.min(PERIODS, Math.max(1, Number(s.period) || 1)),
     rentals: Array.isArray(s.rentals) ? s.rentals.filter((r) => r.games > 0) : [],
     deck: Array.isArray(s.deck) ? s.deck : [],
+    cleared: Array.isArray(s.cleared) ? s.cleared : [],
+    claimed: Array.isArray(s.claimed) ? s.claimed : [],
+    stats: s.stats && typeof s.stats === 'object' ? s.stats : {},
   };
 }
 
@@ -400,8 +409,8 @@ export interface DropResult {
 }
 
 /** Adds a pack's cards to the collection; duplicates become coins (returned, for the wallet). */
-export function addDrops(save: MyTeamSave, drops: Drop[]): DropResult[] {
-  save.packsOpened++;
+export function addDrops(save: MyTeamSave, drops: Drop[], fromPack = true): DropResult[] {
+  if (fromPack) save.packsOpened++;
   return drops.map((d) => {
     if (d.rental) {
       const r: RentalCard = { ...ownCard(d.card), uid: `r${save.next++}`, games: d.rental };
@@ -427,13 +436,257 @@ export function sellCard(save: MyTeamSave, id: string): number {
 
 /** The deck as a team: starters first, in position order. */
 export function deckTeam(save: MyTeamSave, info: Pick<TeamInfo, 'abbr' | 'name' | 'primary' | 'secondary'>): TeamInfo {
+  return { ...info, players: deckLineup(save).map(cardPlayer) };
+}
+
+/** The deck's cards in game roster order. */
+export function deckLineup(save: MyTeamSave): OwnedCard[] {
   const cards = save.deck.map((r) => deckCard(save, r)).filter((c): c is OwnedCard => !!c);
   const starters = cards.slice(0, 5).sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
-  return { ...info, players: [...starters, ...cards.slice(5)].map(cardPlayer) };
+  return [...starters, ...cards.slice(5)];
 }
 
 /** The deck's rating: its starters' average overall. */
 export function deckRating(save: MyTeamSave): number {
   const starters = save.deck.slice(0, 5).map((r) => deckCard(save, r)?.ovr ?? 0);
   return starters.length ? Math.round(starters.reduce((a, b) => a + b, 0) / starters.length) : 0;
+}
+
+// ----------------------------------------------------------------- playing
+
+/** Your side's colours in MyTeam games. */
+export const MYTEAM_INFO: Pick<TeamInfo, 'abbr' | 'name' | 'primary' | 'secondary'> = {
+  abbr: 'MY',
+  name: 'MyTeam',
+  primary: '#ff7a1a',
+  secondary: '#14161f',
+};
+
+export type MissionStat =
+  | 'games'
+  | 'wins'
+  | 'cleared'
+  | 'streetWins'
+  | 'points'
+  | 'threes'
+  | 'assists'
+  | 'blocks'
+  | 'steals'
+  | 'packs'
+  | 'cards'
+  | 'deckRating'
+  | 'bigWins';
+
+/** What a level, a mission or a boss gives. */
+export interface Reward {
+  coins?: number;
+  /** An official pack, opened on the spot. */
+  pack?: string;
+  /** A rental (3 games) of this tier. */
+  rental?: TierId;
+  /** A card of this tier to keep. */
+  card?: TierId;
+}
+
+export interface LevelDef {
+  id: string;
+  period: number;
+  /** NBA team (abbreviation) ... */
+  team: string;
+  /** ... with its starters rescaled to this team rating. */
+  ovr: number;
+  difficulty: Difficulty;
+  boss?: boolean;
+  /** For the first win. */
+  reward: Reward;
+}
+
+export interface MissionDef {
+  id: string;
+  text: string;
+  stat: MissionStat;
+  target: number;
+  reward: Reward;
+}
+
+const CONTENT = myteamJson as unknown as { levels: LevelDef[]; missions: MissionDef[] };
+export const LEVELS: LevelDef[] = CONTENT.levels;
+export const MISSIONS: MissionDef[] = CONTENT.missions;
+/** Missions claimed that open each next period (3 open period 2, 6 period 3, ...). */
+export const MISSIONS_PER_PERIOD = 3;
+/** Coins for games that are not a first ladder win. */
+export const GAME_COINS = { win: 150, loss: 50, ladderReplay: 100 };
+
+export const periodLevels = (period: number): LevelDef[] => LEVELS.filter((l) => l.period === period);
+
+/** Playable: its period is open and the level before it is beaten. */
+export function levelOpen(save: MyTeamSave, level: LevelDef): boolean {
+  if (level.period > save.period) return false;
+  const list = periodLevels(level.period);
+  const i = list.indexOf(level);
+  return i <= 0 || save.cleared.includes(list[i - 1].id);
+}
+
+export function periodCleared(save: MyTeamSave, period: number): boolean {
+  const list = periodLevels(period);
+  return list.length > 0 && list.every((l) => save.cleared.includes(l.id));
+}
+
+/** What a mission counts right now. */
+export function statValue(save: MyTeamSave, key: MissionStat): number {
+  if (key === 'cards') return save.cards.length;
+  if (key === 'packs') return save.packsOpened;
+  if (key === 'cleared') return save.cleared.length;
+  if (key === 'deckRating') {
+    // Your own cards' best five: rentals do not count.
+    const own = { ...save, rentals: [] };
+    return deckRating({ ...own, deck: autoDeck(own) });
+  }
+  return save.stats[key] ?? 0;
+}
+
+export const missionDone = (save: MyTeamSave, m: MissionDef): boolean => statValue(save, m.stat) >= m.target;
+
+/** Opens every period the save has earned. Returns the new period when one opened. */
+export function updatePeriod(save: MyTeamSave): number | null {
+  const before = save.period;
+  while (save.period < PERIODS && (periodCleared(save, save.period) || save.claimed.length >= MISSIONS_PER_PERIOD * save.period)) {
+    save.period++;
+  }
+  return save.period > before ? save.period : null;
+}
+
+/** A team of real players rescaled so its starters rate `target` (each keeps his place in the order). */
+export function scaleTeam(team: TeamInfo, target: number): TeamInfo {
+  const shifted = (delta: number): TeamInfo => ({
+    ...team,
+    players: team.players.map((p) => {
+      const want = Math.max(45, Math.min(99, playerRating(p) + delta));
+      return { ...p, ratings: toOverall(p.ratings, CAPS, want, (r) => overallOf(p.position, r)) };
+    }),
+  });
+  // Players at the 45-99 limits stop moving: push the rest a little further.
+  let delta = target - teamRating(team);
+  let out = shifted(delta);
+  for (let i = 0; i < 4 && teamRating(out) !== target; i++) {
+    delta += target - teamRating(out);
+    out = shifted(delta);
+  }
+  return out;
+}
+
+export const levelTeam = (level: LevelDef): TeamInfo => scaleTeam(findTeam(level.team), level.ovr);
+
+/** A random NBA team at your deck's level, for a quick game. */
+export function quickOpponent(save: MyTeamSave, rand: () => number = Math.random): TeamInfo {
+  return scaleTeam(pick(NBA_TEAMS, rand), Math.max(60, deckRating(save)));
+}
+
+/** Street opponents: `n` random NBA players (one per position, guards first) rated around `ovr`. */
+export function streetOpponents(n: number, ovr: number, avoid: string[], rand: () => number = Math.random): PlayerInfo[] {
+  const order: Position[][] = [['PG', 'SG'], ['SF', 'PF'], ['C', 'PF']];
+  const used = new Set(avoid);
+  const out: PlayerInfo[] = [];
+  for (let i = 0; i < n; i++) {
+    const want = order[i % order.length];
+    const pool = NBA_TEAMS.flatMap((t) => t.players).filter((p) => want.includes(p.position) && !used.has(p.name));
+    const p = pick(pool, rand);
+    used.add(p.name);
+    const target = Math.max(45, Math.min(99, Math.round(ovr + (rand() - 0.5) * 4)));
+    out.push({ ...p, ratings: toOverall(p.ratings, CAPS, target, (r) => overallOf(p.position, r)) });
+  }
+  return out;
+}
+
+/** Gives a reward: coins to add to the wallet, and any cards it brought (for the reveal). */
+export function grantReward(save: MyTeamSave, reward: Reward, rand: () => number = Math.random): { coins: number; drops: DropResult[] } {
+  let coins = reward.coins ?? 0;
+  const drops: DropResult[] = [];
+  const pack = reward.pack ? OFFICIAL_PACKS.find((p) => p.id === reward.pack) : undefined;
+  if (pack) drops.push(...addDrops(save, openPack(pack, save.period, rand)));
+  const ofTier = (t: TierId) => cardCatalog().filter((c) => c.tier === t);
+  if (reward.rental && ofTier(reward.rental).length) drops.push(...addDrops(save, [{ card: pick(ofTier(reward.rental), rand), rental: 3 }], false));
+  if (reward.card && ofTier(reward.card).length) drops.push(...addDrops(save, [{ card: pick(ofTier(reward.card), rand) }], false));
+  coins += drops.reduce((s, d) => s + d.coins, 0);
+  return { coins, drops };
+}
+
+export type GameKind = 'ladder' | 'quick' | 'street';
+
+export interface GameResult {
+  kind: GameKind;
+  won: boolean;
+  /** Your score minus theirs. */
+  margin: number;
+  /** Ladder level id. */
+  level?: string;
+  /** Deck refs that played (rentals among them lose a game). */
+  used: string[];
+  /** Your team's totals. */
+  totals: { points: number; threes: number; assists: number; blocks: number; steals: number };
+  /** Left before the end: a loss with no coins. */
+  forfeit?: boolean;
+}
+
+export interface GameOutcome {
+  coins: number;
+  drops: DropResult[];
+  firstClear: boolean;
+  /** Rentals that played their last game (names). */
+  gone: string[];
+  /** The period that just opened. */
+  unlocked: number | null;
+}
+
+/** Books a finished MyTeam game: counters, rentals, coins and ladder rewards. */
+export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number = Math.random): GameOutcome {
+  const won = g.won && !g.forfeit;
+  const add = (k: MissionStat, n: number) => (save.stats[k] = (save.stats[k] ?? 0) + n);
+  add('games', 1);
+  if (won) add('wins', 1);
+  if (won && g.kind === 'street') add('streetWins', 1);
+  if (won && g.margin >= 20) add('bigWins', 1);
+  if (!g.forfeit) {
+    add('points', g.totals.points);
+    add('threes', g.totals.threes);
+    add('assists', g.totals.assists);
+    add('blocks', g.totals.blocks);
+    add('steals', g.totals.steals);
+  }
+  const gone: string[] = [];
+  for (const ref of g.used) {
+    const r = save.rentals.find((x) => x.uid === ref);
+    if (!r) continue;
+    r.games--;
+    if (r.games <= 0) gone.push(r.name);
+  }
+  save.rentals = save.rentals.filter((r) => r.games > 0);
+  cleanDeck(save);
+
+  let coins = 0;
+  let drops: DropResult[] = [];
+  let firstClear = false;
+  const level = g.level ? LEVELS.find((l) => l.id === g.level) : undefined;
+  if (g.forfeit) coins = 0;
+  else if (g.kind === 'ladder' && level) {
+    if (won && !save.cleared.includes(level.id)) {
+      firstClear = true;
+      save.cleared.push(level.id);
+      ({ coins, drops } = grantReward(save, level.reward, rand));
+    } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
+  } else coins = won ? GAME_COINS.win : GAME_COINS.loss;
+  return { coins, drops, firstClear, gone, unlocked: updatePeriod(save) };
+}
+
+/** Takes a finished mission's reward. Null when it is not done or already taken. */
+export function claimMission(
+  save: MyTeamSave,
+  id: string,
+  rand: () => number = Math.random,
+): { coins: number; drops: DropResult[]; unlocked: number | null } | null {
+  const m = MISSIONS.find((x) => x.id === id);
+  if (!m || save.claimed.includes(id) || !missionDone(save, m)) return null;
+  save.claimed.push(id);
+  const r = grantReward(save, m.reward, rand);
+  return { ...r, unlocked: updatePeriod(save) };
 }

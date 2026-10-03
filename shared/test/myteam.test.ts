@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LEVELS, MISSIONS, claimMission, levelOpen, levelTeam, periodLevels, recordGame, statValue, streetOpponents, teamRating } from '../src';
 import {
   OFFICIAL_PACKS,
   PERIOD_TOP,
@@ -108,5 +109,73 @@ describe('MyTeam packs', () => {
     const back = upgradeMyTeam(JSON.parse(JSON.stringify(save)))!;
     expect(back.rentals).toHaveLength(4);
     expect(upgradeMyTeam({})).toBeNull();
+  });
+});
+
+describe('MyTeam play', () => {
+  const totals = { points: 80, threes: 9, assists: 20, blocks: 4, steals: 6 };
+
+  it('levels: 5 per period, opponents rescaled to the level rating', () => {
+    for (let p = 1; p <= 6; p++) expect(periodLevels(p)).toHaveLength(5);
+    for (const l of LEVELS) expect(Math.abs(teamRating(levelTeam(l)) - l.ovr)).toBeLessThanOrEqual(1);
+  });
+
+  it('beating the ladder in order pays once and opens the next period', () => {
+    const save = newMyTeam(seeded(4));
+    const list = periodLevels(1);
+    expect(levelOpen(save, list[1])).toBe(false);
+    let coins = 0;
+    for (const l of list) {
+      expect(levelOpen(save, l)).toBe(true);
+      const out = recordGame(save, { kind: 'ladder', won: true, margin: 5, level: l.id, used: [], totals }, seeded(1));
+      expect(out.firstClear).toBe(true);
+      coins += out.coins;
+      if (l.boss) expect(out.unlocked).toBe(2);
+    }
+    expect(coins).toBeGreaterThanOrEqual(1200);
+    expect(save.period).toBe(2);
+    const again = recordGame(save, { kind: 'ladder', won: true, margin: 5, level: list[0].id, used: [], totals });
+    expect(again.firstClear).toBe(false);
+    expect(again.coins).toBe(100);
+  });
+
+  it('rentals lose a game each time they play and then leave the deck', () => {
+    const save = newMyTeam(seeded(5));
+    const r = save.rentals[0];
+    expect(save.deck).toContain(r.uid);
+    for (let i = 0; i < 2; i++) recordGame(save, { kind: 'quick', won: false, margin: -3, used: [r.uid], totals });
+    expect(save.rentals.find((x) => x.uid === r.uid)?.games).toBe(1);
+    const out = recordGame(save, { kind: 'quick', won: true, margin: 3, used: [r.uid], totals });
+    expect(out.gone).toEqual([r.name]);
+    expect(out.coins).toBe(150);
+    expect(save.deck).not.toContain(r.uid);
+  });
+
+  it('missions count up, pay once, and enough of them open a period', () => {
+    const save = newMyTeam(seeded(6));
+    expect(claimMission(save, 'g1')).toBeNull();
+    for (let i = 0; i < 3; i++) recordGame(save, { kind: 'street', won: true, margin: 25, used: [], totals });
+    for (const id of ['g1', 'w3', 's1']) expect(claimMission(save, id)!.coins).toBeGreaterThan(0);
+    expect(claimMission(save, 'g1')).toBeNull();
+    expect(save.period).toBe(2);
+    expect(MISSIONS.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('the deck-rating missions ignore rentals', () => {
+    const save = newMyTeam(seeded(6));
+    expect(statValue(save, 'deckRating')).toBeLessThanOrEqual(75);
+  });
+
+  it('a forfeit is a loss with no coins', () => {
+    const save = newMyTeam(seeded(8));
+    const out = recordGame(save, { kind: 'quick', won: true, margin: 10, used: [], totals, forfeit: true });
+    expect(out.coins).toBe(0);
+    expect(save.stats.wins ?? 0).toBe(0);
+  });
+
+  it('street opponents are distinct and near the asked rating', () => {
+    const ps = streetOpponents(3, 80, [], seeded(2));
+    expect(new Set(ps.map((p) => p.name)).size).toBe(3);
+    for (const p of ps) expect(Math.abs(playerRating(p) - 80)).toBeLessThanOrEqual(3);
   });
 });

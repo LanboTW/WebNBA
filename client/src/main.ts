@@ -605,6 +605,8 @@ function showTag(): void {
 
 /** A career game in progress: who you are and what to do with the result. */
 let careerPlay: { rosterIdx: number; done: (state: GameState) => void } | null = null;
+/** A MyTeam game in progress: books the result once (at the final or on leaving), then back to MyTeam. */
+let myteamPlay: { finish: (state: GameState, forfeit: boolean) => string; after: () => void; booked: boolean } | null = null;
 
 function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, home: 0 | 1 = 0): void {
   stopShowcase();
@@ -650,6 +652,9 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
 function backToMenu(): void {
   const career = careerPlay;
   careerPlay = null;
+  const mt = myteamPlay;
+  myteamPlay = null;
+  if (mt && session && !mt.booked) mt.finish(session.state, true);
   // Leaving a career game early: the computer plays out the rest.
   if (career && session && session.state.phase !== 'final') playOut(session.state);
   const state = session?.state;
@@ -660,6 +665,10 @@ function backToMenu(): void {
   if (career && state) {
     show('hub');
     career.done(state);
+  } else if (mt) {
+    show('myteam');
+    mt.after();
+    startShowcase();
   } else {
     show(current);
     startShowcase();
@@ -709,7 +718,12 @@ function showFinal(): void {
   const [ta, tb] = session.teams;
   showBox(`終場　${ta.abbr} ${a} : ${b} ${tb.abbr}`, false);
   const s = session.state.settings;
-  if (!careerPlay && s.mode === 'game' && s.humanTeams.includes(0) && !paid.has(session)) {
+  if (myteamPlay && !myteamPlay.booked) {
+    myteamPlay.booked = true;
+    $('#boxTitle').textContent += `　${myteamPlay.finish(session.state, false)}`;
+    $('#quitBtn').textContent = '回 MyTeam';
+  }
+  if (!careerPlay && !myteamPlay && s.mode === 'game' && s.humanTeams.includes(0) && !paid.has(session)) {
     paid.add(session);
     const coins = a > b ? QUICK_COINS.win : QUICK_COINS.loss;
     void wallet.add(coins);
@@ -756,7 +770,18 @@ function frame(now: number): void {
 }
 
 initCareerMenu(show, { preview: previewCareer, play: playCareer });
-initMyTeam();
+initMyTeam({
+  play(teams, settings, finish, after) {
+    sfx.unlock();
+    const rules = menuRules();
+    startSession(teams, {
+      ...settings,
+      rules: settings.street ? { fouls: rules.fouls, violations: false, fatigue: false } : rules,
+    });
+    myteamPlay = { finish, after, booked: false };
+    $('#quitBtn').textContent = '離開（算輸）';
+  },
+});
 show('home');
 // The first player on the court may be yours: wait a moment for the saves.
 void Promise.race([careerLoad, new Promise((r) => setTimeout(r, 800))]).then(() => {
