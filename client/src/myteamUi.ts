@@ -111,6 +111,11 @@ function filtered(cards: OwnedCard[]): OwnedCard[] {
 
 // ----------------------------------------------------------------- tabs
 
+/** Two columns on wide screens; `rightFirst` puts the right one on top when they stack. */
+function cols(left: string, right: string, rightFirst = false): string {
+  return `<div class="cols mtcols"><div class="col">${left}</div><div class="col">${rightFirst ? `<div class="q-top">${right}</div>` : right}</div></div>`;
+}
+
 function deckTab(): string {
   const s = myteam.save;
   const cell = (i: number) => {
@@ -127,15 +132,17 @@ function deckTab(): string {
   return (
     `<div class="mtbar"><span>牌組評分 <b class="big">${deckRating(s)}</b></span><span>${s.deck.length}/${DECK_MAX} 張</span>` +
     `<button type="button" class="small" data-act="auto">自動組牌</button></div>` +
-    `<h3 class="mth">先發</h3><div class="mtslots">${[0, 1, 2, 3, 4].map(cell).join('')}</div>` +
-    `<h3 class="mth">板凳</h3><div class="mtslots">${Array.from({ length: DECK_MAX - 5 }, (_, i) => cell(i + 5)).join('')}</div>` +
-    (sel ? `<div class="mtbar"><span>已選：${esc(sel.name)}</span><button type="button" class="small" data-act="unslot">移出牌組</button></div>` : '') +
-    `<p class="fine left">${slot === null ? '先點一個位置，' : `把卡放進第 ${slot + 1} 格：`}從下面挑一張卡。同一名球員只能放一張；租借卡打完場數就會消失。</p>` +
-    `<div class="chips">${tierChips(filterTier, 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
-    `<div class="mtgrid">${
-      picks.map((c) => cardHtml(c, { cls: `small pick${names.has(c.name) ? ' dim' : ''}`, ref: refOf(c) })).join('') ||
-      '<p class="fine">沒有符合的卡。</p>'
-    }</div>`
+    cols(
+      `<h3 class="mth">先發</h3><div class="mtslots five">${[0, 1, 2, 3, 4].map(cell).join('')}</div>` +
+        `<h3 class="mth">板凳</h3><div class="mtslots">${Array.from({ length: DECK_MAX - 5 }, (_, i) => cell(i + 5)).join('')}</div>` +
+        (sel ? `<div class="mtbar"><span>已選：${esc(sel.name)}</span><button type="button" class="small" data-act="unslot">移出牌組</button></div>` : ''),
+      `<p class="fine left">${slot === null ? '先點一個位置，' : `把卡放進第 ${slot + 1} 格：`}再挑一張卡。同一名球員只能放一張；租借卡打完場數就會消失。</p>` +
+        `<div class="chips">${tierChips(filterTier, 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
+        `<div class="mtgrid mtscroll">${
+          picks.map((c) => cardHtml(c, { cls: `small pick${names.has(c.name) ? ' dim' : ''}`, ref: refOf(c) })).join('') ||
+          '<p class="fine">沒有符合的卡。</p>'
+        }</div>`,
+    )
   );
 }
 
@@ -153,7 +160,7 @@ function detailHtml(c: OwnedCard): string {
     `<h3>${esc(c.name)}</h3><p class="fine left">${tier(c.tier).name}卡${c.base ? '' : '（強化版）'} · ${c.position} · ${c.heightM.toFixed(2)} m${
       s.deck.includes(refOf(c)) ? ' · 在牌組中' : ''
     }</p>` +
-    `<div class="mtratings">${rows}</div>${sell}<button type="button" class="small" data-act="close">關閉</button></div></div>`
+    `<div class="mtratings">${rows}</div>${sell}<button type="button" class="small mtclose" data-act="close">關閉</button></div></div>`
   );
 }
 
@@ -163,10 +170,13 @@ function cardsTab(): string {
   const shown = filtered(cards);
   const total = cardCatalog().length;
   return (
-    (d ? detailHtml(d) : '') +
     `<div class="mtbar"><span>收藏 <b>${myteam.save.cards.length}</b> / ${total} 張</span><span>租借 ${myteam.save.rentals.length} 張</span><span>已開 ${myteam.save.packsOpened} 包</span></div>` +
-    `<div class="chips">${tierChips(filterTier, 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
-    `<div class="mtgrid">${shown.map((c) => cardHtml(c, { cls: 'small pick', ref: refOf(c) })).join('') || '<p class="fine">沒有符合的卡。</p>'}</div>`
+    cols(
+      `<div class="chips">${tierChips(filterTier, 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
+        `<div class="mtgrid mtscroll">${shown.map((c) => cardHtml(c, { cls: `small pick${refOf(c) === detail ? ' sel' : ''}`, ref: refOf(c) })).join('') || '<p class="fine">沒有符合的卡。</p>'}</div>`,
+      d ? detailHtml(d) : '<p class="fine mtnodetail">點一張卡，這裡會顯示大圖和全部能力值。</p>',
+      true,
+    )
   );
 }
 
@@ -194,7 +204,7 @@ function shopTab(): string {
   const top = tier(periodTop(s.period));
   return (
     `<div class="mtbar"><span>第 <b>${s.period}</b> 期・最高 <b style="color:${top.color === '#1a1a1f' ? '#fff' : top.color}">${top.name}卡</b></span>` +
-    `<span class="fine">${nextPeriodText(s)}</span></div>` +
+    `<span class="fine">${nextPeriodText(s)}</span></div><div class="mtpacks">` +
     OFFICIAL_PACKS
       .map((p) => {
         const can = wallet.coins >= p.price && packPool(p, s.period).length > 0;
@@ -204,7 +214,8 @@ function shopTab(): string {
           `<button type="button" class="primary buy" data-buy="${esc(p.id)}"${can ? '' : ' disabled'}>購買　🪙 ${coinsText(p.price)}</button></div>`
         );
       })
-      .join('')
+      .join('') +
+    '</div>'
   );
 }
 
@@ -300,8 +311,9 @@ function playTab(): string {
   return (
     `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span>${nextPeriodText(s)}</span></div>` +
     (full ? '' : '<p class="msg">牌組至少要 5 張卡才能比賽，先到「牌組」分頁放卡。</p>') +
-    `<h3 class="mth">挑戰之路</h3><div class="chips">${periods}</div><div class="mtlevels">${levels}</div>` +
-    `<h3 class="mth">快速對戰</h3><div class="mtplay"><span class="fine left">對上和你牌組同等級的隨機 NBA 球隊。贏 ${GAME_COINS.win}、輸 ${GAME_COINS.loss} 金幣。</span>` +
+    cols(
+      `<h3 class="mth">挑戰之路</h3><div class="chips">${periods}</div><div class="mtlevels">${levels}</div>`,
+      `<h3 class="mth">快速對戰</h3><div class="mtplay"><span class="fine left">對上和你牌組同等級的隨機 NBA 球隊。贏 ${GAME_COINS.win}、輸 ${GAME_COINS.loss} 金幣。</span>` +
     `<button type="button" class="small go" data-act="quickgame"${full ? '' : ' disabled'}>開始</button></div>` +
     `<h3 class="mth">街頭 3 對 3</h3><p class="fine left">從牌組挑 3 人（${streetPick.length}/3），對上 3 名同等級的隨機球員。</p><div class="chips">${picks}</div>` +
     `<div class="mtplay"><label class="fine">搶 <select id="mtTarget">${opt('11', '11 分', target)}${opt('21', '21 分', target)}</select></label>` +
@@ -316,7 +328,8 @@ function playTab(): string {
       '5 分鐘',
       quarter,
     )}${opt('720', '12 分鐘', quarter)}</select></label></div>` +
-    '<p class="fine left">比賽中離開算輸、沒有金幣，租借卡一樣扣一場。挑戰之路的難度由關卡決定。</p>'
+      '<p class="fine left">比賽中離開算輸、沒有金幣，租借卡一樣扣一場。挑戰之路的難度由關卡決定。</p>',
+    )
   );
 }
 
@@ -335,7 +348,7 @@ function missionsTab(): string {
     );
   }).join('');
   return (
-    `<div class="mtbar"><span>已領 <b>${s.claimed.length}</b> / ${MISSIONS.length}</span><span>${nextPeriodText(s)}</span></div>` + rows
+    `<div class="mtbar"><span>已領 <b>${s.claimed.length}</b> / ${MISSIONS.length}</span><span>${nextPeriodText(s)}</span></div><div class="mtmissions">${rows}</div>`
   );
 }
 
@@ -598,7 +611,8 @@ export function initMyTeam(h: MyTeamHost): void {
       } else {
         detail = ref;
         confirmSell = false;
-        $('#myteam').scrollTo({ top: 0, behavior: 'smooth' });
+        // Stacked (narrow) layout: the detail sits above the grid.
+        if (window.innerWidth < 1100) $('#myteam').scrollTo({ top: 0, behavior: 'smooth' });
       }
     } else if (act === 'auto') {
       s.deck = autoDeck(s);

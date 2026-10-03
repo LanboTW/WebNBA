@@ -79,7 +79,11 @@ type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' 
 const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub', 'myteam'];
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
+/** Screens with a player on the court behind them; the rest are menus that need the room. */
+const SHOWCASE_SCREENS: Screen[] = ['home', 'career', ...CAREER_SCREENS];
 let current: Screen = 'home';
+/** The first background player waits for the saves (see the end of this file). */
+let booted = false;
 /** The latest reload of the career players (see refreshCareerTeams). */
 let careerLoad: Promise<void> = Promise.resolve();
 
@@ -92,8 +96,12 @@ function show(next: Screen): void {
   if (next === 'myteam') renderMyTeam();
   if (next === 'home' || next === 'quick' || next === 'practice') careerLoad = refreshCareerTeams();
   if (next === 'career') void renderCareer();
-  // Leaving the career screens: back to the rotating stars.
-  if (!session && showcase?.hold && !CAREER_SCREENS.includes(next)) startShowcase();
+  document.body.classList.toggle('menu-solid', !session && !SHOWCASE_SCREENS.includes(next));
+  if (!session) {
+    if (!SHOWCASE_SCREENS.includes(next)) stopShowcase();
+    // Leaving the career screens (or coming back from a menu): the rotating stars.
+    else if (booted && (!showcase || (showcase.hold && !CAREER_SCREENS.includes(next)))) startShowcase();
+  }
 }
 
 document.querySelectorAll<HTMLElement>('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go as Screen)));
@@ -366,9 +374,7 @@ function setQuickKind(kind: QuickKind): void {
   quickKind = kind;
   save('quickKind', kind);
   document.querySelectorAll<HTMLElement>('#quickKind [data-kind]').forEach((b) => b.classList.toggle('on', b.dataset.kind === kind));
-  $('#fullPane').classList.toggle('hidden', kind !== 'full');
-  $('#streetPane').classList.toggle('hidden', kind !== 'street');
-  $('#quarterRow').classList.toggle('hidden', kind !== 'full');
+  $('#quick').classList.toggle('kind-street', kind === 'street');
   $<HTMLButtonElement>('#startBtn').disabled = kind === 'street' && !streetReady();
   renderStreet();
 }
@@ -425,7 +431,8 @@ function saveSeats(): void {
   save('streetSeats', JSON.stringify(streetSeats));
 }
 
-$('#streetPane').addEventListener('click', (e) => {
+$('#quick').addEventListener('click', (e) => {
+  if (quickKind !== 'street') return;
   const el = e.target as HTMLElement;
   const seat = el.closest<HTMLElement>('[data-side]');
   const pick = el.closest<HTMLElement>('[data-pi]');
@@ -668,10 +675,8 @@ function backToMenu(): void {
   } else if (mt) {
     show('myteam');
     mt.after();
-    startShowcase();
   } else {
     show(current);
-    startShowcase();
   }
 }
 
@@ -692,11 +697,35 @@ function playCareer(
 // ------------------------------------------------------------ box score
 
 const pauseLineup = new LineupPanel($('#boxLineup'));
+/** The team whose box score shows (one at a time). */
+let boxTeam: 0 | 1 = 0;
+
+function showBoxTeam(): void {
+  [...$('#boxTables').children].forEach((el, i) => el.classList.toggle('hidden', i !== boxTeam));
+  $('#boxTabs')
+    .querySelectorAll<HTMLElement>('[data-team]')
+    .forEach((b) => b.classList.toggle('on', Number(b.dataset.team) === boxTeam));
+}
+$('#boxTabs').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-team]');
+  if (!b) return;
+  boxTeam = Number(b.dataset.team) as 0 | 1;
+  showBoxTeam();
+});
 
 function showBox(title: string, canResume: boolean): void {
   if (!session) return;
   $('#boxTitle').textContent = title;
   $('#boxTables').innerHTML = renderBoxScore(session.state, session.teams);
+  const both = $('#boxTables').children.length === 2;
+  boxTeam = session.team === 1 ? 1 : 0;
+  $('#boxTabs').classList.toggle('hidden', !both);
+  $('#boxTabs').innerHTML = both
+    ? ([0, 1] as const)
+        .map((t) => `<button type="button" data-team="${t}">${esc(session!.teams[t].name)}　${session!.state.score[t]}</button>`)
+        .join('')
+    : '';
+  if (both) showBoxTeam();
   const s = session.state;
   const team = session.team;
   // Career games: the coach handles substitutions.
@@ -785,7 +814,8 @@ initMyTeam({
 show('home');
 // The first player on the court may be yours: wait a moment for the saves.
 void Promise.race([careerLoad, new Promise((r) => setTimeout(r, 800))]).then(() => {
-  if (!showcase && !session) startShowcase();
+  booted = true;
+  if (!showcase && !session && SHOWCASE_SCREENS.includes(current)) startShowcase();
 });
 requestAnimationFrame(frame);
 

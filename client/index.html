@@ -54,7 +54,7 @@
     </div>
 
     <div id="home" class="overlay screen">
-      <div class="homebar"><span id="coinStatus" class="auth coins" title="金幣：快速對戰與生涯退休結算可得，可用在新生涯與 MyTeam 卡包">0</span><button type="button" id="authStatus" class="auth">訪客</button></div>
+      <div class="homebar"><span id="coinStatus" class="auth coins" title="金幣：快速對戰與生涯退休結算可得，可用在新生涯與 MyTeam 卡包">0</span></div>
       <div class="homemain">
         <h1>WebNBA</h1>
         <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
@@ -65,86 +65,89 @@
           <button type="button" data-go="practice"><b>練習</b><small>一個人投籃、運球</small></button>
           <button type="button" data-go="players"><b>球員資料庫</b><small>所有球隊的球員能力值</small></button>
           <button type="button" data-go="settings"><b>設定</b><small>畫質、視角、規則</small></button>
+          <button type="button" id="authStatus" class="authbtn hidden"><b>登入</b><small>登入後可雲端存檔：生涯、金幣、MyTeam 都跟著帳號，換裝置也能繼續</small></button>
         </nav>
         <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
       </div>
       <div id="showTag" class="showtag"></div>
     </div>
 
-    <div id="quick" class="overlay screen side-panel hidden">
-      <div class="panel">
+    <div id="quick" class="overlay screen hidden">
+      <div class="panel duo">
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>快速模式</h2></div>
-        <div class="kindswitch" id="quickKind">
-          <button type="button" data-kind="full"><b>快速對戰</b><small>5 對 5 全場</small></button>
-          <button type="button" data-kind="street"><b>街頭籃球</b><small>1v1 · 2v2 · 3v3 半場</small></button>
-        </div>
-        <div id="streetPane" class="hidden">
-          <nav class="chips" id="streetSize">
-            <button type="button" class="chip" data-size="1">1 對 1</button>
-            <button type="button" class="chip" data-size="2">2 對 2</button>
-            <button type="button" class="chip" data-size="3">3 對 3</button>
-          </nav>
-          <div class="streetsides">
-            <div class="sside"><span class="seatname">紅隊（你）</span><div id="streetHome" class="slots"></div></div>
-            <div class="vs">VS</div>
-            <div class="sside"><span class="seatname">藍隊</span><div id="streetAway" class="slots"></div></div>
+        <div class="cols">
+          <div class="col">
+            <div class="kindswitch q-first" id="quickKind">
+              <button type="button" data-kind="full"><b>快速對戰</b><small>5 對 5 全場</small></button>
+              <button type="button" data-kind="street"><b>街頭籃球</b><small>1v1 · 2v2 · 3v3 半場</small></button>
+            </div>
+            <nav class="chips street-only q-first" id="streetSize">
+              <button type="button" class="chip" data-size="1">1 對 1</button>
+              <button type="button" class="chip" data-size="2">2 對 2</button>
+              <button type="button" class="chip" data-size="3">3 對 3</button>
+            </nav>
+            <p class="hint street-only">點一個位置，再挑球隊和球員（任何球隊都可以，包括你的生涯球員）</p>
+            <p class="hint full-only" id="pickHint">點隊伍卡片切換要選哪一邊，再點隊徽選隊</p>
+            <select id="streetTeam" class="hidden"></select>
+            <div id="streetPicker" class="street-only"></div>
+            <div id="streetPlayers" class="plist street-only"></div>
+            <div id="menuPicker" class="full-only"></div>
+            <div class="buttons phone-steps full-only">
+              <button type="button" id="stepBack" class="hidden">← 改你的隊伍</button>
+              <button type="button" id="stepNext">下一步：選對手 →</button>
+            </div>
+            <div class="row q-last">
+              <label>模式
+                <select id="modeSel">
+                  <option value="game">對戰電腦</option>
+                  <option value="watch">電腦對戰（觀戰）</option>
+                </select>
+              </label>
+              <label>難度
+                <select id="diffSel">
+                  <option value="easy">簡單</option>
+                  <option value="normal" selected>普通</option>
+                  <option value="hard">困難</option>
+                </select>
+              </label>
+              <label id="quarterRow" class="full-only">每節長度
+                <select id="quarterSel">
+                  <option value="60">1 分鐘</option>
+                  <option value="120">2 分鐘</option>
+                  <option value="180" selected>3 分鐘</option>
+                  <option value="300">5 分鐘</option>
+                  <option value="720">12 分鐘</option>
+                </select>
+              </label>
+            </div>
+            <div class="buttons q-last">
+              <button type="button" id="randomBtn">隨機對戰</button>
+              <button type="button" id="startBtn" class="primary">開始比賽</button>
+            </div>
           </div>
-          <p class="hint">點一個位置，再從下面的球隊挑球員（任何球隊都可以，包括你的生涯球員）</p>
-          <select id="streetTeam" class="hidden"></select>
-          <div id="streetPicker"></div>
-          <div id="streetPlayers" class="plist"></div>
-          <div class="row">
-            <label>目標分數
-              <select id="streetTarget">
-                <option value="11">11 分</option>
-                <option value="21" selected>21 分</option>
-              </select>
-            </label>
-            <label class="check"><input type="checkbox" id="streetMitt" /> 進球的一方繼續持球</label>
+          <div class="col">
+            <div class="streetsides street-only q-top">
+              <div class="sside"><span class="seatname">紅隊（你）</span><div id="streetHome" class="slots"></div></div>
+              <div class="vs">VS</div>
+              <div class="sside"><span class="seatname">藍隊</span><div id="streetAway" class="slots"></div></div>
+            </div>
+            <div class="row street-only">
+              <label>目標分數
+                <select id="streetTarget">
+                  <option value="11">11 分</option>
+                  <option value="21" selected>21 分</option>
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" id="streetMitt" /> 進球的一方繼續持球</label>
+            </div>
+            <p class="sub tight street-only">半場一個籃框，三分線內 1 分、線外 2 分。換球權後要先把球帶到三分線外（清球）。沒有計時、罰球和換人，犯規只換發球。</p>
+            <div class="hidden"><select id="homeSel"></select><select id="awaySel"></select></div>
+            <div class="matchup full-only q-top">
+              <button type="button" class="side" id="homeSide"><span class="seatname">你的隊伍</span><div id="homeCard" class="card"></div></button>
+              <div class="vs">VS</div>
+              <button type="button" class="side" id="awaySide"><span class="seatname">對手</span><div id="awayCard" class="card"></div></button>
+            </div>
           </div>
-          <p class="sub tight">半場一個籃框，三分線內 1 分、線外 2 分。換球權後要先把球帶到三分線外（清球）。沒有計時、罰球和換人，犯規只換發球。</p>
-        </div>
-        <div id="fullPane">
-        <div class="hidden"><select id="homeSel"></select><select id="awaySel"></select></div>
-        <div class="matchup">
-          <button type="button" class="side" id="homeSide"><span class="seatname">你的隊伍</span><div id="homeCard" class="card"></div></button>
-          <div class="vs">VS</div>
-          <button type="button" class="side" id="awaySide"><span class="seatname">對手</span><div id="awayCard" class="card"></div></button>
-        </div>
-        <p class="hint" id="pickHint">點上面的卡片切換要選哪一邊，再點下面的隊徽選隊</p>
-        <div id="menuPicker"></div>
-        <div class="buttons phone-steps">
-          <button type="button" id="stepBack" class="hidden">← 改你的隊伍</button>
-          <button type="button" id="stepNext">下一步：選對手 →</button>
-        </div>
-        </div>
-        <div class="row">
-          <label>模式
-            <select id="modeSel">
-              <option value="game">對戰電腦</option>
-              <option value="watch">電腦對戰（觀戰）</option>
-            </select>
-          </label>
-          <label>難度
-            <select id="diffSel">
-              <option value="easy">簡單</option>
-              <option value="normal" selected>普通</option>
-              <option value="hard">困難</option>
-            </select>
-          </label>
-          <label id="quarterRow">每節長度
-            <select id="quarterSel">
-              <option value="60">1 分鐘</option>
-              <option value="120">2 分鐘</option>
-              <option value="180" selected>3 分鐘</option>
-              <option value="300">5 分鐘</option>
-              <option value="720">12 分鐘</option>
-            </select>
-          </label>
-        </div>
-        <div class="buttons">
-          <button type="button" id="randomBtn">隨機對戰</button>
-          <button type="button" id="startBtn" class="primary">開始比賽</button>
         </div>
       </div>
     </div>
@@ -162,8 +165,8 @@
       </div>
     </div>
 
-    <div id="players" class="overlay screen side-panel hidden">
-      <div class="panel wide">
+    <div id="players" class="overlay screen hidden">
+      <div class="panel full">
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>球員資料庫</h2></div>
         <div id="playerDb"></div>
       </div>
@@ -207,7 +210,7 @@
     </div>
 
     <div id="myteam" class="overlay screen hidden">
-      <div class="panel wide">
+      <div class="panel duo">
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>MyTeam</h2><span id="mtCoins" class="mtcoins"></span></div>
         <div id="mtTabs" class="tabs"></div>
         <div id="mtBody"></div>
@@ -278,10 +281,13 @@
     </div>
 
     <div id="boxscore" class="overlay hidden">
-      <div class="panel wide">
+      <div class="panel wide boxpanel">
         <h2 id="boxTitle">暫停</h2>
-        <div id="boxLineup"></div>
-        <div id="boxTables"></div>
+        <nav id="boxTabs" class="tabs"></nav>
+        <div class="boxcols">
+          <div id="boxTables"></div>
+          <div id="boxLineup"></div>
+        </div>
         <div class="buttons">
           <button id="resumeBtn" class="primary">繼續</button>
           <button id="quitBtn">回主選單</button>

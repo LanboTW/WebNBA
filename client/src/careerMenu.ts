@@ -181,7 +181,12 @@ function openAccount(): void {
 }
 
 function renderAccount(): void {
-  $('#authStatus').textContent = account ? `已登入 · ${account.label}` : cloud ? '訪客 · 登入' : '訪客';
+  const auth = $('#authStatus');
+  auth.classList.toggle('hidden', !cloud);
+  auth.classList.toggle('in', !!account);
+  auth.innerHTML = account
+    ? `<b>帳號：${esc(account.label)}</b><small>已開啟雲端存檔</small>`
+    : '<b>登入</b><small>登入後可雲端存檔：生涯、金幣、MyTeam 都跟著帳號，換裝置也能繼續</small>';
   $('#accountNoCloud').classList.toggle('hidden', !!cloud);
   $('#accountGuest').classList.toggle('hidden', !cloud || !!account);
   $('#accountUser').classList.toggle('hidden', !account);

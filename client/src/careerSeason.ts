@@ -118,7 +118,8 @@ export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, T
                 : tab === 'news'
                   ? newsHtml(c)
                   : (home ?? homeHtml(c, league, role));
-  return tabs + body;
+  // Wide screens put the tabs in a column on the left and scroll only the page beside them.
+  return `<div class="hubtabs">${tabs}<div class="hubpane">${body}</div></div>`;
 }
 
 /** A game's grade, or 未上場 when he never got in. */

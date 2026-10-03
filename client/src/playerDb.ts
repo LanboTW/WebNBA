@@ -69,7 +69,6 @@ export class PlayerDb {
       groups.map((g) => `<optgroup label="${esc(g)}">${opts(scopes.filter(([k]) => k.startsWith('team:') && this.groupOfTeam(k.slice(5)) === g))}</optgroup>`).join('') +
       `</select>` +
       `<input type="search" data-db="query" placeholder="搜尋球員" value="${esc(this.query)}" />` +
-      `</div><div class="dbbar">` +
       `<nav class="chips">${(['all', ...POSITIONS] as const).map((p) => `<button type="button" data-pos="${p}" class="chip${p === this.pos ? ' on' : ''}">${p === 'all' ? '全部位置' : p}</button>`).join('')}</nav>` +
       (source.line
         ? `<nav class="chips">${(
