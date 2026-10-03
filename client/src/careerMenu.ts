@@ -76,7 +76,16 @@ export function initCareerMenu(show: (screen: CareerScreen) => void, page: Omit<
     if (!b) return;
     const slot = Number(b.dataset.slot) as SlotInfo['slot'];
     if (b.dataset.act === 'delete') {
-      if (!confirm(`確定刪除存檔 ${slot}？刪除後無法復原。`)) return;
+      // Ask on the card itself rather than in a browser pop-up.
+      const card = b.closest('.slot')!;
+      card.classList.add('confirming');
+      card.querySelector('.slotbtns')!.innerHTML =
+        `<span class="ask">刪除後無法復原，確定刪除？</span>` +
+        `<button type="button" class="danger" data-slot="${slot}" data-act="confirmDelete">刪除</button>` +
+        `<button type="button" data-slot="${slot}" data-act="cancelDelete">取消</button>`;
+    } else if (b.dataset.act === 'cancelDelete') {
+      void renderCareer();
+    } else if (b.dataset.act === 'confirmDelete') {
       try {
         await store.remove(slot);
       } catch {

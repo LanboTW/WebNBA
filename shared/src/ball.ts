@@ -1,6 +1,6 @@
 import { BALL_RADIUS, BOARD_X, COURT, DT, GRAVITY, HOOP, HOOP_X, OREB_SHOT_CLOCK } from './constants';
 import { shootingFoul } from './fouls';
-import { hdist, heldBallPosition } from './players';
+import { CATCH_HOLD, hdist, heldBallPosition } from './players';
 import { nextRandom } from './rng';
 import { onGainBall, onMadeBasket } from './rules';
 import type { GameState, PlayerState } from './types';
@@ -32,6 +32,7 @@ export function updateBall(state: GameState): void {
     b.vel = { ...holder.vel };
     return;
   }
+  if (b.mode === 'pass') homePass(state);
   const h = DT / BALL_SUBSTEPS;
   for (let i = 0; i < BALL_SUBSTEPS; i++) {
     b.vel.y -= GRAVITY * h;
@@ -45,7 +46,54 @@ export function updateBall(state: GameState): void {
   }
   if (b.mode === 'pass') tryCatch(state);
   else if (b.mode === 'flight' && state.phase === 'live') checkBlocks(state);
+  if (b.mode === 'loose' || b.mode === 'flight') rollOffRim(state);
   if (b.mode === 'loose' && (state.phase === 'live' || state.settings.mode === 'practice')) tryPickup(state);
+}
+
+/**
+ * A pass bends toward where its receiver actually is (he may have changed
+ * direction since it was thrown), keeping its pace, so passes don't sail out
+ * of bounds past a receiver who cut the other way.
+ */
+function homePass(state: GameState): void {
+  const b = state.ball;
+  const r = state.players[b.pass!.targetId];
+  const dx = r.pos.x - b.pos.x;
+  const dz = r.pos.z - b.pos.z;
+  const d = Math.hypot(dx, dz);
+  const v = Math.hypot(b.vel.x, b.vel.z);
+  if (d < 0.05 || v < 0.1) return;
+  const k = Math.min(1, 6 * DT);
+  const vx = b.vel.x + ((dx / d) * v - b.vel.x) * k;
+  const vz = b.vel.z + ((dz / d) * v - b.vel.z) * k;
+  const l = Math.hypot(vx, vz) || 1;
+  b.vel.x = (vx / l) * v;
+  b.vel.z = (vz / l) * v;
+}
+
+/**
+ * A ball that comes to rest on top of the rim would sit there forever:
+ * nudge it off, away from the middle of the hoop.
+ */
+function rollOffRim(state: GameState): void {
+  const b = state.ball;
+  // A shot on its way in is left alone, however slowly it rolls.
+  if (b.shot?.willMake && !b.shot.scored && b.mode === 'flight') return;
+  if (Math.hypot(b.vel.x, b.vel.y, b.vel.z) > 0.8) return;
+  for (const hoopX of [HOOP_X, -HOOP_X]) {
+    const dx = b.pos.x - hoopX;
+    const ring = Math.hypot(dx, b.pos.z);
+    if (Math.abs(ring - HOOP.rimRadius) > BALL_RADIUS + HOOP.rimTube + 0.03) continue;
+    if (b.pos.y < HOOP.rimHeight || b.pos.y > HOOP.rimHeight + BALL_RADIUS + HOOP.rimTube + 0.05) continue;
+    const a = ring > 0.02 ? Math.atan2(b.pos.z, dx) : nextRandom(state) * Math.PI * 2;
+    // Off the outside of the rim, so it can't drop in as a basket.
+    b.vel.x = Math.cos(a) * 1.4;
+    b.vel.z = Math.sin(a) * 1.4;
+    b.vel.y = Math.max(b.vel.y, 0.6);
+    if (ring < HOOP.rimRadius) b.pos.y = Math.max(b.pos.y, HOOP.rimHeight + BALL_RADIUS + HOOP.rimTube + 0.01);
+    becomeLoose(state);
+    return;
+  }
 }
 
 function becomeLoose(state: GameState): void {
@@ -226,6 +274,7 @@ function tryCatch(state: GameState): void {
   const prevTouch = b.lastTouchTeam;
   giveBall(state, r.id);
   r.dribblePhase = 0;
+  r.catchHold = CATCH_HOLD;
   if (pass.intercepted) {
     r.stats.stl++;
     passer.stats.tov++;

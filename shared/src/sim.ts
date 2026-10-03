@@ -83,6 +83,7 @@ function newPlayer(id: number, team: 0 | 1, slot: number, info: TeamInfo['player
     energy: 1,
     paintTime: 0,
     contactCooldown: 0,
+    catchHold: 0,
   };
 }
 

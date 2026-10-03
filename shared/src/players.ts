@@ -31,6 +31,10 @@ import type { GameState, PlayerInput, PlayerState, ShotKind, Vec3 } from './type
 
 const MOVE_RESPONSE = 10;
 const PASS_SPEED_BASE = 11;
+/** Shortest pass flight (s): even a hand-off takes a moment to travel. */
+const MIN_PASS_FLIGHT = 0.24;
+/** After catching a pass, how long before the ball can be passed on (s). */
+export const CATCH_HOLD = 0.3;
 
 export const hdist = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
 
@@ -116,6 +120,7 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   p.pickupCooldown = Math.max(0, p.pickupCooldown - DT);
   p.stealCooldown = Math.max(0, p.stealCooldown - DT);
   p.contactCooldown = Math.max(0, p.contactCooldown - DT);
+  p.catchHold = Math.max(0, p.catchHold - DT);
   p.intenseD = inp.intenseD && !mine && canPlay;
   const ft = state.phase === 'freeThrow' ? state.freeThrow : null;
   const ftShooter = !!ft && ft.shooterId === p.id && mine && !ft.released && ft.timer > 0.5;
@@ -141,7 +146,7 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
     if (p.onGround && p.shotTimer > 0.2) p.action = 'normal';
   } else if (ftShooter) {
     if (shootPressed) startShot(state, p, inp);
-  } else if (mine && passPressed && (canPlay || inbounder)) {
+  } else if (mine && passPressed && (canPlay || inbounder) && p.catchHold <= 0) {
     const explicit = inp.passTarget !== undefined ? state.players[inp.passTarget] : undefined;
     const valid = explicit && explicit.team === p.team && explicit.id !== p.id;
     const target = valid ? explicit.id : choosePassTarget(state, p, inp);
@@ -574,13 +579,15 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
   const from: Vec3 = { x: p.pos.x + fx * 0.3, y: p.pos.y + p.info.heightM * 0.7, z: p.pos.z + fz * 0.3 };
   const speed = PASS_SPEED_BASE + p.info.ratings.pass * 0.04;
   // Lead the receiver by where they will be when the ball arrives.
-  let flight = Math.max(0.15, hdist(from, t.pos) / speed);
+  let flight = Math.max(MIN_PASS_FLIGHT, hdist(from, t.pos) / speed);
   let to: Vec3 = { x: t.pos.x + t.vel.x * flight, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight };
-  flight = Math.max(0.15, hdist(from, to) / speed);
+  flight = Math.max(MIN_PASS_FLIGHT, hdist(from, to) / speed);
   to = { x: t.pos.x + t.vel.x * flight, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight };
 
   let receiver = targetId;
   let intercepted = false;
+  // Inbound passes are lobbed over the defence: much harder to jump.
+  const inbound = isInbounder(state, p) ? 0.35 : 1;
   // Defenders near the passing lane may jump it.
   const lx = to.x - from.x;
   const lz = to.z - from.z;
@@ -592,10 +599,11 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
       const pz = from.z + lz * u;
       return { o, u, d: Math.hypot(o.pos.x - px, o.pos.z - pz) };
     })
-    .filter((c) => c.u > 0.2 && c.u < 0.92 && c.d < 0.8)
+    .filter((c) => c.u > 0.2 && c.u < 0.92 && c.d < 0.7)
     .sort((a, b) => a.u - b.u);
   for (const c of lanes) {
-    const chance = (1 - c.d / 0.8) * (0.12 + c.o.info.ratings.steal * 0.004) * (ll > 6 ? 1.3 : 1) * defenderSet(c.o);
+    const chance =
+      (1 - c.d / 0.7) * (0.06 + c.o.info.ratings.steal * 0.0025) * (ll > 6 ? 1.3 : 1) * defenderSet(c.o) * inbound;
     if (nextRandom(state) < chance) {
       receiver = c.o.id;
       intercepted = true;

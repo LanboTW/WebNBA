@@ -137,6 +137,8 @@ export interface PlayerState {
   paintTime: number;
   /** Stops one collision from being called as several fouls. */
   contactCooldown: number;
+  /** Just caught a pass: seconds before he can pass it on (no instant one-touch relays). */
+  catchHold: number;
 }
 
 /** A player on the bench: everything that follows a person when they sub in. */

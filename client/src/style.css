@@ -1567,6 +1567,28 @@ button.link {
   cursor: not-allowed;
 }
 
+.slot.confirming {
+  flex-wrap: wrap;
+  border-color: var(--bad);
+}
+
+.slot.confirming .slotbtns {
+  align-items: center;
+  width: 100%;
+}
+
+.slotbtns .ask {
+  flex: 1;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+button.danger {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #2b0500;
+}
+
 .conflict {
   margin-bottom: 14px;
   padding: 12px 16px;

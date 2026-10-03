@@ -209,7 +209,13 @@ function dodge(state: GameState, p: PlayerState, inp: PlayerInput): PlayerInput 
 }
 
 function handlerAi(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
-  return dodge(state, p, handlerDecision(state, p, sk));
+  const inp = handlerDecision(state, p, sk);
+  // Just caught it: can't pass on yet, so think again the moment he can (shots and drives go now).
+  if (inp.pass && p.catchHold > 0) {
+    p.ai.decisionTimer = p.catchHold;
+    return NO_INPUT;
+  }
+  return dodge(state, p, inp);
 }
 
 function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInput {

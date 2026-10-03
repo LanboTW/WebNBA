@@ -322,10 +322,8 @@ function startInbound(state: GameState, team: 0 | 1, spot: Vec3): void {
   applySubs(state);
   let passer: PlayerState | null = null;
   let bestD = Infinity;
-  // A career player is never stuck taking the ball out: a teammate inbounds to him.
-  const solo = team === 0 ? state.settings.solo : undefined;
   for (const p of state.players) {
-    if (p.team !== team || (solo !== undefined && p.rosterIdx === solo)) continue;
+    if (p.team !== team) continue;
     const d = hdist(p.pos, spot);
     if (d < bestD) {
       bestD = d;
