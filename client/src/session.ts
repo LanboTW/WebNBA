@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   DT,
+  attackHoop,
   attackHoopX,
   cancelSub,
   choosePassTarget,
@@ -23,6 +24,7 @@ import {
   type Vec3,
 } from '@webnba/shared';
 import { buildArena, type Arena } from './arena';
+import { buildStreetArena } from './streetCourt';
 import type { Sfx } from './audio';
 import { BallView } from './ballView';
 import { CAMERA_LABEL, GameCamera, type CameraMode } from './camera';
@@ -52,6 +54,7 @@ const VIOLATION_TEXT: Partial<Record<string, string>> = {
   eightSec: '8 秒違例',
   backcourt: '回場違例',
   fiveSec: '5 秒違例',
+  noClear: '沒有清球，進球不算',
 };
 
 const CALL_TEXT: Record<CallKind, [string, string]> = {
@@ -129,13 +132,16 @@ export class Session {
     options: SessionOptions = {},
   ) {
     const practice = settings.mode === 'practice';
-    this.state = createGame({ teams, settings, playersPerTeam: practice ? [1, 0] : [5, 5] });
+    // Street teams are just the picked players.
+    const street = !!settings.street;
+    const counts: [number, number] = practice ? [1, 0] : street ? [teams[0].players.length, teams[1].players.length] : [5, 5];
+    this.state = createGame({ teams, settings, playersPerTeam: counts });
     this.team = this.state.settings.humanTeams.includes(0) ? 0 : -1;
     this.solo = this.state.settings.solo !== undefined;
     this.hud.setHelpMode(this.solo);
     this.builtFor = this.state.players.map((p) => p.rosterIdx);
     this.home = options.home ?? 0;
-    this.arena = buildArena(this.scene, teams[this.home], !!options.showcase);
+    this.arena = street ? buildStreetArena(this.scene) : buildArena(this.scene, teams[this.home], !!options.showcase);
     this.cam = new GameCamera(aspect, view);
     this.playerViews = this.state.players.map((p) => {
       const v = new PlayerView(p.info, kitFor(teams[p.team], p.team === this.home));
@@ -341,11 +347,11 @@ export class Session {
       ? {
           x: mine.pos.x,
           z: mine.pos.z,
-          toward: offense === mine.team ? { x: attackHoopX(mine.team, s.period), z: 0 } : { x: tmp.x, z: tmp.z },
-          attack: Math.sign(attackHoopX(offense, s.period)),
+          toward: offense === mine.team ? { x: attackHoop(s, mine.team), z: 0 } : { x: tmp.x, z: tmp.z },
+          attack: Math.sign(attackHoop(s, offense)),
         }
       : null;
-    this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoopX(s.possession, s.period)), dt, follow);
+    this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoop(s, s.possession)), dt, follow);
     // Your ring goes with you to the bench.
     if (this.solo) this.ring.visible = !!mine;
     this.arena.update(dt);
@@ -527,7 +533,8 @@ export class Session {
       case 'foul': {
         this.sfx.whistle();
         const p = s.players[e.playerId];
-        const extra = e.kind === 'charge' ? '　球權轉換' : e.shots ? `　罰球 ${e.shots} 次` : '';
+        const extra =
+          e.kind === 'charge' ? '　球權轉換' : e.shots ? `　罰球 ${e.shots} 次` : s.settings.street && e.kind !== 'shooting' ? '　重新發球' : '';
         hud.toast(`${FOUL_TEXT[e.kind]}　${this.name(e.playerId)}（${p?.stats.pf ?? 0} 犯）${extra}`, 'bad');
         if (e.bonus && e.kind !== 'shooting' && e.kind !== 'charge') hud.toast('進入加罰', '', true);
         if (e.kind === 'charge') this.playerViews[e.onId]?.trigger('flop');

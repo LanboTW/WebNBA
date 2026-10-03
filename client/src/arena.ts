@@ -433,7 +433,7 @@ function buildHoop(scene: THREE.Scene, s: 1 | -1, home: TeamInfo): THREE.Object3
   return net;
 }
 
-function buildNet(): THREE.Object3D {
+export function buildNet(): THREE.Object3D {
   const strands = 14;
   const rings = 5;
   const depth = 0.42;

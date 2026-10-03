@@ -6,7 +6,7 @@ import {
   GRAVITY,
   HOOP,
   PLAYER_RADIUS,
-  attackHoopX,
+  attackHoop,
   isThreePoint,
 } from './constants';
 import { chargeFoul, commonFoul, onFreeThrowRelease, shootingFoul } from './fouls';
@@ -222,12 +222,13 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   }
   const limX = COURT.halfLength + 1.2;
   const limZ = COURT.halfWidth + 1.2;
-  p.pos.x = Math.max(-limX, Math.min(limX, p.pos.x));
+  // Street courts end a step past the half-court line.
+  p.pos.x = Math.max(state.settings.street ? -1.2 : -limX, Math.min(limX, p.pos.x));
   p.pos.z = Math.max(-limZ, Math.min(limZ, p.pos.z));
 
   const hSpeed = Math.hypot(p.vel.x, p.vel.z);
   let targetFacing = p.facing;
-  if (p.action !== 'normal') targetFacing = Math.atan2(attackHoopX(p.team, state.period) - p.pos.x, -p.pos.z);
+  if (p.action !== 'normal') targetFacing = Math.atan2(attackHoop(state, p.team) - p.pos.x, -p.pos.z);
   else if (inbounder) targetFacing = Math.atan2(-p.pos.x, -p.pos.z);
   else if (pivotOnly && Math.hypot(inp.moveX, inp.moveZ) > 0.3) targetFacing = Math.atan2(inp.moveX, inp.moveZ);
   else if (p.intenseD) targetFacing = Math.atan2(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
@@ -261,7 +262,7 @@ function intenseTarget(state: GameState, p: PlayerState): { x: number; z: number
   if (holder && holder.team !== p.team && hdist(holder.pos, p.pos) < 4.5) man = holder;
   else if (state.assign[p.id] >= 0) man = state.players[state.assign[p.id]];
   if (!man) return null;
-  const hx = attackHoopX(man.team, state.period);
+  const hx = attackHoop(state, man.team);
   const dx = hx - man.pos.x;
   const dz = -man.pos.z;
   const l = Math.hypot(dx, dz) || 1;
@@ -336,7 +337,7 @@ function checkContact(state: GameState, a: PlayerState, b: PlayerState, nx: numb
   if (nextRandom(state) >= Math.min(0.12, 0.025 + (vn - 3.4) * 0.05)) return;
   const toH = Math.atan2(h.pos.x - d.pos.x, h.pos.z - d.pos.z);
   const facing = Math.cos(toH - d.facing) > 0.3;
-  const hx = attackHoopX(h.team, state.period);
+  const hx = attackHoop(state, h.team);
   const restricted = Math.hypot(d.pos.x - hx, d.pos.z) < COURT.restrictedRadius;
   const set = d.onGround && Math.hypot(d.vel.x, d.vel.z) < 1.3 && facing && !restricted;
   if (set) chargeFoul(state, h, d);
@@ -354,7 +355,7 @@ const METER_TIME: Record<ShotKind, number> = {
 const JUMP_AT: Record<ShotKind, number> = { jumper: 0.38, layup: 0.05, dunk: 0.05, free: 0.5 };
 
 function startShot(state: GameState, p: PlayerState, inp: PlayerInput): void {
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const dist = Math.hypot(hx - p.pos.x, p.pos.z);
   const toHoopX = (hx - p.pos.x) / Math.max(dist, 1e-6);
   const toHoopZ = -p.pos.z / Math.max(dist, 1e-6);
@@ -377,7 +378,7 @@ function launchShotJump(state: GameState, p: PlayerState): void {
     p.vel.y = 0.9;
   } else if (p.shotKind === 'dunk') {
     p.vel.y = jumpSpeed(p) + DUNK_JUMP_BONUS;
-    const hx = attackHoopX(p.team, state.period);
+    const hx = attackHoop(state, p.team);
     const dx = hx - p.pos.x;
     const dz = -p.pos.z;
     const d = Math.hypot(dx, dz);
@@ -387,7 +388,7 @@ function launchShotJump(state: GameState, p: PlayerState): void {
     p.vel.z = (dz / Math.max(d, 1e-6)) * speed;
   } else if (p.shotKind === 'layup') {
     p.vel.y = 3.6;
-    const hx = attackHoopX(p.team, state.period);
+    const hx = attackHoop(state, p.team);
     const dx = hx - p.pos.x;
     const dz = -p.pos.z;
     const d = Math.hypot(dx, dz);
@@ -415,7 +416,7 @@ function topContest(
   pos: { x: number; z: number },
   shooterHeight: number,
 ): { contest: number; by: PlayerState | null } {
-  const hx = attackHoopX(team, state.period);
+  const hx = attackHoop(state, team);
   const ux = hx - pos.x;
   const uz = -pos.z;
   const ul = Math.hypot(ux, uz) || 1;
@@ -442,18 +443,25 @@ function topContest(
 
 /** Expected points of a well-timed shot by `p` from `pos` given current defence. */
 export function shotValue(state: GameState, p: PlayerState, pos: { x: number; z: number } = p.pos): number {
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const dist = Math.hypot(hx - pos.x, pos.z);
   if (dist > 9) return 0;
   const layup = dist < LAYUP_DISTANCE;
   const three = !layup && isThreePoint(pos.x, pos.z, hx);
   const chance = baseMakeChance(p.info.ratings, dist, three, layup) * contestMultiplier(contestAt(state, p.team, pos, p.info.heightM));
-  return chance * (three ? 3 : 2);
+  // In AI value units an inside shot is 2: street long shots are worth double that.
+  return chance * (state.settings.street ? (three ? 3.5 : 2) : three ? 3 : 2);
+}
+
+/** Street counts 1 and 2 instead of 2 and 3. */
+export function shotPoints(state: GameState, three: boolean): 1 | 2 | 3 {
+  if (state.settings.street) return three ? 2 : 1;
+  return three ? 3 : 2;
 }
 
 function releaseShot(state: GameState, p: PlayerState): void {
   const ball = state.ball;
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const meter = p.shotMeter;
   const kind = p.shotKind;
   const free = kind === 'free';
@@ -482,7 +490,7 @@ function releaseShot(state: GameState, p: PlayerState): void {
   chance *= tired * (fouler ? 0.5 : 1) * (reached ? 1 : 0.3);
   const willMake = nextRandom(state) < chance;
   const { quality } = gradeTiming(meter);
-  const points: 1 | 2 | 3 = free ? 1 : three ? 3 : 2;
+  const points = free ? 1 : shotPoints(state, three);
 
   let target: Vec3;
   let flightTime: number | undefined;

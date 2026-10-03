@@ -3053,3 +3053,122 @@ button.small.on {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* --------------------------------------------------------------- street */
+
+/* Quick screen: full-court games on the left, street on the right. */
+.kindswitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.kindswitch button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--muted);
+}
+
+.kindswitch button small {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.kindswitch button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+#streetSize {
+  margin-bottom: 12px;
+}
+
+.streetsides {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.streetsides .vs {
+  align-self: center;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.sside {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.seat {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 2px solid color-mix(in srgb, var(--team) 55%, transparent);
+  border-left-width: 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--team) 14%, #1b1f2e);
+  text-align: left;
+  font-size: 14px;
+}
+
+.seat.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 122, 26, 0.25);
+}
+
+.seat .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat .nm.empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.seat .pos {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.seat .slogo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.pl:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .streetsides {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

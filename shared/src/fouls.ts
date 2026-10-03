@@ -1,4 +1,4 @@
-import { COURT, DT, HOOP, attackHoopX } from './constants';
+import { COURT, DT, HOOP, attackHoop } from './constants';
 import { giveBall } from './ball';
 import { applySubs } from './bench';
 import { isHuman, setPossession, sidelineSpot, turnover } from './rules';
@@ -19,6 +19,8 @@ export function lateWindow(state: GameState): number {
 
 /** Penalty: from the 5th team foul of a quarter (4th in overtime), or the 2nd in the late window. */
 export function inBonus(state: GameState, foulingTeam: 0 | 1): boolean {
+  // Street: a foul only ever gives the ball back.
+  if (state.settings.street) return false;
   const limit = state.period <= 4 ? 5 : 4;
   return state.teamFouls[foulingTeam] >= limit || state.lateFouls[foulingTeam] >= 2;
 }
@@ -31,7 +33,7 @@ function record(state: GameState, fouler: PlayerState): void {
   fouler.stats.pf++;
   state.teamFouls[fouler.team]++;
   if (state.gameClock <= lateWindow(state)) state.lateFouls[fouler.team]++;
-  if (fouledOut(fouler)) state.events.push({ type: 'fouledOut', team: fouler.team, name: fouler.info.name });
+  if (fouledOut(fouler) && !state.settings.street) state.events.push({ type: 'fouledOut', team: fouler.team, name: fouler.info.name });
 }
 
 /** Whistle: the ball is dead where it is. A shot already in the air keeps flying. */
@@ -64,6 +66,7 @@ export function shootingFoul(state: GameState, shot: ShotInfo, defender: PlayerS
   if (!enabled(state) || shot.fouledBy >= 0 || shot.kind === 'free') return;
   shot.fouledBy = defender.id;
   record(state, defender);
+  if (state.settings.street) return streetShootingFoul(state, shot, defender);
   const total = shot.willMake ? 1 : shot.points;
   state.events.push({
     type: 'foul',
@@ -77,6 +80,27 @@ export function shootingFoul(state: GameState, shot: ShotInfo, defender: PlayerS
   });
   stopPlay(state, FOULED_SHOT_SECONDS);
   state.pendingFT = { shooterId: shot.shooterId, total, after: null };
+}
+
+/**
+ * Street: no free throws. A basket that falls counts and play goes on as after
+ * any score; a miss gives the shooter's team the ball back with a check.
+ */
+function streetShootingFoul(state: GameState, shot: ShotInfo, defender: PlayerState): void {
+  state.events.push({
+    type: 'foul',
+    playerId: defender.id,
+    team: defender.team,
+    onId: shot.shooterId,
+    kind: 'shooting',
+    shots: 0,
+    fouls: state.teamFouls[defender.team],
+    bonus: false,
+  });
+  if (shot.willMake) return;
+  stopPlay(state, FOULED_SHOT_SECONDS);
+  setPossession(state, shot.team);
+  state.pendingInbound = { team: shot.team, spot: { x: 0, y: 0, z: 0 } };
 }
 
 /** Non-shooting defensive foul: side inbound, or two shots in the bonus. */
@@ -158,7 +182,7 @@ export function startFreeThrows(
 ): void {
   applySubs(state, [shooterId]);
   const shooter = state.players[shooterId];
-  const hx = attackHoopX(shooter.team, state.period);
+  const hx = attackHoop(state, shooter.team);
   const s = Math.sign(hx);
   const L = COURT.halfLength;
   const lane = (d: number, side: number) => ({ x: s * (L - d), z: side * LANE_Z });

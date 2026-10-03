@@ -73,6 +73,37 @@
     <div id="quick" class="overlay screen side-panel hidden">
       <div class="panel">
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>快速模式</h2></div>
+        <div class="kindswitch" id="quickKind">
+          <button type="button" data-kind="full"><b>快速對戰</b><small>5 對 5 全場</small></button>
+          <button type="button" data-kind="street"><b>街頭籃球</b><small>1v1 · 2v2 · 3v3 半場</small></button>
+        </div>
+        <div id="streetPane" class="hidden">
+          <nav class="chips" id="streetSize">
+            <button type="button" class="chip" data-size="1">1 對 1</button>
+            <button type="button" class="chip" data-size="2">2 對 2</button>
+            <button type="button" class="chip" data-size="3">3 對 3</button>
+          </nav>
+          <div class="streetsides">
+            <div class="sside"><span class="seatname">紅隊（你）</span><div id="streetHome" class="slots"></div></div>
+            <div class="vs">VS</div>
+            <div class="sside"><span class="seatname">藍隊</span><div id="streetAway" class="slots"></div></div>
+          </div>
+          <p class="hint">點一個位置，再從下面的球隊挑球員（任何球隊都可以，包括你的生涯球員）</p>
+          <select id="streetTeam" class="hidden"></select>
+          <div id="streetPicker"></div>
+          <div id="streetPlayers" class="plist"></div>
+          <div class="row">
+            <label>目標分數
+              <select id="streetTarget">
+                <option value="11">11 分</option>
+                <option value="21" selected>21 分</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="streetMitt" /> 進球的一方繼續持球</label>
+          </div>
+          <p class="sub tight">半場一個籃框，三分線內 1 分、線外 2 分。換球權後要先把球帶到三分線外（清球）。沒有計時、罰球和換人，犯規只換發球。</p>
+        </div>
+        <div id="fullPane">
         <div class="hidden"><select id="homeSel"></select><select id="awaySel"></select></div>
         <div class="matchup">
           <button type="button" class="side" id="homeSide"><span class="seatname">你的隊伍</span><div id="homeCard" class="card"></div></button>
@@ -84,6 +115,7 @@
         <div class="buttons phone-steps">
           <button type="button" id="stepBack" class="hidden">← 改你的隊伍</button>
           <button type="button" id="stepNext">下一步：選對手 →</button>
+        </div>
         </div>
         <div class="row">
           <label>模式
@@ -99,7 +131,7 @@
               <option value="hard">困難</option>
             </select>
           </label>
-          <label>每節長度
+          <label id="quarterRow">每節長度
             <select id="quarterSel">
               <option value="60">1 分鐘</option>
               <option value="120">2 分鐘</option>

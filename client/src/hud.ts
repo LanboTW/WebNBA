@@ -88,6 +88,11 @@ export class Hud {
       if (me) this.setStats(me);
       return;
     }
+    const street = state.settings.street;
+    if (street) {
+      this.updateStreet(state, me);
+      return;
+    }
     this.period.textContent = periodLabel(state.period);
     this.clock.textContent = formatClock(Math.max(0, state.gameClock));
     const sc = Math.max(0, state.shotClock);
@@ -114,7 +119,23 @@ export class Hud {
     else this.statline.textContent = '觀戰模式';
   }
 
-  private setStats(p: StatLine, fatigue = false): void {
+  /** Street: no clocks, timeouts or team fouls; who has the ball and whether it still has to be cleared. */
+  private updateStreet(state: GameState, me: StatLine | null): void {
+    const target = state.settings.street!.target;
+    this.period.textContent = '街頭';
+    this.clock.textContent = `搶 ${target}`;
+    this.shotClock.classList.add('hidden');
+    this.teamEls.forEach((el, i) => el.classList.toggle('poss', state.possession === i && state.phase !== 'final'));
+    ([0, 1] as const).forEach((t) => {
+      const needs = state.possession === t && !state.frontcourt && state.phase === 'live';
+      this.teamInfo[t].innerHTML = needs ? '<b class="bonus">清球：先退到三分線外</b>' : `還差 ${Math.max(0, target - state.score[t])} 分`;
+    });
+    this.banner.classList.add('hidden');
+    if (me) this.setStats(me, false, true);
+    else this.statline.textContent = '觀戰模式';
+  }
+
+  private setStats(p: StatLine, fatigue = false, street = false): void {
     const s = p.stats;
     const pct = Math.round(p.energy * 100);
     const energy = fatigue
@@ -122,7 +143,9 @@ export class Hud {
       : '';
     this.statline.innerHTML =
       `<b>${p.info.name}</b> #${p.info.number} ${p.info.position} ${energy}　` +
-      `${s.pts} 分 · ${s.fgm}/${s.fga} 投 · ${s.tpm}/${s.tpa} 三分 · ${s.ftm}/${s.fta} 罰 · ${s.oreb + s.dreb} 板 · ${s.ast} 助 · ${s.pf} 犯`;
+      (street
+        ? `${s.pts} 分 · ${s.fgm}/${s.fga} 投 · ${s.tpm}/${s.tpa} 遠投 · ${s.oreb + s.dreb} 板 · ${s.ast} 助 · ${s.stl} 抄`
+        : `${s.pts} 分 · ${s.fgm}/${s.fga} 投 · ${s.tpm}/${s.tpa} 三分 · ${s.ftm}/${s.fta} 罰 · ${s.oreb + s.dreb} 板 · ${s.ast} 助 · ${s.pf} 犯`);
   }
 
   /** screen: pixel position just above the shooter's head, or null to hide. */

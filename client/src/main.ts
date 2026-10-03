@@ -4,6 +4,7 @@ import {
   ageInSeason,
   CUSTOM_TEAMS,
   NBA_TEAMS,
+  POSITIONS,
   careerPlayTeam,
   findTeam,
   playOut,
@@ -205,6 +206,7 @@ async function refreshCareerTeams(): Promise<void> {
     [homeSel, 'home'],
     [awaySel, 'away'],
     [practiceTeam, 'practiceTeam'],
+    [streetTeam, 'streetTeam'],
   ] as const) {
     const was = sel.value;
     sel.querySelector('optgroup[data-career]')?.remove();
@@ -222,6 +224,7 @@ async function refreshCareerTeams(): Promise<void> {
   }
   menuPicker.sync();
   practicePicker.sync();
+  streetPicker.sync();
   if (current === 'quick') refreshCards();
   if (current === 'practice') renderPractice();
 }
@@ -276,11 +279,13 @@ function refreshCards(): void {
   renderCard($('#homeCard'), teamFor(homeSel.value));
   renderCard($('#awayCard'), teamFor(awaySel.value));
   menuPicker.render();
+  renderStreet();
   $('#startBtn').textContent = modeSel.value === 'watch' ? '開始觀戰' : '開始比賽';
 }
 [homeSel, awaySel, modeSel].forEach((s) => s.addEventListener('change', refreshCards));
 
 $('#randomBtn').addEventListener('click', () => {
+  if (quickKind === 'street') return randomStreet();
   const pick = () => ALL_TEAMS[Math.floor(Math.random() * ALL_TEAMS.length)].abbr;
   homeSel.value = pick();
   do awaySel.value = pick();
@@ -291,6 +296,7 @@ $('#randomBtn').addEventListener('click', () => {
 
 $('#startBtn').addEventListener('click', () => {
   sfx.unlock();
+  if (quickKind === 'street') return startStreet();
   save('home', homeSel.value);
   save('away', awaySel.value);
   save('mode', modeSel.value);
@@ -305,6 +311,179 @@ $('#startBtn').addEventListener('click', () => {
     rules: menuRules(),
   });
 });
+
+// ----------------------------------------------------------------- street
+
+/**
+ * Street games: the quick screen's other side. Each seat takes any player
+ * from any team (career players too); the two sides play in red and blue.
+ */
+type QuickKind = 'full' | 'street';
+let quickKind: QuickKind = load('quickKind', 'full') === 'street' ? 'street' : 'full';
+
+/** A seat: the team's key (as in the selects) and his roster index. */
+interface Seat {
+  team: string;
+  idx: number;
+}
+const STREET_SIDES: [TeamInfo, TeamInfo] = [
+  { abbr: '紅隊', name: '紅隊', primary: '#c8372d', secondary: '#ffffff', players: [] },
+  { abbr: '藍隊', name: '藍隊', primary: '#2a5db0', secondary: '#ffffff', players: [] },
+];
+let streetSize = Math.min(3, Math.max(1, Number(load('streetSize', '3')) || 3));
+let streetSeats: [(Seat | null)[], (Seat | null)[]] = (() => {
+  try {
+    const saved = JSON.parse(load('streetSeats', '')) as [(Seat | null)[], (Seat | null)[]];
+    if (Array.isArray(saved) && saved.length === 2) return saved;
+  } catch {
+    // Nothing saved yet.
+  }
+  return [[], []];
+})();
+let streetSel: { side: 0 | 1; i: number } = { side: 0, i: 0 };
+const streetTeam = $<HTMLSelectElement>('#streetTeam');
+const streetTarget = $<HTMLSelectElement>('#streetTarget');
+const streetMitt = $<HTMLInputElement>('#streetMitt');
+fillTeamSelect(streetTeam);
+streetTeam.value = load('streetTeam', 'GSW');
+if (!streetTeam.value) streetTeam.value = 'GSW';
+streetTarget.value = load('streetTarget', '21');
+streetMitt.checked = load('streetMitt', '0') === '1';
+const streetPicker = new TeamPicker($('#streetPicker'), teamGroups, streetTeam, keyOf, tileLabel);
+streetTeam.addEventListener('change', renderStreet);
+
+/** The player in a seat (a career seat waits until the saves have loaded). */
+function seatPlayer(s: Seat | null | undefined): { p: PlayerInfo; t: TeamInfo } | null {
+  if (!s) return null;
+  const t = careerTeams.find((x) => x.key === s.team)?.team ?? (s.team.startsWith('career:') ? null : findTeam(s.team));
+  const p = t?.players[s.idx];
+  return t && p ? { p, t } : null;
+}
+
+function setQuickKind(kind: QuickKind): void {
+  quickKind = kind;
+  save('quickKind', kind);
+  document.querySelectorAll<HTMLElement>('#quickKind [data-kind]').forEach((b) => b.classList.toggle('on', b.dataset.kind === kind));
+  $('#fullPane').classList.toggle('hidden', kind !== 'full');
+  $('#streetPane').classList.toggle('hidden', kind !== 'street');
+  $('#quarterRow').classList.toggle('hidden', kind !== 'full');
+  $<HTMLButtonElement>('#startBtn').disabled = kind === 'street' && !streetReady();
+  renderStreet();
+}
+$('#quickKind').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-kind]');
+  if (b) setQuickKind(b.dataset.kind as QuickKind);
+});
+$('#streetSize').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-size]');
+  if (!b) return;
+  streetSize = Number(b.dataset.size);
+  save('streetSize', String(streetSize));
+  if (streetSel.i >= streetSize) streetSel = { side: streetSel.side, i: 0 };
+  renderStreet();
+});
+
+function renderStreet(): void {
+  if (quickKind !== 'street') return;
+  document
+    .querySelectorAll<HTMLElement>('#streetSize [data-size]')
+    .forEach((b) => b.classList.toggle('on', Number(b.dataset.size) === streetSize));
+  ([0, 1] as const).forEach((side) => {
+    const color = STREET_SIDES[side].primary;
+    $(side === 0 ? '#streetHome' : '#streetAway').innerHTML = Array.from({ length: streetSize }, (_, i) => {
+      const got = seatPlayer(streetSeats[side][i]);
+      const on = streetSel.side === side && streetSel.i === i ? ' on' : '';
+      const body = got
+        ? `${logoHtml(got.t, 'slogo')}<span class="nm">${esc(got.p.name)}</span><span class="pos">${got.p.position}</span><b>${playerRating(got.p)}</b>`
+        : '<span class="nm empty">＋ 選球員</span>';
+      return `<button type="button" class="seat${on}" data-side="${side}" data-i="${i}" style="--team:${color}">${body}</button>`;
+    }).join('');
+  });
+  const t = teamFor(streetTeam.value);
+  const color = t.primary === '#000000' ? t.secondary : t.primary;
+  const taken = new Set(([0, 1] as const).flatMap((side) => streetSeats[side].slice(0, streetSize).map((s) => seatPlayer(s)?.p.name)));
+  $('#streetPlayers').innerHTML = t.players
+    .map((p, i) => {
+      const used = taken.has(p.name);
+      return (
+        `<button type="button" class="pl${used ? ' on' : ''}" data-pi="${i}" style="--team:${color}"${used ? ' disabled' : ''}>` +
+        `<span class="num">#${p.number}</span><span class="nm">${esc(p.name)}</span><span class="pos">${p.position}</span><b>${playerRating(p)}</b></button>`
+      );
+    })
+    .join('');
+  streetPicker.render();
+  $<HTMLButtonElement>('#startBtn').disabled = !streetReady();
+}
+
+function streetReady(): boolean {
+  return ([0, 1] as const).every((side) => Array.from({ length: streetSize }, (_, i) => seatPlayer(streetSeats[side][i])).every(Boolean));
+}
+
+function saveSeats(): void {
+  save('streetSeats', JSON.stringify(streetSeats));
+}
+
+$('#streetPane').addEventListener('click', (e) => {
+  const el = e.target as HTMLElement;
+  const seat = el.closest<HTMLElement>('[data-side]');
+  const pick = el.closest<HTMLElement>('[data-pi]');
+  if (seat) {
+    streetSel = { side: Number(seat.dataset.side) as 0 | 1, i: Number(seat.dataset.i) };
+    renderStreet();
+  } else if (pick) {
+    streetSeats[streetSel.side][streetSel.i] = { team: streetTeam.value, idx: Number(pick.dataset.pi) };
+    saveSeats();
+    // On to the next empty seat: yours first, then the other side.
+    const order = ([0, 1] as const).flatMap((side) => Array.from({ length: streetSize }, (_, i) => ({ side, i })));
+    const next = order.find((o) => !seatPlayer(streetSeats[o.side][o.i]));
+    if (next) streetSel = next;
+    renderStreet();
+  }
+});
+
+function randomStreet(): void {
+  const pool = [...ALL_TEAMS, ...careerTeams.map((x) => x.team)].flatMap((t) =>
+    t.players.map((p, idx) => ({ team: keyOf(t), idx, name: p.name })),
+  );
+  const used = new Set<string>();
+  streetSeats = [[], []];
+  for (const side of [0, 1] as const) {
+    for (let i = 0; i < streetSize; i++) {
+      let s = pool[Math.floor(Math.random() * pool.length)];
+      while (used.has(s.name)) s = pool[Math.floor(Math.random() * pool.length)];
+      used.add(s.name);
+      streetSeats[side][i] = { team: s.team, idx: s.idx };
+    }
+  }
+  saveSeats();
+  renderStreet();
+}
+
+function startStreet(): void {
+  if (!streetReady()) return;
+  save('mode', modeSel.value);
+  save('diff', diffSel.value);
+  save('streetTeam', streetTeam.value);
+  save('streetTarget', streetTarget.value);
+  save('streetMitt', streetMitt.checked ? '1' : '0');
+  // Guards first: the sim spaces players and matches them up by slot.
+  const side = (s: 0 | 1): TeamInfo => ({
+    ...STREET_SIDES[s],
+    players: streetSeats[s]
+      .slice(0, streetSize)
+      .map((x) => seatPlayer(x)!.p)
+      .sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position)),
+  });
+  startSession([side(0), side(1)], {
+    mode: 'game',
+    humanTeams: modeSel.value === 'watch' ? [] : [0],
+    difficulty: diffSel.value as Difficulty,
+    seed: (Math.random() * 2 ** 31) | 0,
+    rules: { fouls: ruleBoxes.fouls.checked, violations: false, fatigue: false },
+    street: { target: Number(streetTarget.value), makeItTakeIt: streetMitt.checked },
+  });
+}
+setQuickKind(quickKind);
 
 // ----------------------------------------------------------------- player database
 
@@ -510,7 +689,7 @@ function showBox(title: string, canResume: boolean): void {
   const s = session.state;
   const team = session.team;
   // Career games: the coach handles substitutions.
-  const subs = canResume && s.settings.mode === 'game' && team >= 0 && !session.solo;
+  const subs = canResume && s.settings.mode === 'game' && !s.settings.street && team >= 0 && !session.solo;
   $('#boxLineup').classList.toggle('hidden', !subs);
   if (subs) pauseLineup.render(s, team as 0 | 1, session.subActions);
   $('#resumeBtn').classList.toggle('hidden', !canResume);

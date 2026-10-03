@@ -1,4 +1,4 @@
-import { COURT, DT, attackHoopX } from './constants';
+import { COURT, DT, attackHoop } from './constants';
 import {
   hdist,
   isInbounder,
@@ -72,6 +72,19 @@ function spotFor(p: PlayerState, hx: number, holder: PlayerState | null): Target
   return spot;
 }
 
+/** Street: the nearest spot a step beyond the arc, to clear the ball after a change of possession. */
+function clearSpot(p: PlayerState, hx: number): Target {
+  let dx = p.pos.x - hx;
+  let dz = p.pos.z;
+  // Never out behind the backboard.
+  dx = Math.min(dx, -0.3);
+  const l = Math.hypot(dx, dz) || 1;
+  dx /= l;
+  dz /= l;
+  const z = Math.max(-COURT.halfWidth + 0.4, Math.min(COURT.halfWidth - 0.4, dz * 8.1));
+  return { x: hx + dx * 8.1, z };
+}
+
 /** Who is in control of the ball right now (-1 when it is up for grabs). */
 function controllingTeam(state: GameState): 0 | 1 | -1 {
   const b = state.ball;
@@ -109,7 +122,7 @@ function shootNow(state: GameState, p: PlayerState, sk: Skill): PlayerInput {
   p.ai.shotTarget = SHOT_SWEET + noise;
   p.ai.mode = 'none';
   // Near the rim, sprint + shoot: dunk it if the player can.
-  const near = hdist(p.pos, { x: attackHoopX(p.team, state.period), z: 0 }) < 2.6;
+  const near = hdist(p.pos, { x: attackHoop(state, p.team), z: 0 }) < 2.6;
   return { ...NO_INPUT, shoot: true, sprint: near && rand(state) < 0.5 };
 }
 
@@ -147,7 +160,7 @@ function trustBonus(state: GameState, m: PlayerState): number {
 
 function bestPass(state: GameState, p: PlayerState, inbound: boolean): { m: PlayerState; value: number } | null {
   let best: { m: PlayerState; value: number } | null = null;
-  const s = Math.sign(attackHoopX(p.team, state.period));
+  const s = Math.sign(attackHoop(state, p.team));
   for (const m of teammates(state, p)) {
     // Once the ball is in the frontcourt, passing back is a violation.
     if (!inbound && state.frontcourt && s * m.pos.x < 0.3) continue;
@@ -168,7 +181,7 @@ function openness(state: GameState, p: PlayerState): number {
 
 /** Expected points of attacking the rim, discounted when defenders clog the lane. */
 function driveValue(state: GameState, p: PlayerState): number {
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const lx = hx - p.pos.x;
   const lz = -p.pos.z;
   const ll = Math.hypot(lx, lz) || 1;
@@ -242,8 +255,13 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
   }
   if (state.phase !== 'live') return NO_INPUT;
 
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const s = Math.sign(hx);
+  if (state.settings.street && !state.frontcourt) {
+    // Street: take it back beyond the arc before anything else.
+    p.ai.mode = 'none';
+    return steer(p, clearSpot(p, hx), true);
+  }
   const rim = { x: hx, z: 0 };
   const distHoop = hdist(p.pos, rim);
   const inBackcourt = s * p.pos.x < 0;
@@ -329,7 +347,7 @@ function answerCall(state: GameState, p: PlayerState): PlayerInput | null {
   if (!m || m.team !== p.team) return null;
   const inbound = isInbounder(state, p);
   if (inbound ? state.phaseTimer < 0.6 : state.phase !== 'live') return null;
-  const s = Math.sign(attackHoopX(p.team, state.period));
+  const s = Math.sign(attackHoop(state, p.team));
   if (!inbound && state.frontcourt && s * m.pos.x < 0.3) return null;
   if (laneRisk(state, p, m) > 0.6) return null;
   state.ballCall = null;
@@ -353,7 +371,7 @@ export function callScreen(state: GameState, handler: PlayerState): boolean {
 // ------------------------------------------------------------ off the ball
 
 function offBallAi(state: GameState, p: PlayerState, holder: PlayerState | null): PlayerInput {
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const s = Math.sign(hx);
 
   if (state.phase === 'inbound' && state.inbound?.team === p.team) {
@@ -398,7 +416,7 @@ function screenAi(state: GameState, p: PlayerState, holder: PlayerState | null):
     return NO_INPUT;
   }
   // Set up just beside the on-ball defender, on the screener's side.
-  const hx = attackHoopX(p.team, state.period);
+  const hx = attackHoop(state, p.team);
   const ux = hx - holder.pos.x;
   const uz = -holder.pos.z;
   const ul = Math.hypot(ux, uz) || 1;
@@ -431,7 +449,7 @@ function screenAi(state: GameState, p: PlayerState, holder: PlayerState | null):
 // ----------------------------------------------------------------- defence
 
 function defendedHoop(state: GameState, p: PlayerState): Target {
-  return { x: attackHoopX((1 - p.team) as 0 | 1, state.period), z: 0 };
+  return { x: attackHoop(state, (1 - p.team) as 0 | 1), z: 0 };
 }
 
 function dirTo(from: Target, to: Target): Target {

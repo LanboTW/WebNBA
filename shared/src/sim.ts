@@ -1,7 +1,7 @@
 import { aiInput, callScreen } from './ai';
 import { giveBall, updateBall } from './ball';
 import { updateEnergy } from './bench';
-import { BALL_RADIUS, DT, SHOT_CLOCK, attackHoopX } from './constants';
+import { BALL_RADIUS, DT, SHOT_CLOCK, attackHoop } from './constants';
 import { hdist, resolveCollisions, updatePlayer } from './players';
 import { TIMEOUTS_PER_GAME, handleTimeoutInput, isHuman, startPeriod, updateRules } from './rules';
 import {
@@ -182,7 +182,7 @@ export function placePlayer(state: GameState, id: number, x: number, z: number):
   const p = state.players[id];
   p.pos = { x, y: 0, z };
   p.vel = { x: 0, y: 0, z: 0 };
-  p.facing = Math.atan2(attackHoopX(p.team, state.period) - x, -z);
+  p.facing = Math.atan2(attackHoop(state, p.team) - x, -z);
   if (state.ball.mode === 'held' && state.ball.holderId === id) giveBall(state, id);
 }
 

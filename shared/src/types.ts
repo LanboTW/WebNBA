@@ -211,7 +211,9 @@ export type TurnoverReason =
   | 'threeSec'
   | 'eightSec'
   | 'backcourt'
-  | 'fiveSec';
+  | 'fiveSec'
+  /** Street: scored without taking the ball back beyond the arc first. */
+  | 'noClear';
 
 /** shooting / reach-in / blocking / charge (offensive) / illegal contact / defensive three seconds (technical). */
 export type FoulKind = 'shooting' | 'reach' | 'block' | 'charge' | 'contact' | 'defThree';
@@ -275,6 +277,20 @@ export interface GameSettings {
   soloMinutes?: number;
   /** 0..1: how much his AI teammates look for the solo player (career cohesion). */
   soloTrust?: number;
+  /**
+   * Street game: half court at the +x hoop, first to `target` points (1 inside
+   * the arc, 2 beyond), no clocks, free throws, timeouts or subs. Every change
+   * of possession must take the ball back beyond the arc ("clear") and play
+   * restarts with a check at the top of the key.
+   */
+  street?: StreetRules;
+}
+
+export interface StreetRules {
+  /** Points to win (11 or 21). */
+  target: number;
+  /** The team that scored keeps the ball. */
+  makeItTakeIt: boolean;
 }
 
 /** Host-configurable rule groups. */

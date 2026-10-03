@@ -43,14 +43,24 @@ export function attackHoopX(team: 0 | 1, period = 1): number {
   return (team === 0) === firstHalf ? HOOP_X : -HOOP_X;
 }
 
+/** The hoop a team attacks right now: street games are half court, everyone shoots at the +x hoop. */
+export function attackHoop(state: { period: number; settings: { street?: unknown } }, team: 0 | 1): number {
+  return state.settings.street ? HOOP_X : attackHoopX(team, state.period);
+}
+
 export function isThreePoint(x: number, z: number, hoopX: number): boolean {
   if (Math.abs(hoopX - x) <= THREE_CORNER_DX) return Math.abs(z) >= COURT.threeCornerZ;
   return Math.hypot(x - hoopX, z) >= COURT.threeRadius;
 }
 
-export function isInBounds(x: number, z: number): boolean {
+export function isInBounds(x: number, z: number, street = false): boolean {
+  // A street court ends at the half-court line.
+  if (street && x < 0) return false;
   return Math.abs(x) <= COURT.halfLength && Math.abs(z) <= COURT.halfWidth;
 }
+
+/** Street checks start here: top of the key, beyond the arc. */
+export const CHECK_X = HOOP_X - 8.4;
 
 /** Defenders moving faster than this (m/s) are running, not set: they start to lose effectiveness. */
 export const DEFENSE_SET_SPEED = 3;
