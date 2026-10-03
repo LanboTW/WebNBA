@@ -34,6 +34,9 @@ import {
   startSeason,
   teamRating,
   withCareerPlayer,
+  ageInSeason,
+  guessAge,
+  seasonLines,
   type CareerGame,
   type CareerState,
   type GameSettings,
@@ -43,6 +46,7 @@ import {
   type TeamInfo,
 } from '@webnba/shared';
 import { esc } from './boxscore';
+import { PlayerDb, type DbSource } from './playerDb';
 import { POSITION_LABEL } from './careerCreate';
 import { offseasonHtml, retiredHtml } from './careerOffseason';
 import { gradeBadge, seasonHtml, seasonLabel, type SeasonTab } from './careerSeason';
@@ -98,10 +102,29 @@ function line(g: CareerGame): string {
  * The career's home screen: the draft combine, the draft, then the season
  * (next game, schedule, standings, playoffs, stats).
  */
+/** The career's league for the player database: its ages, and this season's lines while it runs. */
+function careerDbSource(c: CareerState, league: Map<string, TeamInfo>): DbSource {
+  const year = c.season?.year ?? c.year;
+  const groups = new Map<string, TeamInfo[]>([
+    ['東區', [...league.values()].filter((t) => t.conference !== 'West')],
+    ['西區', [...league.values()].filter((t) => t.conference === 'West')],
+  ]);
+  for (const list of groups.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  const me = c.player.info.name;
+  const lines = c.season && !c.offseason && c.season.day > 0 ? new Map(seasonLines(c, league).map((l) => [l.name, l])) : null;
+  return {
+    groups,
+    me,
+    age: (p) => (p.name === me ? c.player.age : (c.league?.ages[p.name] ?? ageInSeason(p.name, year) ?? guessAge(p.name))),
+    line: lines ? (p) => lines.get(p.name) : undefined,
+  };
+}
+
 export class CareerHub {
   career: CareerState | null = null;
   private busy = false;
   private tab: SeasonTab = 'home';
+  private readonly db = new PlayerDb();
 
   constructor(private readonly host: CareerHost) {
     $('#hubBody').addEventListener('click', (e) => {
@@ -314,6 +337,8 @@ export class CareerHub {
                 c.offseason ? offseasonHtml(c, league, this.confirmRetire) : undefined,
               );
     $('#hubBody').innerHTML = head + body;
+    const db = document.querySelector<HTMLElement>('#hubDb');
+    if (db) this.db.mount(db, careerDbSource(c, league));
   }
 
   private combineHtml(c: CareerState): string {

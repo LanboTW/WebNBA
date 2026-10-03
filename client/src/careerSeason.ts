@@ -27,7 +27,7 @@ import { RATING_LABEL } from './careerCreate';
 import { historyHtml } from './careerOffseason';
 import { logoHtml } from './logos';
 
-export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats' | 'awards' | 'news';
+export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats' | 'players' | 'awards' | 'news';
 
 const TABS: [SeasonTab, string][] = [
   ['home', '總覽'],
@@ -36,6 +36,7 @@ const TABS: [SeasonTab, string][] = [
   ['standings', '戰績'],
   ['playoffs', '季後賽'],
   ['stats', '數據'],
+  ['players', '球員'],
   ['awards', '獎項'],
   ['news', '新聞'],
 ];
@@ -103,6 +104,8 @@ export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, T
             ? trainHtml(c)
             : tab === 'stats'
               ? statsHtml(c, league)
+              : tab === 'players'
+                ? `<div id="hubDb"></div>`
               : tab === 'awards'
                 ? awardsHtml(c, league)
                 : tab === 'news'

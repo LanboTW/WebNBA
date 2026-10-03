@@ -1,6 +1,7 @@
 import {
   ROSTER_SEASON,
   ROSTER_UPDATED,
+  ageInSeason,
   CUSTOM_TEAMS,
   NBA_TEAMS,
   careerPlayTeam,
@@ -22,6 +23,7 @@ import { logoHtml, setOfficialLogos } from './logos';
 import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
+import { PlayerDb } from './playerDb';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
@@ -70,8 +72,8 @@ function save(key: string, value: string): void {
 
 // ----------------------------------------------------------------- screens
 
-type Screen = 'home' | 'quick' | 'practice' | 'settings' | 'career' | 'account' | 'create' | 'hub';
-const SCREENS: Screen[] = ['home', 'quick', 'practice', 'settings', 'career', 'account', 'create', 'hub'];
+type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub';
+const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub'];
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 let current: Screen = 'home';
@@ -83,6 +85,7 @@ function show(next: Screen): void {
   for (const s of SCREENS) $(`#${s}`).classList.toggle('hidden', s !== next || !!session);
   if (next === 'quick') refreshCards();
   if (next === 'practice') renderPractice();
+  if (next === 'players') renderPlayerDb();
   if (next === 'home' || next === 'quick' || next === 'practice') careerLoad = refreshCareerTeams();
   if (next === 'career') void renderCareer();
   // Leaving the career screens: back to the rotating stars.
@@ -120,6 +123,7 @@ logoBox.addEventListener('change', () => {
   setOfficialLogos(logoBox.checked);
   menuPicker.render();
   practicePicker.render();
+  if (current === 'players') renderPlayerDb();
   showTag();
 });
 for (const [key, box] of Object.entries(ruleBoxes)) {
@@ -298,6 +302,16 @@ $('#startBtn').addEventListener('click', () => {
     rules: menuRules(),
   });
 });
+
+// ----------------------------------------------------------------- player database
+
+const playerDb = new PlayerDb();
+const rosterYear = parseInt(ROSTER_SEASON, 10);
+function renderPlayerDb(): void {
+  // Career players are in the career's own database; here, the real rosters.
+  const groups = new Map([...teamGroups].filter(([g]) => g !== CAREER_GROUP));
+  playerDb.mount($('#playerDb'), { groups, age: (p) => ageInSeason(p.name, rosterYear) });
+}
 
 // ----------------------------------------------------------------- practice
 
