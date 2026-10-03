@@ -10,6 +10,17 @@ import {
   type RecordKey,
   type SeasonAwards,
 } from './awards';
+import {
+  careerInfo,
+  cohesion,
+  cohesionAfterGame,
+  fansAfterGame,
+  gamePay,
+  startingFans,
+  withCohesion,
+  START_COHESION,
+  type GearSlot,
+} from './economy';
 import { nextRandom } from './rng';
 import { RATING_KEYS, legacyOverall, overallOf, playerRating, ratingAverage, teamStrength } from './roster';
 import {
@@ -167,8 +178,11 @@ function heightShare(position: Position, heightM: number): number {
   return clamp((heightM - lo) / (hi - lo), 0, 1);
 }
 
-/** Older saves stored plain-average overalls: moves them to the current scale, once. */
+/** Brings older saves up to date: overalls on the current scale, a following for drafted players. */
 export function upgradeCareer(c: CareerState): CareerState {
+  if (c.fans === undefined && c.draft) c.fans = startingFans(c.draft.pick);
+  // Seasons begun before contracts existed: he is paid from now on.
+  if (!c.contract && c.team && c.stage === 'season') c.contract = rookieContract(c.team, c.draft?.pick ?? 30);
   if (c.ovrScale === 2) return c;
   for (const h of c.history ?? []) h.ovr = legacyOverall(h.ovr);
   for (const x of [...(c.offseason?.retired ?? []), ...(c.offseason?.rookies ?? [])]) x.ovr = legacyOverall(x.ovr);
@@ -274,6 +288,20 @@ export interface CareerState {
   news?: NewsItem[];
   /** League players inducted since the career began, and him once he gets in. */
   hall?: HallMember[];
+  /** His money in 萬 US dollars (economy.ts). */
+  money?: number;
+  /** His following. */
+  fans?: number;
+  /** 0-100: how well he and his current team play together. */
+  cohesion?: number;
+  /** Gear he bought, and what he wears in each slot. */
+  gear?: { owned: string[]; equipped: Partial<Record<GearSlot, string>> };
+  /** Private camps used, per season. */
+  camps?: { year: number; used: number };
+  /** Retired and turned into coins. */
+  settled?: boolean;
+  /** Windows in which coins came in ('start', 'off2027', ...). */
+  coinsIn?: string[];
 }
 
 export interface Contract {
@@ -308,6 +336,9 @@ export interface SeasonSummary {
   /** The league's awards that season, and the ones he won. */
   awards?: SeasonAwards;
   mine?: AwardId[];
+  /** His fans after the season's awards, and the endorsement money they brought (萬). */
+  fans?: number;
+  endorsement?: number;
 }
 
 export interface Offer {
@@ -461,6 +492,7 @@ export function careerGameSettings(career: CareerState, seed: number, me: number
     mode: 'game',
     humanTeams: [0],
     solo: me,
+    soloTrust: cohesion(career) / 100,
     ...(minutes !== undefined ? { soloMinutes: Math.min(1, minutes / 48) } : {}),
     difficulty: career.settings.difficulty,
     quarterSeconds: career.settings.quarterSeconds,
@@ -618,6 +650,8 @@ export function withCareerPlayer(team: TeamInfo, me: PlayerInfo): TeamInfo {
 export function joinDraftedTeam(career: CareerState, draft: DraftResult): void {
   career.draft = draft;
   career.stage = 'drafted';
+  career.fans = career.fans ?? startingFans(draft.pick);
+  career.cohesion = START_COHESION;
   addNews(career, `${career.year} 年選秀第 ${draft.pick} 順位，${draft.team} 選中 ${career.player.info.name}。`, true);
 }
 
@@ -645,7 +679,7 @@ export function baseTeams(career: CareerState, nba: TeamInfo[]): TeamInfo[] {
 export function leagueTeams(career: CareerState, nba: TeamInfo[]): Map<string, TeamInfo> {
   const map = new Map(baseTeams(career, nba).map((t) => [t.abbr, t]));
   const mine = career.team ? map.get(career.team) : undefined;
-  if (mine) map.set(mine.abbr, withCareerPlayer(mine, career.player.info));
+  if (mine) map.set(mine.abbr, withCareerPlayer(mine, careerInfo(career)));
   return map;
 }
 
@@ -688,9 +722,10 @@ export function careerMatchup(
   const league = leagueTeams(career, nba);
   const home = next.home === career.team;
   const role = rotationRole(career, nba);
-  let mine = league.get(career.team!)!;
+  // His teammates play a little better the better they know him.
+  let mine = withCohesion(league.get(career.team!)!, career.player.info.name, cohesion(career));
   // A starter takes the place of the starter at his position (or the weakest one).
-  if (role.tier === 0) mine = asStarter(mine, career.player.info);
+  if (role.tier === 0) mine = asStarter(mine, careerInfo(career));
   const opp = league.get(home ? next.away : next.home)!;
   return { teams: [mine, opp], rosterIdx: mine.players.findIndex((p) => p.name === career.player.info.name), home, role };
 }
@@ -750,7 +785,7 @@ export function tierForRank(rank: number): number {
  */
 export function rotationRole(career: CareerState, nba: TeamInfo[]): Role {
   const team = leagueTeams(career, nba).get(career.team ?? '');
-  const me = career.player.info;
+  const me = careerInfo(career);
   const ovr = playerRating(me);
   const rank = team ? team.players.filter((p) => p.name !== me.name && playerRating(p) > ovr).length + 1 : 9;
   const base = tierForRank(rank);
@@ -763,6 +798,8 @@ export function rotationRole(career: CareerState, nba: TeamInfo[]): Role {
     // One good or bad night isn't enough: it takes a couple of games to move.
     if (recent.length >= 2) shift = Math.round(pts);
   }
+  // A coach trusts a player the team plays well with.
+  if (cohesion(career) >= 75) shift += 1;
   const tier = Math.max(0, Math.min(4, base - shift));
   return { tier, name: ROLES[tier][0], minutes: ROLES[tier][1], rank, form };
 }
@@ -813,6 +850,9 @@ export function recordSeasonGame(career: CareerState, nba: TeamInfo[], next: Nex
   career.games = career.games ?? [];
   const xp = gameXp(career, game, next.playoff);
   career.player.xp = (career.player.xp ?? 0) + xp;
+  if (next.playoff === 0) career.money = (career.money ?? 0) + gamePay(career);
+  career.fans = fansAfterGame(career, game, next.playoff);
+  career.cohesion = cohesionAfterGame(career, game);
   const logged: LoggedGame = { ...game, day: next.day, opp: home ? next.away : next.home, home, playoff: next.playoff, shown, xp };
   career.games.push(logged);
   noteGame(career, logged, league.get(logged.opp)?.name ?? logged.opp);
@@ -886,7 +926,8 @@ export function careerPlayTeam(career: CareerState, nba: TeamInfo[]): TeamInfo |
   if (career.stage === 'combine') return career.combine.teams[0];
   const abbr = career.team ?? career.draft?.team ?? career.history?.[career.history.length - 1]?.team;
   const base = abbr ? (baseTeams(career, nba).find((t) => t.abbr === abbr) ?? nba.find((t) => t.abbr === abbr)) : undefined;
-  return base ? asStarter(withCareerPlayer(base, career.player.info), career.player.info) : null;
+  const me = careerInfo(career);
+  return base ? asStarter(withCareerPlayer(base, me), me) : null;
 }
 
 /** Series his team played in (for the season summary). */

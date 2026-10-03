@@ -16,6 +16,7 @@ import {
 import { esc } from './boxscore';
 import { hallHtml, highsHtml, hofHtml, newsHtml, seasonAwardsHtml, trophiesHtml } from './careerAwards';
 import { RATING_LABEL } from './careerCreate';
+import { settleHtml } from './careerShop';
 import { logoHtml } from './logos';
 
 const color = (t: TeamInfo) => (t.primary === '#000000' ? t.secondary : t.primary);
@@ -142,6 +143,7 @@ export function retiredHtml(c: CareerState, league: Map<string, TeamInfo>): stri
   return (
     `<div class="draftcard"><small>生涯結束</small><div class="draftteam"><b>${esc(c.player.info.name)}</b></div>` +
     `<span>${hist.length} 個球季 · ${games} 場 · 生涯平均 ${(pts / Math.max(1, games)).toFixed(1)} 分 · ${titles} 座總冠軍 · 退休時總評 ${playerRating(c.player.info)}</span></div>` +
+    settleHtml(c) +
     hofHtml(c) +
     `<h3>個人獎項</h3>${trophiesHtml(c)}` +
     historyHtml(c, league) +

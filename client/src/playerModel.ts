@@ -100,7 +100,7 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
   const jersey = mat(kit.body, 0.75);
   const trim = mat(kit.trim, 0.7);
   const hairMat = mat(look.hairColor ?? HAIR_DEFAULT, 0.95);
-  const shoeColor = look.shoe === 'white' ? '#f4f4f4' : look.shoe === 'black' ? '#1b1b1f' : kit.team;
+  const shoeColor = look.shoeColor ?? (look.shoe === 'white' ? '#f4f4f4' : look.shoe === 'black' ? '#1b1b1f' : kit.team);
   const shoe = mat(shoeColor, 0.45);
   const sole = mat(look.shoe === 'white' ? '#d8d8d8' : '#f4f4f4', 0.6);
   const sock = mat('#f5f5f5', 0.85);

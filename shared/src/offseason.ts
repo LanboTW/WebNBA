@@ -25,6 +25,7 @@ import {
   type Rand,
   type SeasonSummary,
 } from './career';
+import { START_COHESION, endorsement, fansAfterAwards, moneyText, fansText } from './economy';
 import { RATING_KEYS, ageInSeason, playerRating, ratingAverage } from './roster';
 import { record, statScale } from './season';
 import type { PlayerInfo, PlayerStats, Ratings, TeamInfo } from './types';
@@ -244,6 +245,8 @@ export function acceptOffer(career: CareerState, offer: Offer, nba?: TeamInfo[])
   if (o.kind === 'trade') addNews(career, `交易完成：${me} 被交易到 ${name}。`, true);
   else if (offer.team === career.team) addNews(career, `${me} 與 ${name} 續約 ${offer.years} 年，每年 ${offer.salary} 百萬美元。`, true);
   else addNews(career, `${me} 以自由球員身分加盟 ${name}：${offer.years} 年，每年 ${offer.salary} 百萬美元。`, true);
+  // A new team: they have to learn to play together.
+  if (offer.team !== career.team) career.cohesion = START_COHESION;
   career.team = offer.team;
   career.contract =
     o.kind === 'trade' && career.contract ? { ...career.contract, team: offer.team } : { team: offer.team, years: offer.years, salary: offer.salary };
@@ -317,6 +320,13 @@ export function beginOffseason(career: CareerState, nba: TeamInfo[]): void {
   summary.awards = seasonAwards(career, leagueTeams(career, nba));
   summary.mine = myAwards(career, summary.awards);
   awardNews(career, summary.awards, summary.mine);
+  // Awards bring fans; fans bring endorsements.
+  career.fans = fansAfterAwards(career.fans ?? 50_000, summary.mine);
+  const deals = endorsement(career.fans);
+  career.money = (career.money ?? 0) + deals;
+  summary.fans = career.fans;
+  summary.endorsement = deals;
+  addNews(career, `${career.player.info.name} 目前有 ${fansText(career.fans)} 粉絲，本季代言收入 ${moneyText(deals)}。`, true);
   career.history = [...(career.history ?? []), summary];
   const aged = ageCareerPlayer(career, r);
   const { retired, rookies } = ageLeague(career, nba, r);

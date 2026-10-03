@@ -2,6 +2,8 @@ import {
   RATING_KEYS,
   ROUND_NAME,
   archetype,
+  careerInfo,
+  gearBoosts,
   playerRating,
   trainCost,
   activeSeriesOf,
@@ -24,14 +26,17 @@ import {
 import { esc } from './boxscore';
 import { awardsHtml, highsHtml, newsHtml } from './careerAwards';
 import { RATING_LABEL } from './careerCreate';
+import { econHtml, shopHtml } from './careerShop';
+import { wallet } from './wallet';
 import { historyHtml } from './careerOffseason';
 import { logoHtml } from './logos';
 
-export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats' | 'players' | 'awards' | 'news';
+export type SeasonTab = 'home' | 'train' | 'shop' | 'schedule' | 'standings' | 'playoffs' | 'stats' | 'players' | 'awards' | 'news';
 
 const TABS: [SeasonTab, string][] = [
   ['home', '總覽'],
   ['train', '訓練'],
+  ['shop', '商店'],
   ['schedule', '賽程'],
   ['standings', '戰績'],
   ['playoffs', '季後賽'],
@@ -102,6 +107,8 @@ export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, T
           ? playoffsHtml(c, league)
           : tab === 'train'
             ? trainHtml(c)
+            : tab === 'shop'
+              ? shopHtml(c, wallet.coins)
             : tab === 'stats'
               ? statsHtml(c, league)
               : tab === 'players'
@@ -128,7 +135,8 @@ function roleHtml(c: CareerState, role: Role): string {
     `<div class="rolecard"><div><small>教練信任</small><b>${role.name}</b><span>預計每場約 ${role.minutes} 分鐘</span></div>` +
     `<div><small>隊內總評</small><b>第 ${role.rank}</b><span>總評 ${playerRating(c.player.info)}</span></div>` +
     `<div><small>最近 5 場</small><b>${role.form ?? '—'}</b><span>表現好就會多打</span></div>` +
-    `<button type="button" class="xpbox" data-tab="train"><small>經驗值</small><b>${xp}</b><span>去訓練 →</span></button></div>`
+    `<button type="button" class="xpbox" data-tab="train"><small>經驗值</small><b>${xp}</b><span>去訓練 →</span></button></div>` +
+    econHtml(c)
   );
 }
 
@@ -295,21 +303,30 @@ function playoffsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
 
 // ----------------------------------------------------------------- training
 
+/** "（裝備後 72）" when gear lifts his overall. */
+function gearOvr(c: CareerState): string {
+  const base = playerRating(c.player.info);
+  const geared = playerRating(careerInfo(c));
+  return geared > base ? `<small>（裝備後 ${geared}）</small>` : '';
+}
+
 function trainHtml(c: CareerState): string {
   const p = c.player;
   const xp = p.xp ?? 0;
   const caps = archetype(p.archetype).caps;
+  const boosts = gearBoosts(c);
   const rows = RATING_KEYS.map((k) => {
     const v = p.info.ratings[k];
+    const plus = boosts[k] ? `<small class="gearplus" title="裝備加成">+${boosts[k]}</small>` : '';
     const capped = v >= caps[k];
     const cost = trainCost(v);
     return (
-      `<div class="trow"><span>${RATING_LABEL[k]}</span><div class="track"><i style="width:${v}%"></i><em style="left:${caps[k]}%"></em></div><b>${v}</b>` +
+      `<div class="trow"><span>${RATING_LABEL[k]}</span><div class="track"><i style="width:${v}%"></i><em style="left:${caps[k]}%"></em></div><b>${v}${plus}</b>` +
       `<button type="button" class="small" data-train="${k}"${capped || xp < cost ? ' disabled' : ''}>${capped ? '已達上限' : `+1　${cost} XP`}</button></div>`
     );
   }).join('');
   return (
-    `<div class="xpline"><span>經驗值 <b>${xp}</b></span><span>總評 <b>${playerRating(p.info)}</b></span></div>` +
+    `<div class="xpline"><span>經驗值 <b>${xp}</b></span><span>總評 <b>${playerRating(p.info)}</b>${gearOvr(c)}</span></div>` +
     `<p class="sub tight">比賽表現越好、贏球、季後賽和較高難度都拿得比較多經驗值；坐板凳也有一點練習經驗。能力越高，加 1 點越貴；虛線是${archetype(p.archetype).name}的上限。</p>` +
     `<div class="trainlist">${rows}</div>`
   );

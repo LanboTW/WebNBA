@@ -34,8 +34,17 @@ import {
   startSeason,
   teamRating,
   withCareerPlayer,
+  COIN_TRANSFER_MAX,
   ageInSeason,
+  buyCamp,
+  buyGear,
+  canSettle,
+  canTransferCoins,
+  careerInfo,
   guessAge,
+  settle,
+  toggleGear,
+  transferCoins,
   seasonLines,
   type CareerGame,
   type CareerState,
@@ -47,6 +56,8 @@ import {
 } from '@webnba/shared';
 import { esc } from './boxscore';
 import { PlayerDb, type DbSource } from './playerDb';
+import { coinBoxHtml } from './careerShop';
+import { wallet } from './wallet';
 import { POSITION_LABEL } from './careerCreate';
 import { offseasonHtml, retiredHtml } from './careerOffseason';
 import { gradeBadge, seasonHtml, seasonLabel, type SeasonTab } from './careerSeason';
@@ -127,6 +138,11 @@ export class CareerHub {
   private readonly db = new PlayerDb();
 
   constructor(private readonly host: CareerHost) {
+    // The coin box shows the account's coins: redraw when they change (not while typing in it).
+    wallet.watch(() => {
+      const typing = (document.activeElement as HTMLElement | null)?.dataset?.coin;
+      if (this.career && !this.busy && !typing && !$('#hub').classList.contains('hidden')) this.render();
+    });
     $('#hubBody').addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
       const tab = el.closest<HTMLElement>('[data-tab]')?.dataset.tab as SeasonTab | undefined;
@@ -141,7 +157,7 @@ export class CareerHub {
         return;
       }
       const btn = el.closest<HTMLElement>('[data-act]');
-      if (btn?.dataset.act && !this.busy) void this.act(btn.dataset.act, btn.dataset.team);
+      if (btn?.dataset.act && !this.busy) void this.act(btn.dataset.act, btn.dataset.team ?? btn.dataset.arg);
     });
   }
 
@@ -150,7 +166,7 @@ export class CareerHub {
     this.tab = 'home';
     this.msg('');
     this.render();
-    this.host.preview(career.player.info, careerTeam(career));
+    this.host.preview(careerInfo(career), careerTeam(career));
   }
 
   private msg(text: string, bad = false): void {
@@ -168,6 +184,7 @@ export class CareerHub {
   private async act(act: string, team?: string): Promise<void> {
     const c = this.career!;
     if (await this.offseasonAct(act, team)) return;
+    if (await this.econAct(act, team)) return;
     if (act === 'play' || act === 'sim') {
       if (combineDone(c)) return;
       const teams = combineMatch(c);
@@ -212,7 +229,7 @@ export class CareerHub {
       if (!combineDone(c) || c.draft) return;
       joinDraftedTeam(c, runDraft(c, NBA_TEAMS));
       this.render(true);
-      this.host.preview(c.player.info, careerTeam(c));
+      this.host.preview(careerInfo(c), careerTeam(c));
       await this.save();
     }
   }
@@ -246,13 +263,68 @@ export class CareerHub {
     for (const g of games) recordSeasonGame(c, NBA_TEAMS, next, g);
     this.tab = 'home';
     this.render();
-    this.host.preview(c.player.info, careerTeam(c));
+    this.host.preview(careerInfo(c), careerTeam(c));
     void this.save();
   }
 
   private confirmRetire = false;
 
   /** Offseason buttons; returns whether it handled the action. */
+/** The shop, camps and coins. Returns whether it was one of those. */
+  private async econAct(act: string, arg?: string): Promise<boolean> {
+    const c = this.career!;
+    switch (act) {
+      case 'buy':
+        if (!arg || !buyGear(c, arg)) return true;
+        this.host.preview(careerInfo(c), careerTeam(c));
+        break;
+      case 'wear':
+        if (!arg) return true;
+        toggleGear(c, arg);
+        this.host.preview(careerInfo(c), careerTeam(c));
+        break;
+      case 'camp':
+        if (!buyCamp(c)) return true;
+        break;
+      case 'coinsIn': {
+        const read = (k: string) => Math.max(0, Math.floor(Number(document.querySelector<HTMLInputElement>(`[data-coin="${k}"]`)?.value) || 0));
+        const forMoney = read('money');
+        const forXp = read('xp');
+        const total = forMoney + forXp;
+        if (!total || !canTransferCoins(c)) return true;
+        if (total > COIN_TRANSFER_MAX) {
+          this.msg(`一次最多轉入 ${COIN_TRANSFER_MAX} 金幣`, true);
+          return true;
+        }
+        this.busy = true;
+        const paid = await wallet.add(-total);
+        this.busy = false;
+        if (!paid) {
+          this.msg('金幣不夠', true);
+          return true;
+        }
+        // The window can't close while we waited, but never lose coins if it did.
+        if (!transferCoins(c, forMoney, forXp)) void wallet.add(total);
+        break;
+      }
+      case 'settle': {
+        if (!canSettle(c)) return true;
+        const coins = settle(c);
+        // Saved first: a save that fails must not leave coins without the settlement.
+        await this.save();
+        await wallet.add(coins);
+        this.msg(`已結算 ${coins} 金幣`);
+        this.render();
+        return true;
+      }
+      default:
+        return false;
+    }
+    this.render();
+    await this.save();
+    return true;
+  }
+
   private async offseasonAct(act: string, team?: string): Promise<boolean> {
     const c = this.career!;
     switch (act) {
@@ -263,7 +335,7 @@ export class CareerHub {
         const offer = c.offseason?.offers.find((o) => o.team === team);
         if (!offer) return true;
         acceptOffer(c, offer, NBA_TEAMS);
-        this.host.preview(c.player.info, careerTeam(c));
+        this.host.preview(careerInfo(c), careerTeam(c));
         break;
       }
       case 'requestTrade':
@@ -299,7 +371,7 @@ export class CareerHub {
     const c = this.career!;
     if (!train(c, key)) return;
     this.render();
-    this.host.preview(c.player.info, careerTeam(c));
+    this.host.preview(careerInfo(c), careerTeam(c));
     clearTimeout(this.trainSave);
     this.trainSave = setTimeout(() => void this.save(), 800);
   }
@@ -309,7 +381,7 @@ export class CareerHub {
     const c = this.career!;
     recordCombineGame(c, game);
     this.render();
-    this.host.preview(c.player.info, careerTeam(c));
+    this.host.preview(careerInfo(c), careerTeam(c));
     void this.save();
   }
 
@@ -385,6 +457,7 @@ export class CareerHub {
       `<span>試訓平均評分 ${avg.toFixed(1)} · 球隊總評 ${teamRating(team)}</span></div>` +
       `<h3>球隊陣容<small>你是第 ${ROOKIE_SLOT + 1} 人，靠表現爭取上場時間</small></h3>` +
       `<div class="card roster" style="--team:${color}">${rows}</div>` +
+      coinBoxHtml(c, wallet.coins) +
       `<div class="buttons"><button type="button" class="primary" data-act="startSeason">開始 ${seasonLabel(c.year)} 球季（${c.settings.seasonGames} 場）</button></div>`
     );
   }

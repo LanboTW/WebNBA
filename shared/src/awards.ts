@@ -1,4 +1,5 @@
 import type { CareerState, LoggedGame } from './career';
+import { fanVote } from './economy';
 import { ageInSeason, playerRating, ratingAverage } from './roster';
 import { record, seasonOver, standings, statScale, type SeasonState } from './season';
 import type { PlayerInfo, PlayerStats, Position, TeamInfo } from './types';
@@ -270,7 +271,7 @@ export function selectAllStars(career: CareerState, league: Map<string, TeamInfo
   const team = (c: 'East' | 'West') =>
     lines
       .filter((l) => conf(l.team) === c)
-      .map((l) => ({ name: l.name, v: impact(l) * (0.75 + winPct(s, l.team) * 0.5) }))
+      .map((l) => ({ name: l.name, v: impact(l) * (0.75 + winPct(s, l.team) * 0.5) * (l.me ? fanVote(career.fans ?? 0) : 1) }))
       .sort((a, b) => b.v - a.v)
       .slice(0, ALL_STARS_PER_CONFERENCE)
       .map((x) => x.name);

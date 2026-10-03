@@ -24,6 +24,7 @@ import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
 import { PlayerDb } from './playerDb';
+import { coinsText, wallet } from './wallet';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
@@ -94,6 +95,8 @@ function show(next: Screen): void {
 
 document.querySelectorAll<HTMLElement>('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go as Screen)));
 document.querySelectorAll<HTMLElement>('.screen .back:not([data-to])').forEach((b) => b.addEventListener('click', () => show('home')));
+
+wallet.watch((n) => ($('#coinStatus').textContent = `🪙 ${coinsText(n)}`));
 
 $('#season').textContent = ROSTER_UPDATED ? `${ROSTER_SEASON}（${ROSTER_UPDATED} 更新）` : ROSTER_SEASON;
 
@@ -514,12 +517,23 @@ function showBox(title: string, canResume: boolean): void {
   $('#boxscore').classList.remove('hidden');
 }
 
+/** Quick games against the computer pay coins: 150 for a win, 50 for a loss. */
+const QUICK_COINS = { win: 150, loss: 50 };
+const paid = new WeakSet<Session>();
+
 function showFinal(): void {
   if (!session) return;
   session.paused = true;
   const [a, b] = session.state.score;
   const [ta, tb] = session.teams;
   showBox(`終場　${ta.abbr} ${a} : ${b} ${tb.abbr}`, false);
+  const s = session.state.settings;
+  if (!careerPlay && s.mode === 'game' && s.humanTeams.includes(0) && !paid.has(session)) {
+    paid.add(session);
+    const coins = a > b ? QUICK_COINS.win : QUICK_COINS.loss;
+    void wallet.add(coins);
+    $('#boxTitle').textContent += `　+${coins} 金幣`;
+  }
   if (careerPlay) $('#quitBtn').textContent = '回生涯';
 }
 

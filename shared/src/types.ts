@@ -45,6 +45,8 @@ export interface Look {
   sleeve: 'none' | 'left' | 'right' | 'both';
   kneepad: boolean;
   shoe: 'white' | 'black' | 'team';
+  /** #RRGGBB shoes (shop gear), over `shoe`. */
+  shoeColor?: string;
   socks: 'low' | 'high';
 }
 
@@ -271,6 +273,8 @@ export interface GameSettings {
   solo?: number;
   /** Share of the game (0..1) the coach plans to give the solo player. */
   soloMinutes?: number;
+  /** 0..1: how much his AI teammates look for the solo player (career cohesion). */
+  soloTrust?: number;
 }
 
 /** Host-configurable rule groups. */

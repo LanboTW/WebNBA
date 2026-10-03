@@ -138,6 +138,13 @@ function laneRisk(state: GameState, p: PlayerState, m: PlayerState): number {
   return risk + (ll > 12 ? 0.3 : 0);
 }
 
+/** Career cohesion: teammates who know him look for the solo player more (a little less when new). */
+function trustBonus(state: GameState, m: PlayerState): number {
+  const trust = state.settings.soloTrust;
+  if (trust === undefined || m.team !== 0 || m.rosterIdx !== state.settings.solo) return 0;
+  return (trust - 0.3) * 0.25;
+}
+
 function bestPass(state: GameState, p: PlayerState, inbound: boolean): { m: PlayerState; value: number } | null {
   let best: { m: PlayerState; value: number } | null = null;
   const s = Math.sign(attackHoopX(p.team, state.period));
@@ -147,7 +154,7 @@ function bestPass(state: GameState, p: PlayerState, inbound: boolean): { m: Play
     const open = Math.min(4, openness(state, m));
     const value = inbound
       ? open * 0.25 + (m.slot === 0 ? 0.4 : 0) - laneRisk(state, p, m)
-      : shotValue(state, m) * 0.95 + open * 0.03 - laneRisk(state, p, m);
+      : shotValue(state, m) * 0.95 + open * 0.03 - laneRisk(state, p, m) + trustBonus(state, m);
     if (!best || value > best.value) best = { m, value };
   }
   return best;
