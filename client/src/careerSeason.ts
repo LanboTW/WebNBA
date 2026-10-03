@@ -22,11 +22,12 @@ import {
   type TeamInfo,
 } from '@webnba/shared';
 import { esc } from './boxscore';
+import { awardsHtml, highsHtml, newsHtml } from './careerAwards';
 import { RATING_LABEL } from './careerCreate';
 import { historyHtml } from './careerOffseason';
 import { logoHtml } from './logos';
 
-export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats';
+export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats' | 'awards' | 'news';
 
 const TABS: [SeasonTab, string][] = [
   ['home', '總覽'],
@@ -35,6 +36,8 @@ const TABS: [SeasonTab, string][] = [
   ['standings', '戰績'],
   ['playoffs', '季後賽'],
   ['stats', '數據'],
+  ['awards', '獎項'],
+  ['news', '新聞'],
 ];
 
 const color = (t: TeamInfo) => (t.primary === '#000000' ? t.secondary : t.primary);
@@ -99,8 +102,12 @@ export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, T
           : tab === 'train'
             ? trainHtml(c)
             : tab === 'stats'
-            ? statsHtml(c, league)
-            : (home ?? homeHtml(c, league, role));
+              ? statsHtml(c, league)
+              : tab === 'awards'
+                ? awardsHtml(c, league)
+                : tab === 'news'
+                  ? newsHtml(c)
+                  : (home ?? homeHtml(c, league, role));
   return tabs + body;
 }
 
@@ -309,7 +316,7 @@ function trainHtml(c: CareerState): string {
 
 function statsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
   const games = c.games ?? [];
-  const history = historyHtml(c, league);
+  const history = highsHtml(c, league) + historyHtml(c, league);
   const row = (label: string, list: LoggedGame[]) => {
     if (!list.length) return '';
     const a = averages(list, c.settings.quarterSeconds);

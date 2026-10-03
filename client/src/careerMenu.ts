@@ -187,6 +187,15 @@ function renderAccount(): void {
   if (account) $('#accountName').textContent = account.label;
 }
 
+/** Every saved career (for quick games, practice and the menu background). */
+export async function savedCareers(): Promise<{ slot: number; career: CareerState }[]> {
+  const { slots } = await store.list();
+  return slots.flatMap((info) => {
+    const career = info?.save.state as CareerState | undefined;
+    return info && career?.v === 1 ? [{ slot: info.slot, career }] : [];
+  });
+}
+
 /** Fills the career screen: who is playing, then the three slots. */
 export async function renderCareer(): Promise<void> {
   $('#careerAccount').innerHTML = account

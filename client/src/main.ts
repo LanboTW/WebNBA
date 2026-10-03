@@ -3,6 +3,7 @@ import {
   ROSTER_UPDATED,
   CUSTOM_TEAMS,
   NBA_TEAMS,
+  careerPlayTeam,
   findTeam,
   playOut,
   playerRating,
@@ -21,7 +22,7 @@ import { logoHtml, setOfficialLogos } from './logos';
 import type { CameraMode } from './camera';
 import { Input } from './input';
 import { LineupPanel } from './lineup';
-import { initCareerMenu, renderCareer } from './careerMenu';
+import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
 import { TeamPicker } from './teamPicker';
@@ -74,12 +75,15 @@ const SCREENS: Screen[] = ['home', 'quick', 'practice', 'settings', 'career', 'a
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 let current: Screen = 'home';
+/** The latest reload of the career players (see refreshCareerTeams). */
+let careerLoad: Promise<void> = Promise.resolve();
 
 function show(next: Screen): void {
   current = next;
   for (const s of SCREENS) $(`#${s}`).classList.toggle('hidden', s !== next || !!session);
   if (next === 'quick') refreshCards();
   if (next === 'practice') renderPractice();
+  if (next === 'home' || next === 'quick' || next === 'practice') careerLoad = refreshCareerTeams();
   if (next === 'career') void renderCareer();
   // Leaving the career screens: back to the rotating stars.
   if (!session && showcase?.hold && !CAREER_SCREENS.includes(next)) startShowcase();
@@ -144,11 +148,75 @@ const ALL_TEAMS = [...teamGroups.values()].flat();
 
 function fillTeamSelect(sel: HTMLSelectElement): void {
   for (const [label, teams] of teamGroups) {
+    if (label === CAREER_GROUP) continue;
     const group = document.createElement('optgroup');
     group.label = label;
     for (const t of teams) group.appendChild(new Option(`${t.name} (${t.abbr})　${teamRating(t)}`, t.abbr));
     sel.appendChild(group);
   }
+}
+
+// ----------------------------------------------------------------- career players
+
+/** Saved career players, each on his team (in its starting five): picked like any team. */
+interface CareerTeam {
+  key: string;
+  team: TeamInfo;
+  player: PlayerInfo;
+}
+const CAREER_GROUP = '我的球員';
+let careerTeams: CareerTeam[] = [];
+
+/** A select's value to its team: an NBA (or custom) abbr, or career:<slot>. */
+function teamFor(key: string): TeamInfo {
+  return careerTeams.find((x) => x.key === key)?.team ?? findTeam(key);
+}
+function keyOf(t: TeamInfo): string {
+  return careerTeams.find((x) => x.team === t)?.key ?? t.abbr;
+}
+function tileLabel(t: TeamInfo): string {
+  return careerTeams.find((x) => x.team === t)?.player.name ?? t.abbr;
+}
+
+/** Reloads the career players from the save slots into the team lists. */
+async function refreshCareerTeams(): Promise<void> {
+  let saves: Awaited<ReturnType<typeof savedCareers>> = [];
+  try {
+    saves = await savedCareers();
+  } catch {
+    // No saves to read: the lists just stay NBA teams.
+  }
+  careerTeams = saves.flatMap(({ slot, career }) => {
+    const base = careerPlayTeam(career, NBA_TEAMS);
+    if (!base) return [];
+    const player = base.players.find((p) => p.name === career.player.info.name)!;
+    return [{ key: `career:${slot}`, team: base, player }];
+  });
+  teamGroups.delete(CAREER_GROUP);
+  if (careerTeams.length) teamGroups.set(CAREER_GROUP, careerTeams.map((x) => x.team));
+  for (const [sel, pref] of [
+    [homeSel, 'home'],
+    [awaySel, 'away'],
+    [practiceTeam, 'practiceTeam'],
+  ] as const) {
+    const was = sel.value;
+    sel.querySelector('optgroup[data-career]')?.remove();
+    if (careerTeams.length) {
+      const group = document.createElement('optgroup');
+      group.label = CAREER_GROUP;
+      group.dataset.career = '1';
+      for (const x of careerTeams) group.appendChild(new Option(`${x.player.name}（${x.team.name}）　${teamRating(x.team)}`, x.key));
+      sel.appendChild(group);
+    }
+    // Keep the pick, or bring back a remembered career pick now that it is loaded.
+    const saved = load(pref, '');
+    sel.value = was.startsWith('career:') || !saved.startsWith('career:') ? was : saved;
+    if (!sel.value) sel.value = was && !was.startsWith('career:') ? was : 'GSW';
+  }
+  menuPicker.sync();
+  practicePicker.sync();
+  if (current === 'quick') refreshCards();
+  if (current === 'practice') renderPractice();
 }
 
 // ----------------------------------------------------------------- quick mode
@@ -170,7 +238,7 @@ diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
 
 // The picker edits whichever side's card is selected; on phones that is two steps.
-const menuPicker = new TeamPicker($('#menuPicker'), teamGroups, homeSel);
+const menuPicker = new TeamPicker($('#menuPicker'), teamGroups, homeSel, keyOf, tileLabel);
 let pickSide: 'home' | 'away' = 'home';
 function setPickSide(side: 'home' | 'away'): void {
   pickSide = side;
@@ -198,8 +266,8 @@ function renderCard(el: HTMLElement, t: TeamInfo): void {
     t.players.slice(5).map(row).join('');
 }
 function refreshCards(): void {
-  renderCard($('#homeCard'), findTeam(homeSel.value));
-  renderCard($('#awayCard'), findTeam(awaySel.value));
+  renderCard($('#homeCard'), teamFor(homeSel.value));
+  renderCard($('#awayCard'), teamFor(awaySel.value));
   menuPicker.render();
   $('#startBtn').textContent = modeSel.value === 'watch' ? '開始觀戰' : '開始比賽';
 }
@@ -221,7 +289,7 @@ $('#startBtn').addEventListener('click', () => {
   save('mode', modeSel.value);
   save('diff', diffSel.value);
   save('quarter', quarterSel.value);
-  startSession([findTeam(homeSel.value), findTeam(awaySel.value)], {
+  startSession([teamFor(homeSel.value), teamFor(awaySel.value)], {
     mode: 'game',
     humanTeams: modeSel.value === 'watch' ? [] : [0],
     difficulty: diffSel.value as Difficulty,
@@ -238,14 +306,16 @@ fillTeamSelect(practiceTeam);
 practiceTeam.value = load('practiceTeam', homeSel.value);
 if (!practiceTeam.value) practiceTeam.value = 'GSW';
 let practicePlayer = Number(load('practicePlayer', '0'));
-const practicePicker = new TeamPicker($('#practicePicker'), teamGroups, practiceTeam);
+const practicePicker = new TeamPicker($('#practicePicker'), teamGroups, practiceTeam, keyOf, tileLabel);
 practiceTeam.addEventListener('change', () => {
-  practicePlayer = 0;
+  // A career team: start on him.
+  const mine = careerTeams.find((x) => x.key === practiceTeam.value);
+  practicePlayer = mine ? mine.team.players.indexOf(mine.player) : 0;
   renderPractice();
 });
 
 function renderPractice(): void {
-  const t = findTeam(practiceTeam.value);
+  const t = teamFor(practiceTeam.value);
   if (!t.players[practicePlayer]) practicePlayer = 0;
   const color = t.primary === '#000000' ? t.secondary : t.primary;
   $('#practicePlayers').innerHTML = t.players
@@ -268,7 +338,7 @@ $('#practiceBtn').addEventListener('click', () => {
   sfx.unlock();
   save('practiceTeam', practiceTeam.value);
   save('practicePlayer', String(practicePlayer));
-  const t = findTeam(practiceTeam.value);
+  const t = teamFor(practiceTeam.value);
   const me = t.players[practicePlayer];
   const lineup: TeamInfo = { ...t, players: [me, ...t.players.filter((p) => p !== me)] };
   startSession([lineup, lineup], { mode: 'practice', humanTeams: [0], seed: (Math.random() * 2 ** 31) | 0 });
@@ -278,11 +348,15 @@ $('#practiceBtn').addEventListener('click', () => {
 
 let showcase: Showcase | null = null;
 
-/** A random NBA player, or (`pinned`) the career player, who stays until replaced. */
+/**
+ * A random NBA player (half the time one of your career players, when you
+ * have any), or (`pinned`) the career player, who stays until replaced.
+ */
 function startShowcase(pinned?: { player: PlayerInfo; team: TeamInfo }): void {
   stopShowcase();
-  const team = pinned?.team ?? NBA_TEAMS[Math.floor(Math.random() * NBA_TEAMS.length)];
-  const player = pinned?.player ?? team.players[Math.floor(Math.random() * team.players.length)];
+  const mine = !pinned && careerTeams.length && Math.random() < 0.5 ? careerTeams[Math.floor(Math.random() * careerTeams.length)] : null;
+  const team = pinned?.team ?? mine?.team ?? NBA_TEAMS[Math.floor(Math.random() * NBA_TEAMS.length)];
+  const player = pinned?.player ?? mine?.player ?? team.players[Math.floor(Math.random() * team.players.length)];
   showcase = new Showcase(player, team, hud, window.innerWidth / window.innerHeight, !!pinned);
   graphics.attach(showcase.session.scene, showcase.session.arena);
   document.body.classList.add('attract');
@@ -474,7 +548,10 @@ function frame(now: number): void {
 
 initCareerMenu(show, { preview: previewCareer, play: playCareer });
 show('home');
-startShowcase();
+// The first player on the court may be yours: wait a moment for the saves.
+void Promise.race([careerLoad, new Promise((r) => setTimeout(r, 800))]).then(() => {
+  if (!showcase && !session) startShowcase();
+});
 requestAnimationFrame(frame);
 
 window.addEventListener('resize', () => {

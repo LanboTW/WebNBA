@@ -1,4 +1,16 @@
 import {
+  HOF_POINTS,
+  STAT_KEYS,
+  STAT_TITLE,
+  addNews,
+  hofCase,
+  leagueHofNote,
+  myAwards,
+  seasonAwards,
+  type AwardId,
+  type SeasonAwards,
+} from './awards';
+import {
   baseTeams,
   leagueTeams,
   makeProspect,
@@ -145,6 +157,7 @@ function ageLeague(career: CareerState, nba: TeamInfo[], r: Rand): Pick<Offseaso
   const retired: Offseason['retired'] = [];
   const rookies: Offseason['rookies'] = [];
   const taken = new Set([career.player.info.name, ...Object.keys(league.ages)]);
+  league.debut = league.debut ?? {};
   league.teams = league.teams.map((t) => {
     const numbers = new Set(t.players.map((p) => p.number));
     const players: PlayerInfo[] = [];
@@ -153,6 +166,7 @@ function ageLeague(career: CareerState, nba: TeamInfo[], r: Rand): Pick<Offseaso
       if (retires(age, playerRating(p), r)) {
         retired.push({ name: p.name, team: t.abbr, ovr: playerRating(p), age });
         delete league.ages[p.name];
+        delete league.debut![p.name];
         numbers.delete(p.number);
         continue;
       }
@@ -165,6 +179,7 @@ function ageLeague(career: CareerState, nba: TeamInfo[], r: Rand): Pick<Offseaso
       const pos = (['PG', 'SG', 'SF', 'PF', 'C'] as const)[Math.floor(r() * 5)];
       const rookie = makeProspect(r, pos, 52 + r() * 12, taken, numbers);
       league.ages[rookie.name] = 19 + Math.floor(r() * 4);
+      league.debut![rookie.name] = career.year + 1;
       rookies.push({ name: rookie.name, team: t.abbr, ovr: playerRating(rookie) });
       players.push(rookie);
     }
@@ -221,9 +236,14 @@ export function makeOffers(career: CareerState, nba: TeamInfo[], r: Rand, opts: 
 }
 
 /** Signs an offer (free agency) or completes a trade to that team. */
-export function acceptOffer(career: CareerState, offer: Offer): void {
+export function acceptOffer(career: CareerState, offer: Offer, nba?: TeamInfo[]): void {
   const o = career.offseason!;
   if (!o.offers.some((x) => x.team === offer.team)) return;
+  const name = (nba && baseTeams(career, nba).find((t) => t.abbr === offer.team)?.name) || offer.team;
+  const me = career.player.info.name;
+  if (o.kind === 'trade') addNews(career, `交易完成：${me} 被交易到 ${name}。`, true);
+  else if (offer.team === career.team) addNews(career, `${me} 與 ${name} 續約 ${offer.years} 年，每年 ${offer.salary} 百萬美元。`, true);
+  else addNews(career, `${me} 以自由球員身分加盟 ${name}：${offer.years} 年，每年 ${offer.salary} 百萬美元。`, true);
   career.team = offer.team;
   career.contract =
     o.kind === 'trade' && career.contract ? { ...career.contract, team: offer.team } : { team: offer.team, years: offer.years, salary: offer.salary };
@@ -254,6 +274,32 @@ export function cancelTrade(career: CareerState): void {
   o.offers = [];
 }
 
+// ----------------------------------------------------------------- news
+
+function awardNews(career: CareerState, a: SeasonAwards, mine: AwardId[]): void {
+  const me = career.player.info.name;
+  const label = `${a.year}-${String((a.year + 1) % 100).padStart(2, '0')}`;
+  const winner = (x: { name: string; team: string } | null | undefined) => (x ? `${x.name}（${x.team}）` : '');
+  if (a.mvp[0]) addNews(career, `${label} 年度 MVP：${winner(a.mvp[0])}${a.mvp[0].name === me ? '！' : '。'}`, a.mvp[0].name === me);
+  if (a.finalsMvp) addNews(career, `總冠軍賽 MVP：${winner(a.finalsMvp)}。`, a.finalsMvp.name === me);
+  if (a.roy[0]) addNews(career, `年度新人王：${winner(a.roy[0])}。`, a.roy[0].name === me);
+  const titles = STAT_KEYS.filter((k) => mine.includes(k)).map((k) => STAT_TITLE[k]);
+  if (titles.length) addNews(career, `${me} 拿下本季${titles.join('、')}！`, true);
+  const vote = a.mvp.findIndex((x) => x.name === me);
+  if (vote > 0) addNews(career, `${me} 在 MVP 票選排第 ${vote + 1}。`, true);
+}
+
+/** The best of the retirees make the news, and the greats the Hall of Fame. */
+function retirementNews(career: CareerState, retired: Offseason['retired']): void {
+  for (const x of retired) {
+    const note = leagueHofNote(career, x.name, x.ovr);
+    if (note) {
+      career.hall = [...(career.hall ?? []), { name: x.name, year: career.season?.year ?? career.year, team: x.team, note }];
+      addNews(career, `${x.name}（${x.team}）退休，入選名人堂（${note}）。`);
+    } else if (x.ovr >= 72) addNews(career, `${x.name}（${x.team}）以 ${x.age} 歲之齡宣布退休。`);
+  }
+}
+
 // ----------------------------------------------------------------- the offseason
 
 /**
@@ -266,9 +312,15 @@ export function beginOffseason(career: CareerState, nba: TeamInfo[]): void {
   const r = seededRandom(hash(`${career.year}${career.player.info.name}offseason`));
   // Careers begun before contracts existed: give them the rookie deal they would have had.
   if (!career.contract && career.team) career.contract = rookieContract(career.team, career.draft?.pick ?? 30);
-  career.history = [...(career.history ?? []), seasonSummary(career)];
+  // The awards go on this season's ratings and rosters, before anyone ages.
+  const summary = seasonSummary(career);
+  summary.awards = seasonAwards(career, leagueTeams(career, nba));
+  summary.mine = myAwards(career, summary.awards);
+  awardNews(career, summary.awards, summary.mine);
+  career.history = [...(career.history ?? []), summary];
   const aged = ageCareerPlayer(career, r);
   const { retired, rookies } = ageLeague(career, nba, r);
+  retirementNews(career, retired);
   const o: Offseason = { aged, retired, rookies, offers: [], kind: 'none', tradeAsked: false, mustSign: false };
   career.offseason = o;
   if (career.player.age >= RETIRE_AT) {
@@ -290,6 +342,16 @@ export function canRetire(career: CareerState): boolean {
 }
 
 export function retire(career: CareerState): void {
+  const me = career.player.info.name;
+  const seasons = (career.history ?? []).length;
+  addNews(career, `${me} 宣布退休，結束 ${seasons} 個球季的職業生涯。`, true);
+  const hof = hofCase(career);
+  if (hof.points >= HOF_POINTS) {
+    const last = career.history?.[career.history.length - 1];
+    const note = hof.parts.map(([k, v]) => `${k} ${v}`).join('、');
+    career.hall = [...(career.hall ?? []), { name: me, year: last?.year ?? career.year, team: last?.team ?? career.team ?? '', note, me: true }];
+    addNews(career, `${me} 入選名人堂！`, true);
+  }
   career.stage = 'retired';
   career.season = null;
   career.games = [];

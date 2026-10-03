@@ -1,4 +1,5 @@
 import {
+  AWARD_NAME,
   RETIRE_AT,
   ROLES,
   ROUND_NAME,
@@ -6,12 +7,14 @@ import {
   playerRating,
   rankOn,
   tierForRank,
+  type AwardId,
   type CareerState,
   type Offer,
   type SeasonSummary,
   type TeamInfo,
 } from '@webnba/shared';
 import { esc } from './boxscore';
+import { hallHtml, highsHtml, hofHtml, newsHtml, seasonAwardsHtml, trophiesHtml } from './careerAwards';
 import { RATING_LABEL } from './careerCreate';
 import { logoHtml } from './logos';
 
@@ -73,7 +76,10 @@ export function offseasonHtml(c: CareerState, league: Map<string, TeamInfo>, con
   const summary =
     `<div class="nextcard" style="--team:${color(team)}"><small>${label(h.year)} 球季總結</small>` +
     `<div class="nextopp">${logoHtml(team, 'tlogo')}<div><b>${h.record[0]} 勝 ${h.record[1]} 敗 · ${resultText(h.result)}</b>` +
-    `<span>${h.gp ? `${h.gp} 場 · 平均 ${g.pts} 分 ${g.reb} 籃板 ${g.ast} 助攻` : '整季沒有上場紀錄'} · 季末總評 ${h.ovr}</span></div></div></div>`;
+    `<span>${h.gp ? `${h.gp} 場 · 平均 ${g.pts} 分 ${g.reb} 籃板 ${g.ast} 助攻` : '整季沒有上場紀錄'} · 季末總評 ${h.ovr}</span></div></div>` +
+    awardBadges(h.mine ?? []) +
+    `</div>` +
+    (h.awards ? seasonAwardsHtml(h.awards, c.player.info.name, league, '本季') : '');
 
   const changes = Object.entries(o.aged.changes)
     .map(([k, d]) => `${RATING_LABEL[k as keyof typeof RATING_LABEL]} ${d}`)
@@ -122,6 +128,11 @@ export function offseasonHtml(c: CareerState, league: Map<string, TeamInfo>, con
   return summary + aging + deal + league_ + retire + next;
 }
 
+/** What he won this season, as badges on the summary card. */
+function awardBadges(mine: AwardId[]): string {
+  return mine.length ? `<div class="trophies">${mine.map((id) => `<span class="trophy t-${id}">${AWARD_NAME[id]}</span>`).join('')}</div>` : '';
+}
+
 /** After the last game: his career in one page. */
 export function retiredHtml(c: CareerState, league: Map<string, TeamInfo>): string {
   const hist = c.history ?? [];
@@ -131,7 +142,11 @@ export function retiredHtml(c: CareerState, league: Map<string, TeamInfo>): stri
   return (
     `<div class="draftcard"><small>生涯結束</small><div class="draftteam"><b>${esc(c.player.info.name)}</b></div>` +
     `<span>${hist.length} 個球季 · ${games} 場 · 生涯平均 ${(pts / Math.max(1, games)).toFixed(1)} 分 · ${titles} 座總冠軍 · 退休時總評 ${playerRating(c.player.info)}</span></div>` +
+    hofHtml(c) +
+    `<h3>個人獎項</h3>${trophiesHtml(c)}` +
     historyHtml(c, league) +
-    `<p class="sub tight soon">獎項、名人堂與生涯新聞會在之後的更新加入。</p>`
+    highsHtml(c, league) +
+    hallHtml(c, league) +
+    `<h3>生涯新聞</h3>${newsHtml(c)}`
   );
 }

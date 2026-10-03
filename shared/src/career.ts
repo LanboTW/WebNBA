@@ -1,3 +1,15 @@
+import {
+  addNews,
+  checkMidseason,
+  noteGame,
+  type AllStars,
+  type AwardId,
+  type CareerHigh,
+  type HallMember,
+  type NewsItem,
+  type RecordKey,
+  type SeasonAwards,
+} from './awards';
 import { nextRandom } from './rng';
 import { RATING_KEYS, playerRating, teamRating } from './roster';
 import {
@@ -8,9 +20,14 @@ import {
   newSeason,
   nextGameOf,
   nextHome,
+  record,
   recordPlayoffGame,
+  ROUND_NAME,
   scaleScore,
+  seasonOver,
   seriesDone,
+  seriesWinner,
+  standings,
   statScale,
   type PlayoffFormat,
   type SeasonState,
@@ -231,6 +248,14 @@ export interface CareerState {
   history?: SeasonSummary[];
   /** This offseason's state; null during the season. */
   offseason?: Offseason | null;
+  /** The All-Stars of the season under way (named halfway through it). */
+  allStars?: AllStars | null;
+  /** His single-game bests. */
+  highs?: Partial<Record<RecordKey, CareerHigh>>;
+  /** What happened, oldest first (the last NEWS_KEEP items). */
+  news?: NewsItem[];
+  /** League players inducted since the career began, and him once he gets in. */
+  hall?: HallMember[];
 }
 
 export interface Contract {
@@ -243,6 +268,8 @@ export interface League {
   teams: TeamInfo[];
   /** Every other player's age, by name. */
   ages: Record<string, number>;
+  /** First season of the rookies who came in during the career. */
+  debut?: Record<string, number>;
 }
 
 export interface SeasonSummary {
@@ -260,6 +287,9 @@ export interface SeasonSummary {
   playoffTotals: PlayerStats;
   /** Converts the raw totals to the NBA scale (statScale of the season's quarter length). */
   scale: number;
+  /** The league's awards that season, and the ones he won. */
+  awards?: SeasonAwards;
+  mine?: AwardId[];
 }
 
 export interface Offer {
@@ -569,6 +599,7 @@ export function withCareerPlayer(team: TeamInfo, me: PlayerInfo): TeamInfo {
 export function joinDraftedTeam(career: CareerState, draft: DraftResult): void {
   career.draft = draft;
   career.stage = 'drafted';
+  addNews(career, `${career.year} 年選秀第 ${draft.pick} 順位，${draft.team} 選中 ${career.player.info.name}。`, true);
 }
 
 // ----------------------------------------------------------------- the season
@@ -645,7 +676,8 @@ export function careerMatchup(
   return { teams: [mine, opp], rosterIdx: mine.players.findIndex((p) => p.name === career.player.info.name), home, role };
 }
 
-function asStarter(team: TeamInfo, me: PlayerInfo): TeamInfo {
+/** The team with him in its starting five, in place of the starter at his position (or the weakest one). */
+export function asStarter(team: TeamInfo, me: PlayerInfo): TeamInfo {
   const players = team.players.filter((p) => p.name !== me.name);
   const starters = players.slice(0, 5);
   let out = starters.findIndex((p) => p.position === me.position);
@@ -762,19 +794,54 @@ export function recordSeasonGame(career: CareerState, nba: TeamInfo[], next: Nex
   career.games = career.games ?? [];
   const xp = gameXp(career, game, next.playoff);
   career.player.xp = (career.player.xp ?? 0) + xp;
-  career.games.push({ ...game, day: next.day, opp: home ? next.away : next.home, home, playoff: next.playoff, shown, xp });
+  const logged: LoggedGame = { ...game, day: next.day, opp: home ? next.away : next.home, home, playoff: next.playoff, shown, xp };
+  career.games.push(logged);
+  noteGame(career, logged, league.get(logged.opp)?.name ?? logged.opp);
   if (next.playoff === 0) {
     const g = nextGameOf(s, me)!;
     g.score = homeAway;
     finishDay(s, league);
+    checkMidseason(career, league);
+    if (seasonOver(s)) regularSeasonNews(career, league);
   } else {
     const x = activeSeriesOf(s, me)!;
     recordPlayoffGame(x, next.home, homeAway);
     finishPlayoffSlate(s, league, me);
+    if (seriesDone(x)) seriesNews(career, league, x);
     // His series is over: let the rest of the round finish.
     if (seriesDone(x)) simPlayoffsUntilMine(career, nba);
   }
-  if (s.champion) career.stage = 'offseason';
+  if (s.champion) crown(career, league);
+}
+
+/** The regular season is over: where his team finished. */
+function regularSeasonNews(career: CareerState, league: Map<string, TeamInfo>): void {
+  const s = career.season!;
+  const t = league.get(career.team!)!;
+  const conf = t.conference ?? 'East';
+  const rank = standings(s, league, conf).findIndex((r) => r.abbr === t.abbr) + 1;
+  const [w, l] = record(s, t.abbr);
+  const where = `${conf === 'East' ? '東區' : '西區'}第 ${rank}`;
+  addNews(career, rank <= 8 ? `例行賽結束，${t.name} ${w} 勝 ${l} 敗（${where}）晉級季後賽。` : `例行賽結束，${t.name} ${w} 勝 ${l} 敗（${where}）無緣季後賽。`, true);
+}
+
+function seriesNews(career: CareerState, league: Map<string, TeamInfo>, x: Series): void {
+  const us = x.hi === career.team ? 0 : 1;
+  const opp = league.get(us ? x.hi : x.lo)?.name ?? '';
+  const score = `${x.wins[us]}:${x.wins[1 - us]}`;
+  const round = ROUND_NAME[x.round];
+  if (seriesWinner(x) === career.team) {
+    if (x.round < 4) addNews(career, `季後賽${round}以 ${score} 淘汰 ${opp}！`, true);
+  } else addNews(career, `季後賽${round}以 ${score} 不敵 ${opp}，球季結束。`, true);
+}
+
+/** The champions are crowned: the season is over. */
+function crown(career: CareerState, league: Map<string, TeamInfo>): void {
+  const s = career.season!;
+  if (career.stage === 'offseason') return;
+  const champ = league.get(s.champion!)?.name ?? s.champion!;
+  addNews(career, s.champion === career.team ? `${champ} 拿下 ${s.year + 1} 年總冠軍！${career.player.info.name} 戴上冠軍戒指！` : `${champ} 拿下 ${s.year + 1} 年總冠軍。`, s.champion === career.team);
+  career.stage = 'offseason';
 }
 
 /**
@@ -788,7 +855,19 @@ export function simPlayoffsUntilMine(career: CareerState, nba: TeamInfo[]): void
     if (!currentRound(s).length) break;
     finishPlayoffSlate(s, league);
   }
-  if (s.champion) career.stage = 'offseason';
+  if (s.champion) crown(career, league);
+}
+
+/**
+ * His team as it stands, him in the starting five, for quick games and
+ * practice outside the career (his last team once retired; the combine squad
+ * before the draft).
+ */
+export function careerPlayTeam(career: CareerState, nba: TeamInfo[]): TeamInfo | null {
+  if (career.stage === 'combine') return career.combine.teams[0];
+  const abbr = career.team ?? career.draft?.team ?? career.history?.[career.history.length - 1]?.team;
+  const base = abbr ? (baseTeams(career, nba).find((t) => t.abbr === abbr) ?? nba.find((t) => t.abbr === abbr)) : undefined;
+  return base ? asStarter(withCareerPlayer(base, career.player.info), career.player.info) : null;
 }
 
 /** Series his team played in (for the season summary). */

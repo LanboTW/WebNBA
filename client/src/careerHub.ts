@@ -77,7 +77,10 @@ export function careerSummary(c: CareerState): { player: string; team: string; d
   }
   const t = findTeam(c.team ?? c.draft!.team);
   const s = c.season;
-  if (c.stage === 'retired') return { player: c.player.info.name, team: t.abbr, detail: `已退休 · ${(c.history ?? []).length} 個球季 · 總評 ${ovr}` };
+  if (c.stage === 'retired') {
+    const hall = (c.hall ?? []).some((m) => m.me) ? ' · 名人堂' : '';
+    return { player: c.player.info.name, team: t.abbr, detail: `已退休 · ${(c.history ?? []).length} 個球季${hall} · 總評 ${ovr}` };
+  }
   if (!s) return { player: c.player.info.name, team: t.abbr, detail: `${c.year} 選秀第 ${c.draft!.pick} 順位 · ${t.name} · 總評 ${ovr}` };
   if (c.offseason) return { player: c.player.info.name, team: t.abbr, detail: `${seasonLabel(s.year)} 休賽季 · ${c.player.age} 歲 · 總評 ${ovr}` };
   const [w, l] = record(s, t.abbr);
@@ -236,7 +239,7 @@ export class CareerHub {
       case 'accept': {
         const offer = c.offseason?.offers.find((o) => o.team === team);
         if (!offer) return true;
-        acceptOffer(c, offer);
+        acceptOffer(c, offer, NBA_TEAMS);
         this.host.preview(c.player.info, careerTeam(c));
         break;
       }
