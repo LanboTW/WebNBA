@@ -14,7 +14,7 @@ export interface Follow {
   z: number;
   /** Point the camera leans toward a little (the hoop on offence, the ball on defence). */
   toward: { x: number; z: number };
-  /** +1 / -1: the way his team attacks. The view always looks that way (it only turns at half time). */
+  /** +1 / -1: the way the team with the ball attacks. The view looks at that hoop (on defence, the one he guards). */
   attack: number;
 }
 
@@ -27,11 +27,7 @@ export class GameCamera {
   private initialised = false;
   /** End view: heading of the camera's forward direction on the floor (0 = +x). */
   private yaw = 0;
-  /**
-   * Player view: the heading the stick follows. It stays on the court's axis
-   * (his attack direction) on offence and defence alike, so "up" never
-   * changes meaning mid-play; the picture may lean a little, the controls don't.
-   */
+  /** Player view: the court axis it is turning to (the hoop under attack), before leaning toward the play. */
   private controlYaw = 0;
 
   constructor(
@@ -55,16 +51,17 @@ export class GameCamera {
     let desiredPos: THREE.Vector3;
     let desiredLook: THREE.Vector3;
     if (this.mode === 'player' && follow) {
-      // On defence he faces the ball with his back to his own hoop: the same way his team attacks.
+      // Look at the hoop under attack: his on offence, the one he guards on defence.
+      // A change of possession swings the view round quickly.
       const base = follow.attack >= 0 ? 0 : Math.PI;
-      this.controlYaw = this.initialised ? lerpAngle(this.controlYaw, base, 1 - Math.exp(-dt * 2)) : base;
+      this.controlYaw = this.initialised ? lerpAngle(this.controlYaw, base, 1 - Math.exp(-dt * 4)) : base;
       const dx = follow.toward.x - follow.x;
       const dz = follow.toward.z - follow.z;
       // Lean toward the play, a little; right under the target the direction means nothing.
       const off = Math.hypot(dx, dz) > 2.2 ? angleDiff(Math.atan2(dz, dx), base) : 0;
       const lean = Math.max(-PLAYER_LEAN, Math.min(PLAYER_LEAN, off * 0.5));
       const target = this.controlYaw + lean;
-      this.yaw = this.initialised ? lerpAngle(this.yaw, target, 1 - Math.exp(-dt * 2.5)) : target;
+      this.yaw = this.initialised ? lerpAngle(this.yaw, target, 1 - Math.exp(-dt * 4)) : target;
       const fx = Math.cos(this.yaw);
       const fz = Math.sin(this.yaw);
       const back = narrow ? 9.5 : 7.5;
@@ -107,11 +104,9 @@ export class GameCamera {
    */
   toWorld(moveX: number, moveZ: number): { x: number; z: number } {
     if (this.mode === 'broadcast') return { x: moveX, z: moveZ };
-    // The player view steers by the court's axis; the end view (also the player view's
-    // fallback while he sits) by where it looks.
-    const heading = this.mode === 'player' ? this.controlYaw : this.yaw;
-    const fx = Math.cos(heading);
-    const fz = Math.sin(heading);
+    // Up is into the screen: the stick follows where the view looks.
+    const fx = Math.cos(this.yaw);
+    const fz = Math.sin(this.yaw);
     // right = (-fz, fx), forward = (fx, fz); screen up is -moveZ.
     return { x: -fz * moveX - fx * moveZ, z: fx * moveX - fz * moveZ };
   }

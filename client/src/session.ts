@@ -342,7 +342,7 @@ export class Session {
           x: mine.pos.x,
           z: mine.pos.z,
           toward: offense === mine.team ? { x: attackHoopX(mine.team, s.period), z: 0 } : { x: tmp.x, z: tmp.z },
-          attack: Math.sign(attackHoopX(mine.team, s.period)),
+          attack: Math.sign(attackHoopX(offense, s.period)),
         }
       : null;
     this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoopX(s.possession, s.period)), dt, follow);

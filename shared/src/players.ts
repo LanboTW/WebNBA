@@ -585,11 +585,14 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
   const fz = Math.cos(p.facing);
   const from: Vec3 = { x: p.pos.x + fx * 0.3, y: p.pos.y + p.info.heightM * 0.7, z: p.pos.z + fz * 0.3 };
   const speed = PASS_SPEED_BASE + p.info.ratings.pass * 0.04;
-  // Lead the receiver by where they will be when the ball arrives.
+  // Lead the receiver by where they will be when the ball arrives. A person
+  // may stop or turn at any moment, so their lead is short (the pass bends a
+  // little toward them in flight instead).
+  const lead = state.controlled[t.team] === t.id ? 0.3 : 1;
   let flight = Math.max(MIN_PASS_FLIGHT, hdist(from, t.pos) / speed);
-  let to: Vec3 = { x: t.pos.x + t.vel.x * flight, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight };
+  let to: Vec3 = { x: t.pos.x + t.vel.x * flight * lead, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight * lead };
   flight = Math.max(MIN_PASS_FLIGHT, hdist(from, to) / speed);
-  to = { x: t.pos.x + t.vel.x * flight, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight };
+  to = { x: t.pos.x + t.vel.x * flight * lead, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight * lead };
 
   let receiver = targetId;
   let intercepted = false;

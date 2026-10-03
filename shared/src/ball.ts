@@ -63,6 +63,8 @@ function homePass(state: GameState): void {
   const d = Math.hypot(dx, dz);
   const v = Math.hypot(b.vel.x, b.vel.z);
   if (d < 0.05 || v < 0.1) return;
+  // Only while it is still on its way: a ball that has gone past him must not turn back.
+  if (b.vel.x * dx + b.vel.z * dz <= 0) return;
   const k = Math.min(1, 6 * DT);
   const vx = b.vel.x + ((dx / d) * v - b.vel.x) * k;
   const vz = b.vel.z + ((dz / d) * v - b.vel.z) * k;
@@ -268,7 +270,9 @@ function tryCatch(state: GameState): void {
   const r = state.players[pass.targetId];
   const radius = pass.intercepted ? 1.0 : 0.8;
   if (hdist(b.pos, r.pos) > radius) return;
-  if (b.pos.y > r.pos.y + r.info.heightM * 1.3 || b.pos.y < 0.2) return;
+  // The intended receiver reaches up for a pass a little high rather than letting it sail.
+  const reach = pass.intercepted ? 1.3 : 1.5;
+  if (b.pos.y > r.pos.y + r.info.heightM * reach || b.pos.y < 0.2) return;
   if (r.action === 'shooting') return;
   const passer = state.players[pass.passerId];
   const prevTouch = b.lastTouchTeam;

@@ -61,6 +61,35 @@ describe('passing', () => {
   });
 });
 
+describe('passes to the player you control', () => {
+  it('reach him wherever he runs or turns while the ball is in the air', () => {
+    let seed = 7;
+    const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    let caught = 0;
+    const trials = 150;
+    for (let t = 0; t < trials; t++) {
+      const s = live();
+      placePlayer(s, 0, 0, 0);
+      placePlayer(s, 1, 3 + r() * 8, (r() - 0.5) * 10);
+      giveBall(s, 0);
+      s.controlled[0] = 1;
+      const a = r() * Math.PI * 2;
+      const sp = r() * 7;
+      s.players[1].vel = { x: Math.cos(a) * sp, y: 0, z: Math.sin(a) * sp };
+      releasePass(s, s.players[0], 1);
+      // Running one way when it's thrown, then turning or stopping.
+      const turnAt = Math.floor(r() * 10);
+      const b = r() * Math.PI * 2;
+      for (let i = 0; i < 90 && s.ball.mode === 'pass'; i++) {
+        const move = i < turnAt ? { moveX: Math.cos(a), moveZ: Math.sin(a), sprint: true } : { moveX: Math.cos(b), moveZ: Math.sin(b) };
+        step(s, { 0: { ...NO_INPUT, ...move } });
+      }
+      if (s.ball.mode === 'held' && s.ball.holderId === 1) caught++;
+    }
+    expect(caught).toBe(trials);
+  });
+});
+
 describe('rim', () => {
   it('a ball resting on top of the rim rolls off instead of sitting there', () => {
     const s = live();

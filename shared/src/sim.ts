@@ -206,7 +206,7 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
     let inp: PlayerInput;
     // Only the shooter acts during free throws; everyone else waits on the lane.
     if (frozen || (ftShooter !== undefined && p.id !== ftShooter)) inp = NO_INPUT;
-    else if (state.controlled[p.team] === p.id) inp = inputs[p.team] ?? NO_INPUT;
+    else if (state.controlled[p.team] === p.id) inp = humanInput(state, p, inputs[p.team] ?? NO_INPUT);
     else inp = aiInput(state, p);
     updatePlayer(state, p, inp);
   }
@@ -220,6 +220,17 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
 /** A person is playing the solo player (a played-out game keeps his minutes plan but not the lock). */
 function soloHuman(state: GameState): boolean {
   return state.settings.solo !== undefined && state.settings.humanTeams.includes(0);
+}
+
+/**
+ * A pass on its way to the person's player: he goes to meet it on his own
+ * (as AI receivers do), so passes don't get past him. A pass pressed meanwhile
+ * still counts (it is thrown on the catch).
+ */
+function humanInput(state: GameState, p: PlayerState, inp: PlayerInput): PlayerInput {
+  const pass = state.ball.mode === 'pass' ? state.ball.pass : null;
+  if (!pass || pass.targetId !== p.id || pass.intercepted) return inp;
+  return { ...aiInput(state, p), pass: inp.pass, timeout: inp.timeout, switchPlayer: inp.switchPlayer };
 }
 
 /** Solo games: the controls stay on your player (none while he sits). */
