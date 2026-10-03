@@ -38,9 +38,26 @@ describe('passing', () => {
     s.controlled[0] = 1;
     step(s, { 0: { ...NO_INPUT, pass: true } });
     expect(s.ball.holderId).toBe(1);
+    // ...but the press is remembered and the pass goes once he can.
     for (let i = 0; i < 12; i++) step(s, { 0: NO_INPUT });
-    step(s, { 0: { ...NO_INPUT, pass: true } });
     expect(s.ball.mode).toBe('pass');
+  });
+
+  it('a pass pressed while the ball is still coming goes on the catch (one-touch passing)', () => {
+    const s = live();
+    placePlayer(s, 0, 0, 0);
+    placePlayer(s, 1, 5, 0);
+    placePlayer(s, 2, 9, 3);
+    giveBall(s, 0);
+    s.controlled[0] = 1;
+    releasePass(s, s.players[0], 1);
+    step(s, { 0: { ...NO_INPUT, pass: true } });
+    let relayed = false;
+    for (let i = 0; i < 40 && !relayed; i++) {
+      step(s, { 0: NO_INPUT });
+      relayed = s.ball.mode === 'pass' && s.ball.pass?.passerId === 1;
+    }
+    expect(relayed).toBe(true);
   });
 });
 

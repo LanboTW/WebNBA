@@ -84,6 +84,7 @@ function newPlayer(id: number, team: 0 | 1, slot: number, info: TeamInfo['player
     paintTime: 0,
     contactCooldown: 0,
     catchHold: 0,
+    queuedPass: -1,
   };
 }
 

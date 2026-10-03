@@ -121,6 +121,11 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
   p.stealCooldown = Math.max(0, p.stealCooldown - DT);
   p.contactCooldown = Math.max(0, p.contactCooldown - DT);
   p.catchHold = Math.max(0, p.catchHold - DT);
+  // A pass pressed a moment early (ball still coming, or just caught) is kept, not lost.
+  const incoming = ball.mode === 'pass' && ball.pass?.targetId === p.id && !ball.pass.intercepted;
+  if (passPressed && (incoming || (mine && p.catchHold > 0))) p.queuedPass = inp.passTarget ?? -2;
+  if ((!mine && !incoming) || shootPressed) p.queuedPass = -1;
+  const passNow = passPressed || p.queuedPass !== -1;
   p.intenseD = inp.intenseD && !mine && canPlay;
   const ft = state.phase === 'freeThrow' ? state.freeThrow : null;
   const ftShooter = !!ft && ft.shooterId === p.id && mine && !ft.released && ft.timer > 0.5;
@@ -146,8 +151,10 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
     if (p.onGround && p.shotTimer > 0.2) p.action = 'normal';
   } else if (ftShooter) {
     if (shootPressed) startShot(state, p, inp);
-  } else if (mine && passPressed && (canPlay || inbounder) && p.catchHold <= 0) {
-    const explicit = inp.passTarget !== undefined ? state.players[inp.passTarget] : undefined;
+  } else if (mine && passNow && (canPlay || inbounder) && p.catchHold <= 0) {
+    const chosen = passPressed ? inp.passTarget : p.queuedPass >= 0 ? p.queuedPass : undefined;
+    p.queuedPass = -1;
+    const explicit = chosen !== undefined ? state.players[chosen] : undefined;
     const valid = explicit && explicit.team === p.team && explicit.id !== p.id;
     const target = valid ? explicit.id : choosePassTarget(state, p, inp);
     if (target >= 0) releasePass(state, p, target);

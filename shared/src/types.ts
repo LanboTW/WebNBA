@@ -139,6 +139,12 @@ export interface PlayerState {
   contactCooldown: number;
   /** Just caught a pass: seconds before he can pass it on (no instant one-touch relays). */
   catchHold: number;
+  /**
+   * Pass pressed while the ball was on its way to him or in the catch moment:
+   * thrown as soon as it can be. -1 none, -2 to whoever the stick picks then,
+   * else the chosen teammate's id.
+   */
+  queuedPass: number;
 }
 
 /** A player on the bench: everything that follows a person when they sub in. */
