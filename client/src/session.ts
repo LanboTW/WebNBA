@@ -71,6 +71,8 @@ interface Snapshot {
 export interface SessionOptions {
   /** Menu background: one player under a spotlight, no crowd. */
   showcase?: boolean;
+  /** Which team is at home (its arena, the other wears its colours); team 0 by default. */
+  home?: 0 | 1;
 }
 
 export interface SessionCallbacks {
@@ -110,6 +112,7 @@ export class Session {
   paused = false;
   /** Career game: you play one player; on the bench the game fast-forwards. */
   readonly solo: boolean;
+  private readonly home: 0 | 1;
   private readonly benchNote = document.querySelector<HTMLElement>('#benchNote')!;
 
   constructor(
@@ -129,10 +132,11 @@ export class Session {
     this.solo = this.state.settings.solo !== undefined;
     this.hud.setHelpMode(this.solo);
     this.builtFor = this.state.players.map((p) => p.rosterIdx);
-    this.arena = buildArena(this.scene, teams[0], !!options.showcase);
+    this.home = options.home ?? 0;
+    this.arena = buildArena(this.scene, teams[this.home], !!options.showcase);
     this.cam = new GameCamera(aspect, view);
     this.playerViews = this.state.players.map((p) => {
-      const v = new PlayerView(p.info, kitFor(teams[p.team], p.team === 0));
+      const v = new PlayerView(p.info, kitFor(teams[p.team], p.team === this.home));
       this.scene.add(v.root);
       return v;
     });
@@ -414,7 +418,7 @@ export class Session {
     const old = this.playerViews[slotId];
     this.scene.remove(old.root);
     disposeTree(old.root);
-    const v = new PlayerView(p.info, kitFor(this.teams[p.team], p.team === 0));
+    const v = new PlayerView(p.info, kitFor(this.teams[p.team], p.team === this.home));
     this.scene.add(v.root);
     this.playerViews[slotId] = v;
   }

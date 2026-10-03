@@ -2,8 +2,10 @@ import {
   COMBINE_GAMES,
   NBA_TEAMS,
   ROOKIE_SLOT,
+  activeSeriesOf,
   archetype,
   careerGame,
+  careerMatchup,
   careerGameSettings,
   combineDone,
   combineIndex,
@@ -13,7 +15,14 @@ import {
   recordCombineGame,
   runDraft,
   joinDraftedTeam,
+  leagueTeams,
+  nextCareerGame,
+  record,
+  recordSeasonGame,
+  seasonOver,
+  simPlayoffsUntilMine,
   simulateGame,
+  startSeason,
   teamRating,
   withCareerPlayer,
   type CareerGame,
@@ -25,6 +34,7 @@ import {
 } from '@webnba/shared';
 import { esc } from './boxscore';
 import { POSITION_LABEL } from './careerCreate';
+import { gradeBadge, seasonHtml, seasonLabel, type SeasonTab } from './careerSeason';
 import { logoHtml } from './logos';
 
 /** What the career screens need from the rest of the page. */
@@ -35,7 +45,7 @@ export interface CareerHost {
    * Plays a game with the player's team as team 0. `done` gets the final state;
    * a game left early has been played out by the computer first.
    */
-  play(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, rosterIdx: number, done: (state: GameState) => void): void;
+  play(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, rosterIdx: number, done: (state: GameState) => void, home?: boolean): void;
   /** Saves the career; resolves to a message when it didn't reach the cloud. */
   save(career: CareerState): Promise<string | null>;
 }
@@ -44,7 +54,8 @@ const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as
 
 /** The team colours the player wears right now. */
 export function careerTeam(c: CareerState): TeamInfo {
-  if (c.draft) return withCareerPlayer(findTeam(c.draft.team), c.player.info);
+  const abbr = c.team ?? c.draft?.team;
+  if (abbr) return withCareerPlayer(findTeam(abbr), c.player.info);
   return c.combine.teams[0];
 }
 
@@ -53,8 +64,12 @@ export function careerSummary(c: CareerState): { player: string; team: string; d
   if (c.stage === 'combine') {
     return { player: c.player.info.name, team: '選秀試訓', detail: `試訓 ${c.combine.games.length}/${COMBINE_GAMES} 場 · 總評 ${ovr}` };
   }
-  const t = findTeam(c.draft!.team);
-  return { player: c.player.info.name, team: t.abbr, detail: `${c.year} 選秀第 ${c.draft!.pick} 順位 · ${t.name} · 總評 ${ovr}` };
+  const t = findTeam(c.team ?? c.draft!.team);
+  const s = c.season;
+  if (!s) return { player: c.player.info.name, team: t.abbr, detail: `${c.year} 選秀第 ${c.draft!.pick} 順位 · ${t.name} · 總評 ${ovr}` };
+  const [w, l] = record(s, t.abbr);
+  const where = s.champion ? (s.champion === t.abbr ? '總冠軍！' : '球季結束') : seasonOver(s) ? '季後賽' : `例行賽 ${s.day}/${s.days}`;
+  return { player: c.player.info.name, team: t.abbr, detail: `${seasonLabel(s.year)} 球季 · ${w} 勝 ${l} 敗 · ${where} · 總評 ${ovr}` };
 }
 
 function line(g: CareerGame): string {
@@ -64,22 +79,31 @@ function line(g: CareerGame): string {
 }
 
 /**
- * The career's home screen. For now: the draft combine, the draft, and the
- * team you join. The season arrives with the next batch.
+ * The career's home screen: the draft combine, the draft, then the season
+ * (next game, schedule, standings, playoffs, stats).
  */
 export class CareerHub {
   career: CareerState | null = null;
   private busy = false;
+  private tab: SeasonTab = 'home';
 
   constructor(private readonly host: CareerHost) {
     $('#hubBody').addEventListener('click', (e) => {
-      const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+      const el = e.target as HTMLElement;
+      const tab = el.closest<HTMLElement>('[data-tab]')?.dataset.tab as SeasonTab | undefined;
+      if (tab) {
+        this.tab = tab;
+        this.render();
+        return;
+      }
+      const act = el.closest<HTMLElement>('[data-act]')?.dataset.act;
       if (act && !this.busy) void this.act(act);
     });
   }
 
   open(career: CareerState): void {
     this.career = career;
+    this.tab = 'home';
     this.msg('');
     this.render();
     this.host.preview(career.player.info, careerTeam(career));
@@ -115,6 +139,30 @@ export class CareerHub {
       } else {
         this.host.play(teams, settings, idx, (state) => this.finishGame(careerGame(state, idx, false)));
       }
+    } else if (act === 'startSeason') {
+      if (c.stage !== 'drafted') return;
+      startSeason(c, NBA_TEAMS, (Math.random() * 2 ** 31) | 0);
+      this.tab = 'home';
+      this.render();
+      await this.save();
+    } else if (act === 'splay') {
+      const next = nextCareerGame(c);
+      if (!next) return;
+      const m = careerMatchup(c, NBA_TEAMS, next);
+      const settings = careerGameSettings(c, (Math.random() * 2 ** 31) | 0, m.rosterIdx);
+      this.host.play(
+        m.teams,
+        settings,
+        m.rosterIdx,
+        (state) => this.finishSeasonGame([careerGame(state, m.rosterIdx, false)], next),
+        m.home,
+      );
+    } else if (act === 'ssim' || act === 'ssim5' || act === 'ssimAll' || act === 'ssimSeries') {
+      await this.simGames(act);
+    } else if (act === 'simPlayoffs') {
+      simPlayoffsUntilMine(c, NBA_TEAMS);
+      this.render();
+      await this.save();
     } else if (act === 'draft') {
       if (!combineDone(c) || c.draft) return;
       joinDraftedTeam(c, runDraft(c, NBA_TEAMS));
@@ -122,6 +170,39 @@ export class CareerHub {
       this.host.preview(c.player.info, careerTeam(c));
       await this.save();
     }
+  }
+
+/** Sims his games with the real engine, one at a time so the page stays responsive. */
+  private async simGames(act: string): Promise<void> {
+    const c = this.career!;
+    const first = nextCareerGame(c);
+    if (!first) return;
+    const series = first.playoff ? activeSeriesOf(c.season!, c.team!) : null;
+    const limit = act === 'ssim' ? 1 : act === 'ssim5' ? 5 : 200;
+    this.busy = true;
+    for (let i = 0; i < limit; i++) {
+      const next = nextCareerGame(c);
+      // Stop at the end of the regular season, or of this series.
+      if (!next || (first.playoff === 0 && next.playoff !== 0) || (series && activeSeriesOf(c.season!, c.team!) !== series)) break;
+      this.msg(`模擬比賽中…（${i + 1}${limit > 1 ? `/${limit === 200 ? '…' : limit}` : ''}）`);
+      await new Promise((r) => setTimeout(r, 20));
+      const m = careerMatchup(c, NBA_TEAMS, next);
+      const state = simulateGame(m.teams, careerGameSettings(c, (Math.random() * 2 ** 31) | 0, m.rosterIdx));
+      recordSeasonGame(c, NBA_TEAMS, next, careerGame(state, m.rosterIdx, true));
+    }
+    this.busy = false;
+    this.msg('');
+    this.render();
+    await this.save();
+  }
+
+  private finishSeasonGame(games: CareerGame[], next: NonNullable<ReturnType<typeof nextCareerGame>>): void {
+    const c = this.career!;
+    for (const g of games) recordSeasonGame(c, NBA_TEAMS, next, g);
+    this.tab = 'home';
+    this.render();
+    this.host.preview(c.player.info, careerTeam(c));
+    void this.save();
   }
 
   private finishGame(game: CareerGame): void {
@@ -140,7 +221,13 @@ export class CareerHub {
       `<div class="mehead"><span class="menum">#${p.number}</span><div><b>${esc(p.name)}</b>` +
       `<span>${p.position} ${POSITION_LABEL[p.position]} · ${archetype(c.player.archetype).name} · ${Math.round(p.heightM * 100)} cm · ${c.player.age} 歲</span></div>` +
       `<span class="meovr">${playerRating(p)}</span></div>`;
-    $('#hubBody').innerHTML = head + (c.stage === 'combine' ? this.combineHtml(c) : this.draftedHtml(c, reveal));
+    const body =
+      c.stage === 'combine'
+        ? this.combineHtml(c)
+        : c.stage === 'drafted' || !c.season
+          ? this.draftedHtml(c, reveal)
+          : seasonHtml(c, this.tab, leagueTeams(c, NBA_TEAMS));
+    $('#hubBody').innerHTML = head + body;
   }
 
   private combineHtml(c: CareerState): string {
@@ -152,7 +239,7 @@ export class CareerHub {
       const won = g.score[0] > g.score[1];
       return (
         `<li class="game"><span class="gno">${i + 1}</span><div><b class="${won ? 'win' : 'loss'}">${won ? '勝' : '敗'} ${g.score[0]}:${g.score[1]}</b>` +
-        `${g.simmed ? '<small>模擬</small>' : ''}<span>${line(g)}</span></div><span class="grade g${g.grade[0]}">${g.grade}</span></li>`
+        `${g.simmed ? '<small>模擬</small>' : ''}<span>${line(g)}</span></div>${gradeBadge(g.grade)}</li>`
       );
     }).join('');
     const done = combineDone(c);
@@ -187,7 +274,7 @@ export class CareerHub {
       `<span>試訓平均評分 ${avg.toFixed(1)} · 球隊總評 ${teamRating(team)}</span></div>` +
       `<h3>球隊陣容<small>你是第 ${ROOKIE_SLOT + 1} 人，靠表現爭取上場時間</small></h3>` +
       `<div class="card roster" style="--team:${color}">${rows}</div>` +
-      `<p class="sub tight soon">例行賽、戰績表和季後賽會在下一次更新開放，到時候從這裡接著打。</p>`
+      `<div class="buttons"><button type="button" class="primary" data-act="startSeason">開始 ${seasonLabel(c.year)} 球季（${c.settings.seasonGames} 場）</button></div>`
     );
   }
 }

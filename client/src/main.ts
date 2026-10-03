@@ -334,7 +334,7 @@ function showTag(): void {
 /** A career game in progress: who you are and what to do with the result. */
 let careerPlay: { rosterIdx: number; done: (state: GameState) => void } | null = null;
 
-function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>): void {
+function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, home: 0 | 1 = 0): void {
   stopShowcase();
   session?.dispose();
   // Career games keep their own camera choice (the player view by default).
@@ -357,6 +357,7 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
     { onFinal: showFinal, onViewChange },
     window.innerWidth / window.innerHeight,
     view as CameraMode,
+    { home },
   );
   graphics.attach(session.scene, session.arena);
   // Dev-only hook for inspecting the sim from the browser console.
@@ -394,9 +395,15 @@ function backToMenu(): void {
 }
 
 /** Starts a career game with you on team 0 and the controls on you. */
-function playCareer(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, rosterIdx: number, done: (state: GameState) => void): void {
+function playCareer(
+  teams: [TeamInfo, TeamInfo],
+  settings: Partial<GameSettings>,
+  rosterIdx: number,
+  done: (state: GameState) => void,
+  home = true,
+): void {
   sfx.unlock();
-  startSession(teams, settings);
+  startSession(teams, settings, home ? 0 : 1);
   careerPlay = { rosterIdx, done };
   $('#quitBtn').textContent = '離開（電腦打完這場）';
 }

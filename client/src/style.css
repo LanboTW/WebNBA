@@ -2036,3 +2036,249 @@ input[type='range'] {
     gap: 4px;
   }
 }
+
+/* --------------------------------------------------------------- career season */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #151925;
+  overflow-x: auto;
+}
+
+.tabs button {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-size: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tabs button.on {
+  background: #252a3b;
+  color: var(--text);
+}
+
+.teamline,
+.nextopp {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.teamline {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-left: 4px solid var(--team);
+  border-radius: 10px;
+  background: #171b28;
+}
+
+.teamline div,
+.nextopp div {
+  display: flex;
+  flex-direction: column;
+}
+
+.teamline b {
+  font-size: 17px;
+}
+
+.teamline span,
+.nextopp span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.tlogo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.slogo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.nextcard {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--team, var(--accent));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--team, #1b1f2e) 14%, #151925);
+}
+
+.nextcard > small {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.nextcard p {
+  margin: 0;
+}
+
+.nextopp b {
+  font-size: 19px;
+}
+
+.buttons.wrap {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.buttons.wrap button {
+  flex: 1 1 120px;
+  width: auto;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.buttons.wrap button.primary {
+  flex-basis: 100%;
+}
+
+.avgline {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.avgline span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: #171b28;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.avgline b {
+  font-size: 18px;
+  color: var(--text);
+}
+
+.games.schedule {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.tablewrap {
+  overflow-x: auto;
+}
+
+table.standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+table.standings th {
+  padding: 4px 6px;
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: right;
+}
+
+table.standings td {
+  padding: 5px 6px;
+  border-top: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+table.standings th:nth-child(2),
+table.standings td:nth-child(2),
+table.stats td:first-child {
+  text-align: left;
+}
+
+table.standings td:first-child {
+  color: var(--muted);
+}
+
+table.standings tr.me td {
+  background: rgba(255, 122, 26, 0.16);
+  color: var(--text);
+}
+
+/* The playoff line: below the eighth team. */
+table.standings tr.cut td {
+  border-bottom: 2px dashed rgba(255, 255, 255, 0.35);
+}
+
+.bracket {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.series {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #171b28;
+  overflow: hidden;
+}
+
+.sside {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sside + .sside {
+  border-top: 1px solid var(--line);
+}
+
+.sside .seed {
+  width: 16px;
+  font-size: 11px;
+}
+
+.sside .sname {
+  flex: 1;
+}
+
+.sside b {
+  font-variant-numeric: tabular-nums;
+}
+
+.sside.won {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.sside.me {
+  background: rgba(255, 122, 26, 0.16);
+}
+
+@media (max-width: 480px) {
+  .avgline {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.grade.dnp {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}

@@ -1,5 +1,20 @@
 import { nextRandom } from './rng';
 import { RATING_KEYS, teamRating } from './roster';
+import {
+  activeSeriesOf,
+  currentRound,
+  finishDay,
+  finishPlayoffSlate,
+  newSeason,
+  nextGameOf,
+  nextHome,
+  recordPlayoffGame,
+  scaleScore,
+  seriesDone,
+  type PlayoffFormat,
+  type SeasonState,
+  type Series,
+} from './season';
 import { createGame, step } from './sim';
 import type { Difficulty, GameSettings, GameState, Look, PlayerInfo, PlayerStats, Position, Ratings, TeamInfo } from './types';
 
@@ -139,8 +154,6 @@ export function startingRatings(position: Position, id: ArchetypeId, heightM: nu
 
 // ----------------------------------------------------------------- the save
 
-export type PlayoffFormat = 'short' | 'single' | 'long' | 'full';
-
 export interface CareerSettings {
   /** Fixed for the whole career: AI strength (and, later, how fast you earn XP). */
   difficulty: Difficulty;
@@ -162,7 +175,8 @@ export interface CareerPlayer {
   age: number;
 }
 
-export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
+/** DNP: did not play (not graded). */
+export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F' | 'DNP';
 
 /** One finished game, from the career player's side. */
 export interface CareerGame {
@@ -182,7 +196,8 @@ export interface DraftResult {
   order: string[];
 }
 
-export type CareerStage = 'combine' | 'drafted';
+/** combine -> drafted -> season (regular season and playoffs) -> offseason. */
+export type CareerStage = 'combine' | 'drafted' | 'season' | 'offseason';
 
 export interface CareerState {
   v: 1;
@@ -200,6 +215,11 @@ export interface CareerState {
     seed: number;
   };
   draft: DraftResult | null;
+  /** The team he plays for now (abbr); null until drafted. */
+  team?: string | null;
+  season?: SeasonState | null;
+  /** His games this season, regular season and playoffs. */
+  games?: LoggedGame[];
 }
 
 export const COMBINE_GAMES = 3;
@@ -390,7 +410,7 @@ export function careerGame(state: GameState, rosterIdx: number, simmed: boolean)
   const stats = statsOf(state, 0, rosterIdx) ?? emptyLine();
   const score: [number, number] = [state.score[0], state.score[1]];
   const rating = Math.round(projectedGameScore(stats, score) * 10) / 10;
-  return { stats, score, rating, grade: grade(rating), simmed };
+  return { stats, score, rating, grade: stats.secs > 0 ? grade(rating) : 'DNP', simmed };
 }
 
 function emptyLine(): PlayerStats {
@@ -456,4 +476,109 @@ export function withCareerPlayer(team: TeamInfo, me: PlayerInfo): TeamInfo {
 export function joinDraftedTeam(career: CareerState, draft: DraftResult): void {
   career.draft = draft;
   career.stage = 'drafted';
+}
+
+// ----------------------------------------------------------------- the season
+
+/** A career game in the season log. */
+export interface LoggedGame extends CareerGame {
+  day: number;
+  opp: string;
+  home: boolean;
+  /** 0 = regular season, else the playoff round. */
+  playoff: number;
+  /** [us, them] on the NBA scale (what standings and the schedule show). */
+  shown: [number, number];
+}
+
+/** The league as the career sees it: every NBA team, his own with him on it. */
+export function leagueTeams(career: CareerState, nba: TeamInfo[]): Map<string, TeamInfo> {
+  const map = new Map(nba.map((t) => [t.abbr, t]));
+  const mine = career.team ? map.get(career.team) : undefined;
+  if (mine) map.set(mine.abbr, withCareerPlayer(mine, career.player.info));
+  return map;
+}
+
+export function startSeason(career: CareerState, nba: TeamInfo[], seed: number): void {
+  career.team = career.team ?? career.draft?.team ?? null;
+  career.season = newSeason(nba, career.year, career.settings.seasonGames, career.settings.playoffs, seed);
+  career.games = [];
+  career.stage = 'season';
+}
+
+export interface NextGame {
+  home: string;
+  away: string;
+  /** 0 = regular season, else the playoff round. */
+  playoff: number;
+  day: number;
+}
+
+/** His team's next game, or null (season over for them, or waiting on other series). */
+export function nextCareerGame(career: CareerState): NextGame | null {
+  const s = career.season;
+  const me = career.team;
+  if (!s || !me || career.stage !== 'season') return null;
+  const g = nextGameOf(s, me);
+  if (g) return { home: g.home, away: g.away, playoff: 0, day: g.day };
+  const x = s.champion ? null : activeSeriesOf(s, me);
+  if (!x) return null;
+  const home = nextHome(x);
+  return { home, away: home === x.hi ? x.lo : x.hi, playoff: x.round, day: s.days + x.games.length };
+}
+
+/** The two teams for his next game, his team first, and where he is in its roster. */
+export function careerMatchup(career: CareerState, nba: TeamInfo[], next: NextGame): { teams: [TeamInfo, TeamInfo]; rosterIdx: number; home: boolean } {
+  const league = leagueTeams(career, nba);
+  const home = next.home === career.team;
+  const mine = league.get(career.team!)!;
+  const opp = league.get(home ? next.away : next.home)!;
+  return { teams: [mine, opp], rosterIdx: mine.players.findIndex((p) => p.name === career.player.info.name), home };
+}
+
+/**
+ * Records his game (team 0 = his team in `game`) and plays the rest of that
+ * day, or that round of playoff games, with quick results.
+ */
+export function recordSeasonGame(career: CareerState, nba: TeamInfo[], next: NextGame, game: CareerGame): void {
+  const s = career.season!;
+  const me = career.team!;
+  const league = leagueTeams(career, nba);
+  const home = next.home === me;
+  const shown = scaleScore(game.score, career.settings.quarterSeconds);
+  const homeAway: [number, number] = home ? shown : [shown[1], shown[0]];
+  career.games = career.games ?? [];
+  career.games.push({ ...game, day: next.day, opp: home ? next.away : next.home, home, playoff: next.playoff, shown });
+  if (next.playoff === 0) {
+    const g = nextGameOf(s, me)!;
+    g.score = homeAway;
+    finishDay(s, league);
+  } else {
+    const x = activeSeriesOf(s, me)!;
+    recordPlayoffGame(x, next.home, homeAway);
+    finishPlayoffSlate(s, league, me);
+    // His series is over: let the rest of the round finish.
+    if (seriesDone(x)) simPlayoffsUntilMine(career, nba);
+  }
+  if (s.champion) career.stage = 'offseason';
+}
+
+/**
+ * Plays other playoff games until his team has a game again, or the playoffs
+ * are over (he is out, or waiting for the rest of the round).
+ */
+export function simPlayoffsUntilMine(career: CareerState, nba: TeamInfo[]): void {
+  const s = career.season!;
+  const league = leagueTeams(career, nba);
+  for (let guard = 0; guard < 200 && !s.champion && !activeSeriesOf(s, career.team!); guard++) {
+    if (!currentRound(s).length) break;
+    finishPlayoffSlate(s, league);
+  }
+  if (s.champion) career.stage = 'offseason';
+}
+
+/** Series his team played in (for the season summary). */
+export function seriesOf(career: CareerState): Series[] {
+  const me = career.team;
+  return (career.season?.playoffs?.series ?? []).filter((x) => x.hi === me || x.lo === me);
 }
