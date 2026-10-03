@@ -25,7 +25,7 @@ import {
   type Rand,
   type SeasonSummary,
 } from './career';
-import { RATING_KEYS, ageInSeason, playerRating } from './roster';
+import { RATING_KEYS, ageInSeason, playerRating, ratingAverage } from './roster';
 import { record, statScale } from './season';
 import type { PlayerInfo, PlayerStats, Ratings, TeamInfo } from './types';
 
@@ -163,7 +163,7 @@ function ageLeague(career: CareerState, nba: TeamInfo[], r: Rand): Pick<Offseaso
     const players: PlayerInfo[] = [];
     for (const p of t.players) {
       const age = (league.ages[p.name] ?? guessAge(p.name)) + 1;
-      if (retires(age, playerRating(p), r)) {
+      if (retires(age, Math.round(ratingAverage(p)), r)) {
         retired.push({ name: p.name, team: t.abbr, ovr: playerRating(p), age });
         delete league.ages[p.name];
         delete league.debut![p.name];
@@ -177,7 +177,7 @@ function ageLeague(career: CareerState, nba: TeamInfo[], r: Rand): Pick<Offseaso
     const want = Math.max(8, t.players.length);
     while (players.length < want) {
       const pos = (['PG', 'SG', 'SF', 'PF', 'C'] as const)[Math.floor(r() * 5)];
-      const rookie = makeProspect(r, pos, 52 + r() * 12, taken, numbers);
+      const rookie = makeProspect(r, pos, 57 + r() * 15, taken, numbers);
       league.ages[rookie.name] = 19 + Math.floor(r() * 4);
       league.debut![rookie.name] = career.year + 1;
       rookies.push({ name: rookie.name, team: t.abbr, ovr: playerRating(rookie) });
@@ -218,7 +218,7 @@ export function rankOn(team: TeamInfo, me: PlayerInfo): number {
  */
 export function makeOffers(career: CareerState, nba: TeamInfo[], r: Rand, opts: { exclude?: string; count?: number } = {}): Offer[] {
   const me = career.player;
-  const ovr = playerRating(me.info);
+  const ovr = Math.round(ratingAverage(me.info));
   const last = career.history?.[career.history.length - 1];
   const form = last && last.gp ? (last.totals.pts * last.scale) / last.gp : 0;
   const count = opts.count ?? clamp(Math.round(1 + (ovr - 58) / 6 + form / 12 + r()), 1, 4);
@@ -296,7 +296,7 @@ function retirementNews(career: CareerState, retired: Offseason['retired']): voi
     if (note) {
       career.hall = [...(career.hall ?? []), { name: x.name, year: career.season?.year ?? career.year, team: x.team, note }];
       addNews(career, `${x.name}（${x.team}）退休，入選名人堂（${note}）。`);
-    } else if (x.ovr >= 72) addNews(career, `${x.name}（${x.team}）以 ${x.age} 歲之齡宣布退休。`);
+    } else if (x.ovr >= 81) addNews(career, `${x.name}（${x.team}）以 ${x.age} 歲之齡宣布退休。`);
   }
 }
 

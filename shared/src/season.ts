@@ -1,5 +1,5 @@
 import { nextRandom } from './rng';
-import { teamRating } from './roster';
+import { teamStrength } from './roster';
 import type { TeamInfo } from './types';
 
 /**
@@ -108,7 +108,7 @@ export function newSeason(teams: TeamInfo[], year: number, days: number, format:
 /** A quick result: better teams and home teams win more, scores around the NBA average. */
 export function quickScore(s: SeasonState, home: TeamInfo, away: TeamInfo): [number, number] {
   const gauss = () => (rand(s) + rand(s) + rand(s) + rand(s) - 2) * 1.7;
-  const edge = (teamRating(home) - teamRating(away)) * 1.6 + 2.5;
+  const edge = (teamStrength(home) - teamStrength(away)) * 1.6 + 2.5;
   const total = 226 + gauss() * 10;
   const margin = edge + gauss() * 11;
   let h = Math.round((total + margin) / 2);

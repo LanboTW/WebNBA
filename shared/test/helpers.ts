@@ -15,7 +15,7 @@ import fixture from './fixture-roster.json';
 
 // Tests run on a frozen copy of the roster, so real roster updates (trades,
 // new players) never break them.
-const TEAMS = parseRoster(fixture as RawRoster);
+export const TEAMS = parseRoster(fixture as RawRoster);
 export const GSW = TEAMS.find((t) => t.abbr === 'GSW')!;
 export const LAL = TEAMS.find((t) => t.abbr === 'LAL')!;
 

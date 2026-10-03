@@ -11,7 +11,7 @@ import {
   type SeasonAwards,
 } from './awards';
 import { nextRandom } from './rng';
-import { RATING_KEYS, playerRating, teamRating } from './roster';
+import { RATING_KEYS, legacyOverall, overallOf, playerRating, ratingAverage, teamStrength } from './roster';
 import {
   activeSeriesOf,
   currentRound,
@@ -56,7 +56,7 @@ export const HEIGHT_RANGE: Record<Position, [number, number]> = {
 export const AGE_RANGE: [number, number] = [19, 22];
 
 /** Overall a created player starts at: below every NBA regular, room to grow. */
-export const START_OVERALL = 60;
+export const START_OVERALL = 65;
 
 export type ArchetypeId = 'shooter' | 'slasher' | 'playmaker' | 'rim' | 'allround';
 
@@ -85,7 +85,7 @@ export const ARCHETYPES: Archetype[] = [
     desc: '三分與中距離是招牌，禁區與籃板較弱',
     positions: POSITIONS,
     lean: { three: 14, mid: 10, ft: 12, handle: 2, close: -6, jump: -4, block: -6, rebound: -6, defense: -4, steal: -2 },
-    caps: caps(85, { three: 99, mid: 99, ft: 99, stamina: 99, handle: 90, speed: 90, defense: 82, block: 65, rebound: 72 }),
+    caps: caps(88, { three: 99, mid: 99, ft: 99, stamina: 99, handle: 92, speed: 92, defense: 85, block: 75, rebound: 78 }),
   },
   {
     id: 'slasher',
@@ -93,7 +93,7 @@ export const ARCHETYPES: Archetype[] = [
     desc: '速度與彈跳出眾，擅長切入上籃灌籃，外線較弱',
     positions: POSITIONS,
     lean: { speed: 10, jump: 12, close: 12, handle: 4, steal: 2, three: -10, mid: -6, ft: -4, pass: -4 },
-    caps: caps(88, { speed: 99, jump: 99, close: 99, stamina: 99, handle: 92, three: 78, mid: 85, ft: 85, block: 78, rebound: 82 }),
+    caps: caps(90, { speed: 99, jump: 99, close: 99, stamina: 99, handle: 94, three: 80, mid: 85, ft: 85, block: 80, rebound: 84 }),
   },
   {
     id: 'playmaker',
@@ -101,23 +101,23 @@ export const ARCHETYPES: Archetype[] = [
     desc: '運球與傳球最好，帶動全隊，限控球與得分後衛',
     positions: ['PG', 'SG'],
     lean: { pass: 14, handle: 14, speed: 6, steal: 4, close: -2, block: -8, rebound: -8, jump: -4 },
-    caps: caps(88, { pass: 99, handle: 99, speed: 96, stamina: 99, steal: 92, mid: 92, ft: 92, three: 90, block: 60, rebound: 70 }),
+    caps: caps(90, { pass: 99, handle: 99, speed: 97, stamina: 99, steal: 94, mid: 94, ft: 94, three: 92, block: 75, rebound: 78 }),
   },
   {
     id: 'rim',
     name: '護框長人',
-    desc: '阻攻、籃板與防守是本業，三分上限 70，限大前鋒與中鋒',
+    desc: '阻攻、籃板與防守是本業，三分上限 75，限大前鋒與中鋒',
     positions: ['PF', 'C'],
     lean: { block: 16, rebound: 12, defense: 10, close: 6, jump: 4, three: -16, mid: -8, handle: -8, ft: -6, pass: -4, speed: -4 },
-    caps: caps(85, { block: 99, rebound: 99, defense: 99, close: 95, jump: 92, stamina: 99, three: 70, mid: 78, handle: 70, speed: 80 }),
+    caps: caps(88, { block: 99, rebound: 99, defense: 99, close: 97, jump: 94, stamina: 99, three: 75, mid: 80, handle: 75, speed: 82 }),
   },
   {
     id: 'allround',
     name: '全能型',
-    desc: '沒有明顯弱點，但每項上限只有 88',
+    desc: '沒有明顯弱點，但每項上限只有 90',
     positions: POSITIONS,
     lean: {},
-    caps: caps(88, {}),
+    caps: caps(90, {}),
   },
 ];
 
@@ -139,17 +139,24 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const MIN_RATING = 25;
 
 /**
- * Shifts ratings (each kept between MIN_RATING and its cap) until their plain
- * average is `target`, keeping the shape of the profile.
+ * Shifts ratings (each kept between MIN_RATING and its cap) until `measure`
+ * (by default the plain average) is `target`, keeping the shape of the profile.
  */
-function toOverall(raw: Ratings, cap: Ratings, target: number): Ratings {
-  const r = { ...raw };
-  for (let i = 0; i < 12; i++) {
-    const avg = RATING_KEYS.reduce((s, k) => s + r[k], 0) / RATING_KEYS.length;
-    const gap = target - avg;
-    if (Math.abs(gap) < 0.05) break;
-    for (const k of RATING_KEYS) r[k] = clamp(r[k] + gap, MIN_RATING, cap[k]);
+function toOverall(raw: Ratings, cap: Ratings, target: number, measure = (r: Ratings) => ratingAverage({ ratings: r })): Ratings {
+  const shifted = (d: number) => {
+    const r = {} as Ratings;
+    for (const k of RATING_KEYS) r[k] = clamp(raw[k] + d, MIN_RATING, cap[k]);
+    return r;
+  };
+  // The measure only grows with the shift: halve the interval until it hits the target.
+  let lo = -80;
+  let hi = 80;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (measure(shifted(mid)) < target) lo = mid;
+    else hi = mid;
   }
+  const r = shifted((lo + hi) / 2);
   for (const k of RATING_KEYS) r[k] = Math.round(r[k]);
   return r;
 }
@@ -160,6 +167,15 @@ function heightShare(position: Position, heightM: number): number {
   return clamp((heightM - lo) / (hi - lo), 0, 1);
 }
 
+/** Older saves stored plain-average overalls: moves them to the current scale, once. */
+export function upgradeCareer(c: CareerState): CareerState {
+  if (c.ovrScale === 2) return c;
+  for (const h of c.history ?? []) h.ovr = legacyOverall(h.ovr);
+  for (const x of [...(c.offseason?.retired ?? []), ...(c.offseason?.rookies ?? [])]) x.ovr = legacyOverall(x.ovr);
+  c.ovrScale = 2;
+  return c;
+}
+
 /** A new player's ratings: position, then archetype, then height, scaled to START_OVERALL. */
 export function startingRatings(position: Position, id: ArchetypeId, heightM: number): Ratings {
   const a = archetype(id);
@@ -167,7 +183,7 @@ export function startingRatings(position: Position, id: ArchetypeId, heightM: nu
   const tall: Partial<Ratings> = { speed: -4 * t, handle: -3 * t, steal: -2 * t, block: 5 * t, rebound: 5 * t, close: 2 * t };
   const raw = {} as Ratings;
   RATING_KEYS.forEach((k, i) => (raw[k] = POSITION_BASE[position][i] + (a.lean[k] ?? 0) + (tall[k] ?? 0)));
-  return toOverall(raw, a.caps, START_OVERALL);
+  return toOverall(raw, a.caps, START_OVERALL + 0.25, (r) => overallOf(position, r));
 }
 
 // ----------------------------------------------------------------- the save
@@ -221,6 +237,8 @@ export type CareerStage = 'combine' | 'drafted' | 'season' | 'offseason' | 'reti
 
 export interface CareerState {
   v: 1;
+  /** 2 = overalls saved on the 2K-style scale (absent in older saves; see upgradeCareer). */
+  ovrScale?: 2;
   /** Roster the career started from (ROSTER_VERSION). */
   rosterVersion: string;
   /** The season the player was drafted in, e.g. 2026. */
@@ -344,6 +362,7 @@ export function newCareer(c: NewCareer): CareerState {
   const age = clamp(Math.round(c.age), AGE_RANGE[0], AGE_RANGE[1]);
   return {
     v: 1,
+    ovrScale: 2,
     rosterVersion: c.rosterVersion,
     year: c.year,
     settings: { ...c.settings },
@@ -396,7 +415,7 @@ export function randomLook(r: Rand = Math.random): Look {
   };
 }
 
-/** A generated player around `ovr`: his position's shape, some random strengths and weaknesses. */
+/** A generated player around overall `ovr`: his position's shape, some random strengths and weaknesses. */
 export function makeProspect(r: Rand, position: Position, ovr: number, taken: Set<string>, numbers: Set<number>): PlayerInfo {
   let name = '';
   do name = `${pick(r, FIRST)} ${pick(r, LAST)}`;
@@ -410,7 +429,7 @@ export function makeProspect(r: Rand, position: Position, ovr: number, taken: Se
   const heightM = Math.round((lo + r() * (hi - lo)) * 100) / 100;
   const raw = {} as Ratings;
   RATING_KEYS.forEach((k, i) => (raw[k] = POSITION_BASE[position][i] + (r() - 0.5) * 16));
-  return { name, number, heightM, position, ratings: toOverall(raw, caps(95, {}), ovr), look: randomLook(r) };
+  return { name, number, heightM, position, ratings: toOverall(raw, caps(95, {}), ovr, (x) => overallOf(position, x)), look: randomLook(r) };
 }
 
 /**
@@ -423,9 +442,9 @@ export function combineTeams(me: PlayerInfo, seed: number): [TeamInfo, TeamInfo]
   const squad = (withMe: boolean): PlayerInfo[] => {
     const numbers = new Set(withMe ? [me.number] : []);
     const starters = POSITIONS.map((pos) =>
-      withMe && pos === me.position ? me : makeProspect(r, pos, 55 + r() * 8, taken, numbers),
+      withMe && pos === me.position ? me : makeProspect(r, pos, 58 + r() * 6, taken, numbers),
     );
-    const bench = (['PG', 'SF', 'C'] as Position[]).map((pos) => makeProspect(r, pos, 53 + r() * 6, taken, numbers));
+    const bench = (['PG', 'SF', 'C'] as Position[]).map((pos) => makeProspect(r, pos, 56 + r() * 6, taken, numbers));
     return [...starters, ...bench];
   };
   return [
@@ -553,7 +572,7 @@ export function combineDone(career: CareerState): boolean {
 /** NBA teams worst first (by team rating), the order they pick in. */
 export function draftOrder(teams: TeamInfo[]): string[] {
   return [...teams]
-    .sort((a, b) => teamRating(a) - teamRating(b) || a.abbr.localeCompare(b.abbr))
+    .sort((a, b) => teamStrength(a) - teamStrength(b) || a.abbr.localeCompare(b.abbr))
     .map((t) => t.abbr);
 }
 

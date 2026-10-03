@@ -18,7 +18,7 @@ import {
   type GameState,
 } from '../src';
 import { contestAt, defenderSet } from '../src/players';
-import { GSW, LAL, liveGame, practice, run, shootAt } from './helpers';
+import { GSW, LAL, TEAMS as TEAMS_ALL, liveGame, practice, run, shootAt } from './helpers';
 
 const curry = GSW.players[0];
 
@@ -28,9 +28,14 @@ describe('roster', () => {
     expect(Object.keys(curry.ratings)).toHaveLength(13);
   });
 
-  it('rates players by their average rating and teams by their starters', () => {
-    const values = Object.values(curry.ratings);
-    expect(playerRating(curry)).toBe(Math.round(values.reduce((a, b) => a + b, 0) / values.length));
+  it('rates players on the 2K-like scale and teams by their starters', () => {
+    expect(playerRating(curry)).toBeGreaterThanOrEqual(93);
+    expect(playerRating(curry)).toBeLessThanOrEqual(99);
+    const all = TEAMS_ALL.flatMap((t) => t.players.map(playerRating)).sort((a, b) => b - a);
+    expect(all[0]).toBeGreaterThanOrEqual(96);
+    expect(all[Math.floor(all.length / 2)]).toBeGreaterThanOrEqual(74);
+    expect(all[Math.floor(all.length / 2)]).toBeLessThanOrEqual(78);
+    expect(all[all.length - 1]).toBeGreaterThanOrEqual(58);
     const starters = GSW.players.slice(0, 5).map(playerRating);
     expect(teamRating(GSW)).toBe(Math.round(starters.reduce((a, b) => a + b, 0) / 5));
   });

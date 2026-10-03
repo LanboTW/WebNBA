@@ -23,11 +23,13 @@ import {
   runDraft,
   simulateGame,
   startingRatings,
-  teamRating,
+  teamStrength,
   withCareerPlayer,
   type CareerState,
   type NewCareer,
   type RawRoster,
+  overallOf,
+  upgradeCareer,
 } from '../src';
 import fixture from './fixture-roster.json';
 
@@ -57,12 +59,26 @@ describe('created player', () => {
         if (!a.positions.includes(pos)) continue;
         for (const h of HEIGHT_RANGE[pos]) {
           const r = startingRatings(pos, a.id, h);
-          const ovr = playerRating({ name: '', number: 0, heightM: h, position: pos, ratings: r });
+          const ovr = playerRating({ position: pos, ratings: r });
           expect(Math.abs(ovr - START_OVERALL)).toBeLessThanOrEqual(1);
           for (const [k, v] of Object.entries(r)) expect(v).toBeLessThanOrEqual(a.caps[k as keyof typeof r]);
         }
       }
     }
+  });
+
+  it('every archetype can be trained to an MVP-level overall', () => {
+    for (const a of ARCHETYPES) for (const pos of a.positions) expect(overallOf(pos, a.caps)).toBeGreaterThanOrEqual(97);
+  });
+
+  it('older saves move their stored overalls to the new scale once', () => {
+    const c = career();
+    delete c.ovrScale;
+    c.history = [{ ovr: 69 } as NonNullable<CareerState['history']>[number]];
+    upgradeCareer(c);
+    expect(c.history[0].ovr).toBe(76);
+    upgradeCareer(c);
+    expect(c.history[0].ovr).toBe(76);
   });
 
   it('archetypes shape the ratings', () => {
@@ -134,7 +150,7 @@ describe('draft', () => {
 
   it('the worst team picks first', () => {
     const order = draftOrder(TEAMS);
-    const ratings = order.map((a) => teamRating(TEAMS.find((t) => t.abbr === a)!));
+    const ratings = order.map((a) => teamStrength(TEAMS.find((t) => t.abbr === a)!));
     expect([...ratings].sort((a, b) => a - b)).toEqual(ratings);
   });
 

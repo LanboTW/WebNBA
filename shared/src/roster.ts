@@ -85,15 +85,105 @@ export function findTeam(abbr: string): TeamInfo {
   return TEAMS.find((t) => t.abbr === abbr) ?? TEAMS[0];
 }
 
-/** Player rating shown in menus: the plain average of every rating. */
-export function playerRating(info: PlayerInfo): number {
-  return Math.round(RATING_KEYS.reduce((sum, k) => sum + info.ratings[k], 0) / RATING_KEYS.length);
+/**
+ * Plain average of every rating: the game's internal strength measure (team
+ * strength in quick results, salaries, retirements). Not shown to players.
+ */
+export function ratingAverage(info: Pick<PlayerInfo, 'ratings'>): number {
+  return RATING_KEYS.reduce((sum, k) => sum + info.ratings[k], 0) / RATING_KEYS.length;
 }
 
-/** Team rating: average of the five starters' player ratings. */
+/** How much each rating counts toward the overall at each position (RATING_KEYS order). */
+const OVERALL_WEIGHTS: Record<Position, number[]> = {
+  //   spd  jmp  cls  mid  3pt  ft  hdl  pas  stl  blk  def  reb  sta
+  PG: [3, 1, 2, 2, 3, 1, 4, 4, 2, 0.5, 2, 0.5, 1],
+  SG: [3, 1.5, 2.5, 3, 4, 1, 3, 2, 2, 0.5, 2.5, 1, 1],
+  SF: [2.5, 2, 3, 2.5, 3, 1, 2, 2, 2, 1, 3, 2, 1],
+  PF: [1.5, 2, 4, 2, 2, 1, 1.5, 1.5, 1, 2.5, 3, 3.5, 1],
+  C: [1, 2, 4, 1.5, 1, 0.5, 1, 1.5, 1, 4, 3.5, 4.5, 1],
+};
+
+/**
+ * Score -> overall, fitted once to the 2026-27 league so the best player is 98
+ * (MVPs are 97-99), the tenth best 93, the median 76 and the end of the
+ * bench 62. Frozen: later rosters and career players use the same curve.
+ */
+const OVERALL_CURVE: [number, number][] = [
+  [64, 62],
+  [76, 76],
+  [82, 88],
+  [85, 93],
+  [87, 96],
+  [89.5, 98],
+  [91, 99],
+];
+
+function curve(points: [number, number][], x: number): number {
+  const [x0, y0] = points[0];
+  if (x <= x0) return y0 + (x - x0) * ((points[1][1] - y0) / (points[1][0] - x0));
+  for (let i = 1; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    if (x <= x1) {
+      const [xa, ya] = points[i - 1];
+      return ya + ((x - xa) * (y1 - ya)) / (x1 - xa);
+    }
+  }
+  return points[points.length - 1][1];
+}
+
+/**
+ * The overall, unrounded: what the position needs, plus the player's five best
+ * ratings (stars are judged by their strengths), on a 2K-like scale.
+ */
+export function overallOf(position: Position, ratings: Ratings): number {
+  const w = OVERALL_WEIGHTS[position] ?? OVERALL_WEIGHTS.SF;
+  let sum = 0;
+  let total = 0;
+  RATING_KEYS.forEach((k, i) => {
+    sum += ratings[k] * w[i];
+    total += w[i];
+  });
+  const best = RATING_KEYS.map((k) => ratings[k])
+    .sort((a, b) => b - a)
+    .slice(0, 5);
+  const score = 0.6 * (sum / total) + 0.4 * (best.reduce((a, b) => a + b, 0) / best.length);
+  return Math.max(25, Math.min(99, curve(OVERALL_CURVE, score)));
+}
+
+/** Overall shown everywhere (and used to rank players). */
+export function playerRating(info: Pick<PlayerInfo, 'position' | 'ratings'>): number {
+  return Math.round(overallOf(info.position, info.ratings));
+}
+
+/**
+ * Old plain-average overall -> roughly the same player's overall now, matched
+ * by league rank. Only for numbers saved before the new overall existed.
+ */
+const LEGACY_CURVE: [number, number][] = [
+  [56, 62],
+  [62, 69.5],
+  [66.6, 73],
+  [69.2, 76],
+  [72.4, 82],
+  [75.3, 88],
+  [78.3, 93],
+  [82.3, 98],
+  [84, 99],
+];
+export function legacyOverall(avg: number): number {
+  return Math.round(Math.max(25, Math.min(99, curve(LEGACY_CURVE, avg))));
+}
+
+/** Team rating shown in menus: average of the five starters' overalls. */
 export function teamRating(team: TeamInfo): number {
   const starters = team.players.slice(0, 5);
   return Math.round(starters.reduce((sum, p) => sum + playerRating(p), 0) / Math.max(1, starters.length));
+}
+
+/** Internal team strength (quick results, draft order): the starters' rating averages. */
+export function teamStrength(team: TeamInfo): number {
+  const starters = team.players.slice(0, 5);
+  return Math.round(starters.reduce((sum, p) => sum + Math.round(ratingAverage(p)), 0) / Math.max(1, starters.length));
 }
 /** Date of the last automatic roster update (absent for the hand-made baseline). */
 export const ROSTER_UPDATED: string | undefined = (rosterJson as RawRoster).updated;

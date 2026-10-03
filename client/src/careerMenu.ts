@@ -1,4 +1,4 @@
-import { ROSTER_SEASON, ROSTER_VERSION, newCareer, type CareerState } from '@webnba/shared';
+import { ROSTER_SEASON, ROSTER_VERSION, newCareer, upgradeCareer, type CareerState } from '@webnba/shared';
 import { esc } from './boxscore';
 import { CareerHub, careerSummary, type CareerHost } from './careerHub';
 import { CreateForm } from './careerCreate';
@@ -100,6 +100,7 @@ export function initCareerMenu(show: (screen: CareerScreen) => void, page: Omit<
     } else if (b.dataset.act === 'open') {
       const info = await store.load(slot);
       const career = info?.save.state as CareerState | undefined;
+      if (career?.v === 1) upgradeCareer(career);
       if (!career || career.v !== 1) {
         careerMsg('這個存檔是舊版或已損壞，無法開啟', true);
         return;
@@ -192,7 +193,7 @@ export async function savedCareers(): Promise<{ slot: number; career: CareerStat
   const { slots } = await store.list();
   return slots.flatMap((info) => {
     const career = info?.save.state as CareerState | undefined;
-    return info && career?.v === 1 ? [{ slot: info.slot, career }] : [];
+    return info && career?.v === 1 ? [{ slot: info.slot, career: upgradeCareer(career) }] : [];
   });
 }
 
@@ -217,7 +218,9 @@ function slotCard(slot: number, info: SlotInfo | null): string {
       `<div class="slotbtns"><button type="button" class="primary" data-slot="${slot}" data-act="create">建立球員</button></div></div>`
     );
   }
-  const s = info.save.summary;
+  // Worked out again from the save, so it follows the current overall scale.
+  const state = info.save.state as CareerState | undefined;
+  const s = state?.v === 1 ? careerSummary(upgradeCareer(state)) : info.save.summary;
   return (
     `<div class="slot"><span class="slotno">${slot}</span><div class="slotbody"><b>${esc(s.player)}</b>` +
     `<span>${esc(s.team)} · ${esc(s.detail)}</span><span class="when">最後儲存 ${when(info.updatedAt)}</span></div>` +

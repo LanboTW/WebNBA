@@ -1,5 +1,5 @@
 import type { CareerState, LoggedGame } from './career';
-import { ageInSeason, playerRating } from './roster';
+import { ageInSeason, playerRating, ratingAverage } from './roster';
 import { record, seasonOver, standings, statScale, type SeasonState } from './season';
 import type { PlayerInfo, PlayerStats, Position, TeamInfo } from './types';
 
@@ -167,7 +167,7 @@ export function seasonLines(career: CareerState, league: Map<string, TeamInfo>):
       const avg = minutes.reduce((a, b) => a + b, 0) * leagueWeight[key];
       return w.map((x) => x / (own * 0.5 + avg * 0.5 || 1));
     };
-    const teamPts = 112 + (teamStrength(t) - 70) * 0.8;
+    const teamPts = 112 + (teamLevel(t) - 70) * 0.8;
     const shares = Object.fromEntries(STAT_KEYS.map((k) => [k, share(k)])) as Record<StatKey, number[]>;
     players.forEach((p, i) => {
       if (p.name === me) {
@@ -197,9 +197,11 @@ export function seasonLines(career: CareerState, league: Map<string, TeamInfo>):
   return lines;
 }
 
-function teamStrength(t: TeamInfo): number {
-  const best = [...t.players].sort((a, b) => playerRating(b) - playerRating(a)).slice(0, 5);
-  return best.reduce((a, p) => a + playerRating(p), 0) / Math.max(1, best.length);
+/** The best five's rating averages (the internal strength scale). */
+function teamLevel(t: TeamInfo): number {
+  const avg = (p: PlayerInfo) => Math.round(ratingAverage(p));
+  const best = [...t.players].sort((a, b) => avg(b) - avg(a)).slice(0, 5);
+  return best.reduce((a, p) => a + avg(p), 0) / Math.max(1, best.length);
 }
 
 /** One number for a season's production, for the votes. */
@@ -451,6 +453,6 @@ export function leagueHofNote(career: CareerState, name: string, ovr: number): s
   }
   if (mvp) return `${mvp} 座 MVP`;
   if (stars >= 4) return `${stars} 次明星賽`;
-  if (ovr >= 77) return `退休時總評 ${ovr}`;
+  if (ovr >= 91) return `退休時總評 ${ovr}`;
   return null;
 }
