@@ -3573,32 +3573,12 @@ button.small.on {
   background: #151925;
 }
 
-.mtpack.custom {
-  border-style: dashed;
-}
-
 .mtpack-h {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font-size: 17px;
-}
-
-.mtpack-h .tag {
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #2a3045;
-  color: var(--muted);
-}
-
-.mtpack-h .small {
-  margin: 0;
-}
-
-.mtpack-h .small:first-of-type {
-  margin-left: auto;
 }
 
 .mtpack .buy {
@@ -3628,42 +3608,6 @@ button.small.on {
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--muted);
-}
-
-#mtBody textarea {
-  width: 100%;
-  background: #1b1f2e;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font: inherit;
-  font-size: 14px;
-  resize: vertical;
-}
-
-.weights {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 8px;
-}
-
-.weights .wt {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-left: 8px;
-  border-left: 4px solid var(--tier);
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.weights input {
-  width: 100%;
-}
-
-.warn {
-  color: var(--bad) !important;
 }
 
 /* --------------------------------------------------------------- pack opening */

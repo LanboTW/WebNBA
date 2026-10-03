@@ -1,6 +1,5 @@
 import {
   DECK_MAX,
-  DEFAULT_WEIGHTS,
   OFFICIAL_PACKS,
   POSITIONS,
   RATING_KEYS,
@@ -32,17 +31,16 @@ import { myteam } from './myteamStore';
 import { coinsText, wallet } from './wallet';
 
 /**
- * The MyTeam screen: deck, collection, pack shop and pack editor, plus the
+ * The MyTeam screen: deck, collection and pack shop, plus the
  * pack-opening reveal. Everything is saved through the myteam store; coins
  * come from the account wallet.
  */
 
-type Tab = 'deck' | 'cards' | 'shop' | 'editor';
+type Tab = 'deck' | 'cards' | 'shop';
 const TABS: [Tab, string][] = [
   ['deck', '牌組'],
   ['cards', '收藏'],
   ['shop', '卡包商店'],
-  ['editor', '自訂卡包'],
 ];
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -54,15 +52,7 @@ let filterTier: TierId | 'all' = 'all';
 let filterPos: Position | 'all' = 'all';
 let detail: string | null = null;
 let confirmSell = false;
-let confirmDelete: string | null = null;
 let message = '';
-/** The pack being made or edited in the editor. */
-let draft: PackDef = blankPack();
-let editing: string | null = null;
-
-function blankPack(): PackDef {
-  return { id: '', name: '我的卡包', price: 800, count: 3, rentalChance: 0.04, custom: true };
-}
 
 const allCards = (): OwnedCard[] => {
   const s = myteam.save;
@@ -170,68 +160,19 @@ function packDesc(p: PackDef): string {
 function shopTab(): string {
   const s = myteam.save;
   const top = tier(periodTop(s.period));
-  const packs = [...OFFICIAL_PACKS, ...s.customPacks];
   return (
     `<div class="mtbar"><span>第 <b>${s.period}</b> 期・最高 <b style="color:${top.color === '#1a1a1f' ? '#fff' : top.color}">${top.name}卡</b></span>` +
     `<span class="fine">挑戰之路與任務即將推出，用來解鎖下一期</span></div>` +
-    packs
+    OFFICIAL_PACKS
       .map((p) => {
         const can = wallet.coins >= p.price && packPool(p, s.period).length > 0;
-        const del =
-          p.custom &&
-          (confirmDelete === p.id
-            ? `<button type="button" class="small danger" data-del="${esc(p.id)}">確定刪除</button><button type="button" class="small" data-act="nodel">取消</button>`
-            : `<button type="button" class="small" data-edit="${esc(p.id)}">編輯</button><button type="button" class="small" data-askdel="${esc(p.id)}">刪除</button>`);
         return (
-          `<div class="mtpack${p.custom ? ' custom' : ''}"><div class="mtpack-h"><b>${esc(p.name)}</b>${p.custom ? '<span class="tag">自訂</span>' : ''}${del || ''}</div>` +
+          `<div class="mtpack"><div class="mtpack-h"><b>${esc(p.name)}</b></div>` +
           `<p class="fine left">${packDesc(p)}</p>${oddsBar(p)}` +
           `<button type="button" class="primary buy" data-buy="${esc(p.id)}"${can ? '' : ' disabled'}>購買　🪙 ${coinsText(p.price)}</button></div>`
         );
       })
       .join('')
-  );
-}
-
-function editorTab(): string {
-  const p = draft;
-  const names = new Set(cardCatalog().map((c) => c.name));
-  const listed = p.players ?? [];
-  const unknown = listed.filter((n) => !names.has(n));
-  const pool = packPool(p, myteam.save.period).length;
-  const weights = TIERS.map(
-    (t) =>
-      `<label class="wt" style="--tier:${t.color}">${t.name}<input type="number" min="0" max="1000" step="0.1" data-w="${t.id}" value="${p.weights?.[t.id] ?? DEFAULT_WEIGHTS[t.id]}" /></label>`,
-  ).join('');
-  const chipsMulti = (list: string[] | undefined, all: { id: string; label: string; color?: string }[], attr: string) =>
-    all
-      .map(
-        (x) =>
-          `<button type="button" class="chip${x.color ? ' tierchip' : ''}${list?.includes(x.id) ? ' on' : ''}"${x.color ? ` style="--tier:${x.color}"` : ''} ${attr}="${x.id}">${x.label}</button>`,
-      )
-      .join('');
-  return (
-    `<p class="fine left">${editing ? '編輯自訂卡包' : '做一個自己的卡包，存好後會出現在卡包商店。'}卡池只會有目前這一期已推出的卡。</p>` +
-    `<div class="row"><label>名稱<input id="edName" maxlength="20" value="${esc(p.name)}" /></label>` +
-    `<label>價格<input id="edPrice" type="number" min="100" max="20000" step="50" value="${p.price}" /></label>` +
-    `<label>張數<input id="edCount" type="number" min="1" max="5" value="${p.count}" /></label></div>` +
-    `<h3 class="mth">限定等級（不選＝全部）</h3><div class="chips">${chipsMulti(
-      p.tiers,
-      TIERS.map((t) => ({ id: t.id, label: t.name, color: t.color })),
-      'data-et',
-    )}</div>` +
-    `<h3 class="mth">限定位置（不選＝全部）</h3><div class="chips">${chipsMulti(
-      p.positions,
-      POSITIONS.map((x) => ({ id: x, label: x })),
-      'data-ep',
-    )}</div>` +
-    `<h3 class="mth">指定球員（英文全名，用逗號分開；空白＝不限）</h3><textarea id="edPlayers" rows="2" placeholder="Stephen Curry, LeBron James">${esc(listed.join(', '))}</textarea>` +
-    (unknown.length ? `<p class="fine left warn">找不到：${esc(unknown.join('、'))}</p>` : '') +
-    `<h3 class="mth">各等級權重</h3><div class="weights">${weights}</div>` +
-    `<div class="row"><label class="check"><input type="checkbox" id="edTop"${p.guaranteeTop ? ' checked' : ''} />保底一張本期最高等級</label>` +
-    `<label>租借機率 %<input id="edRent" type="number" min="0" max="100" value="${Math.round((p.rentalChance ?? 0) * 100)}" /></label></div>` +
-    `<p class="fine left">目前卡池：${pool} 張</p>${oddsBar(p)}` +
-    `<div class="buttons"><button type="button" class="primary" data-act="savepack"${pool ? '' : ' disabled'}>${editing ? '儲存修改' : '建立卡包'}</button>` +
-    `<button type="button" data-act="newpack">${editing ? '取消編輯' : '重設'}</button></div>`
   );
 }
 
@@ -248,45 +189,16 @@ export function renderMyTeam(): void {
   $('#mtTabs').innerHTML = TABS.map(([id, label]) => `<button type="button" data-tab="${id}" class="${tab === id ? 'on' : ''}">${label}</button>`).join('');
   root.innerHTML =
     (message ? `<p class="msg">${esc(message)}</p>` : '') +
-    (tab === 'deck' ? deckTab() : tab === 'cards' ? cardsTab() : tab === 'shop' ? shopTab() : editorTab());
+    (tab === 'deck' ? deckTab() : tab === 'cards' ? cardsTab() : shopTab());
   hydrateCards(root, allCards());
   void s;
-}
-
-function readDraft(): void {
-  const num = (id: string, lo: number, hi: number, d: number) => {
-    const v = Number($<HTMLInputElement>(id)?.value);
-    return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
-  };
-  if (!$('#edName')) return;
-  draft.name = $<HTMLInputElement>('#edName').value.trim().slice(0, 20) || '我的卡包';
-  draft.price = Math.round(num('#edPrice', 100, 20000, 800));
-  draft.count = Math.round(num('#edCount', 1, 5, 3));
-  const players = $<HTMLTextAreaElement>('#edPlayers')
-    .value.split(/[,，\n]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  draft.players = players.length ? players : undefined;
-  const weights: Partial<Record<TierId, number>> = {};
-  document.querySelectorAll<HTMLInputElement>('#mtBody [data-w]').forEach((i) => {
-    const v = Number(i.value);
-    if (Number.isFinite(v) && v !== DEFAULT_WEIGHTS[i.dataset.w as TierId]) weights[i.dataset.w as TierId] = Math.max(0, v);
-  });
-  draft.weights = Object.keys(weights).length ? weights : undefined;
-  draft.guaranteeTop = $<HTMLInputElement>('#edTop').checked || undefined;
-  draft.rentalChance = num('#edRent', 0, 100, 4) / 100;
-}
-
-function toggle<T>(list: T[] | undefined, x: T): T[] | undefined {
-  const next = list?.includes(x) ? list.filter((y) => y !== x) : [...(list ?? []), x];
-  return next.length ? next : undefined;
 }
 
 // ----------------------------------------------------------------- packs
 
 async function buy(id: string): Promise<void> {
   const s = myteam.save;
-  const pack = [...OFFICIAL_PACKS, ...s.customPacks].find((p) => p.id === id);
+  const pack = OFFICIAL_PACKS.find((p) => p.id === id);
   if (!pack) return;
   if (!(await wallet.add(-pack.price))) {
     message = '金幣不夠。快速對戰、生涯退休結算都能賺金幣。';
@@ -364,19 +276,16 @@ export function initMyTeam(): void {
   $('#mtTabs').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
     if (!b) return;
-    if (tab === 'editor') readDraft();
     tab = b.dataset.tab as Tab;
     message = '';
     detail = null;
     confirmSell = false;
-    confirmDelete = null;
     renderMyTeam();
   });
   $('#mtBody').addEventListener('click', (e) => {
     const el = e.target as HTMLElement;
     const s = myteam.save;
     const data = (attr: string) => el.closest<HTMLElement>(`[${attr}]`)?.getAttribute(attr) ?? null;
-    if (tab === 'editor' && !data('data-act')) readDraft();
     const act = data('data-act');
     const ft = data('data-ft');
     const fp = data('data-fp');
@@ -388,20 +297,6 @@ export function initMyTeam(): void {
     } else if (data('data-buy')) {
       void buy(data('data-buy')!);
       return;
-    } else if (data('data-et')) draft.tiers = toggle(draft.tiers, data('data-et') as TierId);
-    else if (data('data-ep')) draft.positions = toggle(draft.positions, data('data-ep') as Position);
-    else if (data('data-askdel')) confirmDelete = data('data-askdel');
-    else if (data('data-del')) {
-      s.customPacks = s.customPacks.filter((p) => p.id !== data('data-del'));
-      confirmDelete = null;
-      myteam.commit();
-    } else if (data('data-edit')) {
-      const p = s.customPacks.find((x) => x.id === data('data-edit'));
-      if (p) {
-        draft = structuredClone(p);
-        editing = p.id;
-        tab = 'editor';
-      }
     } else if (data('data-ref') && !act) {
       const ref = data('data-ref')!;
       if (tab === 'deck') {
@@ -440,29 +335,7 @@ export function initMyTeam(): void {
       confirmSell = false;
       myteam.commit();
     } else if (act === 'close') detail = null;
-    else if (act === 'nodel') confirmDelete = null;
-    else if (act === 'newpack') {
-      draft = blankPack();
-      editing = null;
-    } else if (act === 'savepack') {
-      readDraft();
-      const pack = { ...draft, custom: true, id: editing ?? `c${Date.now().toString(36)}` };
-      const i = s.customPacks.findIndex((p) => p.id === pack.id);
-      if (i >= 0) s.customPacks[i] = pack;
-      else s.customPacks.push(pack);
-      draft = blankPack();
-      editing = null;
-      tab = 'shop';
-      message = `「${pack.name}」已加入卡包商店`;
-      myteam.commit();
-      return;
-    } else return;
-    renderMyTeam();
-  });
-  // Odds in the editor follow the inputs.
-  $('#mtBody').addEventListener('change', () => {
-    if (tab !== 'editor') return;
-    readDraft();
+    else return;
     renderMyTeam();
   });
   $('#poCards').addEventListener('click', (e) => {

@@ -1,5 +1,5 @@
 {
-  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card. Players can add their own packs in the game.",
+  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card.",
   "packs": [
     {
       "id": "standard",

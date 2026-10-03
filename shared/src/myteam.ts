@@ -90,8 +90,6 @@ export interface PackDef {
   guaranteeTop?: boolean;
   /** Chance for each card to come as a high-rated rental instead. */
   rentalChance?: number;
-  /** Made in the game's pack editor. */
-  custom?: boolean;
 }
 
 export const DEFAULT_WEIGHTS: Record<TierId, number> = {
@@ -312,17 +310,16 @@ export interface MyTeamSave {
   /** Next rental number. */
   next: number;
   packsOpened: number;
-  customPacks: PackDef[];
 }
 
 export function emptyMyTeam(): MyTeamSave {
-  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, customPacks: [] };
+  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0 };
 }
 
 /** Accepts anything that looks like a save, filling what is missing. */
 export function upgradeMyTeam(raw: unknown): MyTeamSave | null {
   if (!raw || typeof raw !== 'object') return null;
-  const s = raw as Partial<MyTeamSave>;
+  const { customPacks: _gone, ...s } = raw as Partial<MyTeamSave> & { customPacks?: unknown };
   if (!Array.isArray(s.cards)) return null;
   return {
     ...emptyMyTeam(),
@@ -331,7 +328,6 @@ export function upgradeMyTeam(raw: unknown): MyTeamSave | null {
     period: Math.min(PERIODS, Math.max(1, Number(s.period) || 1)),
     rentals: Array.isArray(s.rentals) ? s.rentals.filter((r) => r.games > 0) : [],
     deck: Array.isArray(s.deck) ? s.deck : [],
-    customPacks: Array.isArray(s.customPacks) ? s.customPacks : [],
   };
 }
 
