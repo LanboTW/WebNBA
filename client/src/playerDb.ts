@@ -10,7 +10,7 @@ import { logoHtml } from './logos';
  */
 
 export interface DbSource {
-  /** Tabs of teams, e.g. 東區 / 西區 / 台灣. */
+  /** Tabs of teams, e.g. NBA東 / NBA西 / 台灣. */
   groups: Map<string, TeamInfo[]>;
   age: (p: PlayerInfo, team: TeamInfo) => number | null;
   /** This season's per-game line, when there is a season. */

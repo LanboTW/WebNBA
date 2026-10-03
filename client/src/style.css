@@ -2985,10 +2985,26 @@ table.dbtable .r-weak {
   color: var(--muted);
 }
 
+/* Gear as small cards: name and bonus on top, the button along the bottom. */
 .gearlist {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.gearlist .gear {
   flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.gear b {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  font-size: 14px;
 }
 
 .gear.t2 small {
@@ -3007,6 +3023,17 @@ table.dbtable .r-weak {
 .gear button,
 .campcard button {
   flex: none;
+  white-space: nowrap;
+}
+
+.campcard button {
+  width: auto;
+}
+
+.gear button.small {
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
 }
 
 button.small.on {

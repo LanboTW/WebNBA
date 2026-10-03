@@ -158,8 +158,8 @@ function menuRules(): GameSettings['rules'] {
 // NBA teams by conference, then each custom group (historical, Taiwan, ...) in file order.
 const byName = (a: TeamInfo, b: TeamInfo) => a.name.localeCompare(b.name);
 const teamGroups = new Map<string, TeamInfo[]>([
-  ['東區', NBA_TEAMS.filter((t) => t.conference === 'East').sort(byName)],
-  ['西區', NBA_TEAMS.filter((t) => t.conference === 'West').sort(byName)],
+  ['NBA東', NBA_TEAMS.filter((t) => t.conference === 'East').sort(byName)],
+  ['NBA西', NBA_TEAMS.filter((t) => t.conference === 'West').sort(byName)],
 ]);
 for (const t of CUSTOM_TEAMS) teamGroups.set(t.group!, [...(teamGroups.get(t.group!) ?? []), t]);
 const ALL_TEAMS = [...teamGroups.values()].flat();
@@ -182,7 +182,7 @@ interface CareerTeam {
   team: TeamInfo;
   player: PlayerInfo;
 }
-const CAREER_GROUP = '我的球員';
+const CAREER_GROUP = '生涯隊伍';
 let careerTeams: CareerTeam[] = [];
 
 /** A select's value to its team: an NBA (or custom) abbr, or career:<slot>. */

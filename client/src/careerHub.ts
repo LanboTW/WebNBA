@@ -117,8 +117,8 @@ function line(g: CareerGame): string {
 function careerDbSource(c: CareerState, league: Map<string, TeamInfo>): DbSource {
   const year = c.season?.year ?? c.year;
   const groups = new Map<string, TeamInfo[]>([
-    ['東區', [...league.values()].filter((t) => t.conference !== 'West')],
-    ['西區', [...league.values()].filter((t) => t.conference === 'West')],
+    ['NBA東', [...league.values()].filter((t) => t.conference !== 'West')],
+    ['NBA西', [...league.values()].filter((t) => t.conference === 'West')],
   ]);
   for (const list of groups.values()) list.sort((a, b) => a.name.localeCompare(b.name));
   const me = c.player.info.name;
