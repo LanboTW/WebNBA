@@ -86,7 +86,7 @@ function allStarsHtml(c: CareerState): string {
   const list = (names: string[]) => names.map((n) => `<span class="${n === me ? 'mine' : ''}">${esc(n)}</span>`).join('');
   return (
     `<h3>${a.year + 1} 年明星賽名單<small>只選人，不打比賽</small></h3>` +
-    `<div class="allstars"><div><small>東區</small>${list(a.East)}</div><div><small>西區</small>${list(a.West)}</div></div>`
+    `<div class="allstars"><div><small>NBA東</small>${list(a.East)}</div><div><small>NBA西</small>${list(a.West)}</div></div>`
   );
 }
 

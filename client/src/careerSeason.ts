@@ -89,7 +89,7 @@ function rankIn(c: CareerState, league: Map<string, TeamInfo>): string {
   const t = league.get(c.team!)!;
   const conf = t.conference ?? 'East';
   const rank = standings(c.season!, league, conf).findIndex((r) => r.abbr === c.team) + 1;
-  return `${conf === 'East' ? '東區' : '西區'}第 ${rank}`;
+  return `${conf === 'East' ? 'NBA東' : 'NBA西'}第 ${rank}`;
 }
 
 /** `home` replaces the overview (the offseason page goes there). */
@@ -259,7 +259,7 @@ function standingsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
         return g ? g.toFixed(1) : '—';
       };
       return (
-        `<h3>${conf === 'East' ? '東區' : '西區'}<small>前 8 名進季後賽</small></h3><table class="standings"><thead><tr><th></th><th>球隊</th><th>勝</th><th>敗</th><th>勝差</th><th>得失分</th></tr></thead><tbody>` +
+        `<h3>${conf === 'East' ? 'NBA東' : 'NBA西'}<small>前 8 名進季後賽</small></h3><table class="standings"><thead><tr><th></th><th>球隊</th><th>勝</th><th>敗</th><th>勝差</th><th>得失分</th></tr></thead><tbody>` +
         rows
           .map((r, i) => {
             const t = league.get(r.abbr)!;
@@ -282,7 +282,7 @@ function standingsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
 function playoffsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
   const all = c.season!.playoffs?.series ?? [];
   if (!all.length) {
-    return `<p class="sub tight">例行賽結束後，東西區各前 8 名進季後賽（1 對 8、4 對 5、3 對 6、2 對 7）。目前 ${c.season!.day} / ${c.season!.days} 場。</p>`;
+    return `<p class="sub tight">例行賽結束後，NBA東、NBA西各前 8 名進季後賽（1 對 8、4 對 5、3 對 6、2 對 7）。目前 ${c.season!.day} / ${c.season!.days} 場。</p>`;
   }
   const series = (x: Series) => {
     const side = (abbr: string, seed: number, wins: number) => {

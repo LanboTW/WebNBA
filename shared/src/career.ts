@@ -880,7 +880,7 @@ function regularSeasonNews(career: CareerState, league: Map<string, TeamInfo>): 
   const conf = t.conference ?? 'East';
   const rank = standings(s, league, conf).findIndex((r) => r.abbr === t.abbr) + 1;
   const [w, l] = record(s, t.abbr);
-  const where = `${conf === 'East' ? '東區' : '西區'}第 ${rank}`;
+  const where = `${conf === 'East' ? 'NBA東' : 'NBA西'}第 ${rank}`;
   addNews(career, rank <= 8 ? `例行賽結束，${t.name} ${w} 勝 ${l} 敗（${where}）晉級季後賽。` : `例行賽結束，${t.name} ${w} 勝 ${l} 敗（${where}）無緣季後賽。`, true);
 }
 

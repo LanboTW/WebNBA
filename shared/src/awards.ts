@@ -400,7 +400,7 @@ export function checkMidseason(career: CareerState, league: Map<string, TeamInfo
   career.allStars = stars;
   const me = career.player.info.name;
   const conf = league.get(career.team ?? '')?.conference ?? 'East';
-  const confName = conf === 'East' ? '東區' : '西區';
+  const confName = conf === 'East' ? 'NBA東' : 'NBA西';
   if (stars[conf].includes(me)) addNews(career, `${me} 入選 ${s.year + 1} 年明星賽${confName}名單！`, true);
   else addNews(career, `${s.year + 1} 年明星賽名單公布，${me} 沒有入選。`);
 }
