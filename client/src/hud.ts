@@ -7,10 +7,13 @@ import {
   inBonus,
   type GameState,
   type PlayerState,
+  type PlayerStats,
   type TeamInfo,
 } from '@webnba/shared';
 
 type StatLine = Pick<PlayerState, 'info' | 'stats' | 'energy'>;
+
+const GRADE_ORDER = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'D', 'F'];
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
@@ -159,6 +162,45 @@ export class Hud {
   /** Career games show the one-player controls (call for the ball, pick, switch). */
   setHelpMode(solo: boolean): void {
     this.help.classList.toggle('solo', solo);
+  }
+
+  private lastGrade = '';
+
+  /** Career games: the live grade and his line, top right; null hides it. */
+  setGrade(grade: string | null, s: PlayerStats | null): void {
+    const box = $('#gradebox');
+    box.classList.toggle('hidden', !grade || !s);
+    if (!grade || !s) {
+      this.lastGrade = '';
+      return;
+    }
+    const el = $('#lgGrade');
+    if (grade !== this.lastGrade) {
+      const up = this.lastGrade && GRADE_ORDER.indexOf(grade) < GRADE_ORDER.indexOf(this.lastGrade);
+      el.textContent = grade;
+      el.className = `lgrade g${grade[0]}`;
+      // A short pop when it changes (not on the first show).
+      if (this.lastGrade) {
+        void el.offsetWidth;
+        el.classList.add(up ? 'up' : 'down');
+      }
+      this.lastGrade = grade;
+    }
+    $('#lgPts').textContent = String(s.pts);
+    $('#lgReb').textContent = String(s.oreb + s.dreb);
+    $('#lgAst').textContent = String(s.ast);
+    $('#lgTov').textContent = String(s.tov);
+  }
+
+  /** One line under the grade for something he just did. */
+  gradeFeed(text: string, good: boolean): void {
+    const feed = $('#lgFeed');
+    const el = document.createElement('div');
+    el.className = good ? 'good' : 'bad';
+    el.textContent = text;
+    feed.prepend(el);
+    while (feed.children.length > 3) feed.lastChild?.remove();
+    setTimeout(() => el.remove(), 3500);
   }
 
   toggleHelp(): void {

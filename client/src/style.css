@@ -2404,3 +2404,147 @@ table.standings tr.cut td {
     gap: 6px;
   }
 }
+
+/* --------------------------------------------------------------- live grade (career games) */
+
+#gradebox {
+  position: absolute;
+  top: 14px;
+  right: max(14px, env(safe-area-inset-right));
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.lgrade {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: #252a3b;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.lgrade.gA {
+  background: var(--perfect);
+  color: #062814;
+}
+
+.lgrade.gB {
+  background: var(--good);
+  color: #1e2606;
+}
+
+.lgrade.gC {
+  background: #ffb347;
+  color: #2b1a00;
+}
+
+.lgrade.gD,
+.lgrade.gF {
+  background: var(--bad);
+  color: #2b0500;
+}
+
+.lgrade.up {
+  animation: gradeUp 0.6s ease-out;
+}
+
+.lgrade.down {
+  animation: gradeDown 0.6s ease-out;
+}
+
+@keyframes gradeUp {
+  30% {
+    transform: scale(1.3);
+    box-shadow: 0 0 18px var(--perfect);
+  }
+}
+
+@keyframes gradeDown {
+  30% {
+    transform: scale(0.8);
+    box-shadow: 0 0 18px var(--bad);
+  }
+}
+
+.lstats {
+  display: flex;
+  gap: 4px;
+}
+
+.lstats span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 38px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  background: #f4f4f6;
+  color: #333;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lstats b {
+  font-size: 18px;
+  line-height: 1.1;
+  color: #111;
+  font-variant-numeric: tabular-nums;
+}
+
+#lgFeed {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#lgFeed:empty {
+  display: none;
+}
+
+#lgFeed .good {
+  color: var(--perfect);
+}
+
+#lgFeed .good::before {
+  content: '▲ ';
+}
+
+#lgFeed .bad {
+  color: var(--bad);
+}
+
+#lgFeed .bad::before {
+  content: '▼ ';
+}
+
+@media (max-width: 860px) {
+  #gradebox {
+    top: 56px;
+    padding: 6px 8px;
+  }
+
+  .lgrade {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+
+  .lstats span {
+    min-width: 30px;
+  }
+
+  .lstats b {
+    font-size: 14px;
+  }
+}

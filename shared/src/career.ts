@@ -11,6 +11,7 @@ import {
   recordPlayoffGame,
   scaleScore,
   seriesDone,
+  statScale,
   type PlayoffFormat,
   type SeasonState,
   type Series,
@@ -185,7 +186,7 @@ export interface CareerGame {
   stats: PlayerStats;
   /** [us, them]. */
   score: [number, number];
-  /** Game score scaled to a 48-minute NBA game (see projectedGameScore). */
+  /** Game score on the NBA scale, judged per minute (see liveRating). */
   rating: number;
   grade: Grade;
   simmed: boolean;
@@ -384,15 +385,6 @@ export function gameScore(s: PlayerStats): number {
   );
 }
 
-/** NBA points per game for both teams together; short games are scaled up to this. */
-const NBA_GAME_POINTS = 230;
-
-/** Game score as if the game had been a full NBA game (by how many points were scored). */
-export function projectedGameScore(s: PlayerStats, score: [number, number]): number {
-  const total = Math.max(40, score[0] + score[1]);
-  return gameScore(s) * (NBA_GAME_POINTS / total);
-}
-
 const GRADES: [number, Grade][] = [
   [25, 'A+'],
   [20, 'A'],
@@ -411,9 +403,17 @@ export function grade(rating: number): Grade {
 export function careerGame(state: GameState, rosterIdx: number, simmed: boolean): CareerGame {
   const stats = statsOf(state, 0, rosterIdx) ?? emptyLine();
   const score: [number, number] = [state.score[0], state.score[1]];
-  const minutes = (stats.secs / (4 * state.settings.quarterSeconds)) * 48;
-  const rating = Math.round(minutesRating(projectedGameScore(stats, score), minutes) * 10) / 10;
+  const rating = Math.round(liveRating(stats, state.settings.quarterSeconds) * 10) / 10;
   return { stats, score, rating, grade: stats.secs > 0 ? grade(rating) : 'DNP', simmed };
+}
+
+/**
+ * His rating so far (also the final one): game score on the NBA scale, judged
+ * per minute played. The in-game grade shows this as it changes.
+ */
+export function liveRating(stats: PlayerStats, quarterSeconds: number): number {
+  const minutes = (stats.secs / (4 * quarterSeconds)) * 48;
+  return minutesRating(gameScore(stats) * statScale(quarterSeconds), minutes);
 }
 
 /** Rating for a quiet, average night: a C. */

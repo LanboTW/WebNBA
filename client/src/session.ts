@@ -10,6 +10,8 @@ import {
   requestSub,
   step,
   type CallKind,
+  grade,
+  liveRating,
   type FoulKind,
   type GameEvent,
   type GameSettings,
@@ -350,9 +352,13 @@ export class Session {
     this.renderTimeout();
 
     const me = this.team >= 0 ? s.players[s.controlled[this.team as 0 | 1]] ?? null : null;
-    // A benched career player still sees his own line.
+    // A benched career player still sees his own line, and his live grade.
     const solo = s.settings.solo;
-    this.hud.update(s, me ?? (solo !== undefined ? (s.bench[0].find((b) => b.rosterIdx === solo) ?? null) : null));
+    const line = me ?? (solo !== undefined ? (s.bench[0].find((b) => b.rosterIdx === solo) ?? null) : null);
+    this.hud.update(s, line);
+    if (this.solo && line) {
+      this.hud.setGrade(line.stats.secs > 0 ? grade(liveRating(line.stats, s.settings.quarterSeconds)) : 'C', line.stats);
+    }
     const touchMode =
       me && s.settings.mode === 'game'
         ? offense !== me.team
@@ -427,9 +433,26 @@ export class Session {
     return this.state.players[id]?.info.name ?? '';
   }
 
+  /** Career games: what he just did, under his live grade. */
+  private soloFeed(e: GameEvent): void {
+    const me = this.state.controlled[0];
+    if (me < 0) return;
+    const hud = this.hud;
+    if (e.type === 'score') {
+      if (e.playerId === me) hud.gradeFeed(e.kind === 'free' ? '罰球命中 +1' : `得分 +${e.points}`, true);
+      else if (e.assistId === me) hud.gradeFeed('助攻', true);
+    } else if (e.type === 'pickup' && e.rebound && e.playerId === me) hud.gradeFeed('籃板', true);
+    else if (e.type === 'steal' && e.playerId === me) hud.gradeFeed('抄截', true);
+    else if (e.type === 'block' && e.playerId === me) hud.gradeFeed('火鍋', true);
+    else if (e.type === 'turnover' && e.playerId === me) hud.gradeFeed('失誤', false);
+    else if (e.type === 'foul' && e.playerId === me) hud.gradeFeed('犯規', false);
+    else if (e.type === 'block' && e.shooterId === me) hud.gradeFeed('被蓋火鍋', false);
+  }
+
   private handleEvent(e: GameEvent): void {
     const s = this.state;
     const hud = this.hud;
+    if (this.solo) this.soloFeed(e);
     switch (e.type) {
       case 'dribble':
         this.sfx.dribble(0.4);
@@ -541,6 +564,7 @@ export class Session {
 
   dispose(): void {
     this.benchNote.classList.add('hidden');
+    this.hud.setGrade(null, null);
     this.hud.setHelpMode(false);
     disposeTree(this.scene);
     this.hud.hide();
