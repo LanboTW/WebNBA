@@ -23,6 +23,7 @@ import {
 } from '@webnba/shared';
 import { esc } from './boxscore';
 import { RATING_LABEL } from './careerCreate';
+import { historyHtml } from './careerOffseason';
 import { logoHtml } from './logos';
 
 export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats';
@@ -82,7 +83,8 @@ function rankIn(c: CareerState, league: Map<string, TeamInfo>): string {
   return `${conf === 'East' ? '東區' : '西區'}第 ${rank}`;
 }
 
-export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, TeamInfo>, role: Role): string {
+/** `home` replaces the overview (the offseason page goes there). */
+export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, TeamInfo>, role: Role, home?: string): string {
   const tabs =
     `<nav class="tabs">` +
     TABS.map(([id, label]) => `<button type="button" class="${id === tab ? 'on' : ''}" data-tab="${id}">${label}</button>`).join('') +
@@ -97,8 +99,8 @@ export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, T
           : tab === 'train'
             ? trainHtml(c)
             : tab === 'stats'
-            ? statsHtml(c)
-            : homeHtml(c, league, role);
+            ? statsHtml(c, league)
+            : (home ?? homeHtml(c, league, role));
   return tabs + body;
 }
 
@@ -159,7 +161,7 @@ function nextHtml(c: CareerState, league: Map<string, TeamInfo>): string {
       `<div class="draftcard" style="--team:${color(champ)}"><small>${seasonLabel(s.year)} 總冠軍</small>` +
       `<div class="draftteam">${logoHtml(champ, 'draftlogo')}<b>${esc(champ.name)}</b></div>` +
       `<span>${mine ? '恭喜！你拿到了總冠軍戒指！' : '你的球季已經結束。'}</span></div>` +
-      `<p class="sub tight soon">休賽季（合約、自由球員、交易、成長）會在之後的更新開放，到時候從這裡進入下一季。</p>`
+      `<div class="buttons"><button type="button" class="primary" data-act="beginOffseason">進入休賽季</button></div>`
     );
   }
   const next = nextCareerGame(c);
@@ -305,8 +307,9 @@ function trainHtml(c: CareerState): string {
 
 // ----------------------------------------------------------------- stats
 
-function statsHtml(c: CareerState): string {
+function statsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
   const games = c.games ?? [];
+  const history = historyHtml(c, league);
   const row = (label: string, list: LoggedGame[]) => {
     if (!list.length) return '';
     const a = averages(list, c.settings.quarterSeconds);
@@ -315,13 +318,14 @@ function statsHtml(c: CareerState): string {
       `<td>${a.stl.toFixed(1)}</td><td>${a.blk.toFixed(1)}</td><td>${a.tov.toFixed(1)}</td><td>${a.fg}</td><td>${a.three}</td><td>${a.ft}</td></tr>`
     );
   };
-  if (!games.length) return `<p class="sub tight">還沒有比賽紀錄。</p>`;
+  if (!games.length) return history || `<p class="sub tight">還沒有比賽紀錄。</p>`;
   const k = statScale(c.settings.quarterSeconds);
   return (
     `<p class="sub tight">平均數據換算成 48 分鐘的 NBA 比賽（每節 ${c.settings.quarterSeconds / 60} 分鐘的比賽 × ${k.toFixed(2)}），命中率是實際數字。</p>` +
     `<div class="tablewrap"><table class="standings stats"><thead><tr><th></th><th>場</th><th>分鐘</th><th>得分</th><th>籃板</th><th>助攻</th><th>抄截</th><th>阻攻</th><th>失誤</th><th>投籃</th><th>三分</th><th>罰球</th></tr></thead><tbody>` +
     row('例行賽', games.filter((g) => !g.playoff)) +
     row('季後賽', games.filter((g) => g.playoff)) +
-    `</tbody></table></div>`
+    `</tbody></table></div>` +
+    history
   );
 }

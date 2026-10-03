@@ -200,7 +200,7 @@ export interface DraftResult {
 }
 
 /** combine -> drafted -> season (regular season and playoffs) -> offseason. */
-export type CareerStage = 'combine' | 'drafted' | 'season' | 'offseason';
+export type CareerStage = 'combine' | 'drafted' | 'season' | 'offseason' | 'retired';
 
 export interface CareerState {
   v: 1;
@@ -223,6 +223,63 @@ export interface CareerState {
   season?: SeasonState | null;
   /** His games this season, regular season and playoffs. */
   games?: LoggedGame[];
+  /** His deal: who with, years left, salary in millions (for show; there is no cap). */
+  contract?: Contract;
+  /** The league as it has changed since the career began (aging, retirements, rookies). */
+  league?: League;
+  /** Seasons he has finished, oldest first. */
+  history?: SeasonSummary[];
+  /** This offseason's state; null during the season. */
+  offseason?: Offseason | null;
+}
+
+export interface Contract {
+  team: string;
+  years: number;
+  salary: number;
+}
+
+export interface League {
+  teams: TeamInfo[];
+  /** Every other player's age, by name. */
+  ages: Record<string, number>;
+}
+
+export interface SeasonSummary {
+  year: number;
+  team: string;
+  age: number;
+  ovr: number;
+  record: [number, number];
+  /** How far his team went: 0 missed the playoffs, 1-4 the round it went out in, 5 champions. */
+  result: number;
+  /** Regular-season games he played in and their raw totals. */
+  gp: number;
+  totals: PlayerStats;
+  playoffGp: number;
+  playoffTotals: PlayerStats;
+  /** Converts the raw totals to the NBA scale (statScale of the season's quarter length). */
+  scale: number;
+}
+
+export interface Offer {
+  team: string;
+  years: number;
+  salary: number;
+}
+
+export interface Offseason {
+  /** What happened when the season turned over (for the offseason screen). */
+  aged: { from: number; to: number; changes: Partial<Record<keyof Ratings, number>> };
+  retired: { name: string; team: string; ovr: number; age: number }[];
+  rookies: { name: string; team: string; ovr: number }[];
+  /** Free agency (his deal ran out) or a trade request: teams that want him. */
+  offers: Offer[];
+  kind: 'none' | 'free' | 'trade';
+  /** He has asked for a trade this offseason already. */
+  tradeAsked: boolean;
+  /** Free agency must be settled before the next season. */
+  mustSign: boolean;
 }
 
 export const COMBINE_GAMES = 3;
@@ -283,7 +340,13 @@ const LAST = [
 ];
 const HAIRS: Look['hair'][] = ['bald', 'buzz', 'short', 'short', 'afro', 'twists', 'dreads', 'long', 'mohawk'];
 
-type Rand = () => number;
+export type Rand = () => number;
+
+/** A reproducible random sequence. */
+export function seededRandom(seed: number): Rand {
+  return rng(seed);
+}
+
 function rng(seed: number): Rand {
   const s = { rng: seed | 0 };
   return () => nextRandom(s);
@@ -482,6 +545,18 @@ export function runDraft(career: CareerState, teams: TeamInfo[]): DraftResult {
   return { pick, team: order[pick - 1], order };
 }
 
+/** Rookie scale: three years, the top pick paid most (millions). */
+export function rookieContract(team: string, pick: number): Contract {
+  return { team, years: 3, salary: Math.round((10.5 - (pick - 1) * 0.28) * 10) / 10 };
+}
+
+/** What a player is worth on the open market (millions): grows steeply with overall. */
+export function salaryFor(ovr: number, age: number): number {
+  const base = 1.2 + Math.pow(Math.max(0, ovr - 55) / 10, 2.2) * 4.5;
+  const ageCut = age >= 33 ? 0.75 : age >= 31 ? 0.9 : 1;
+  return Math.round(Math.min(55, base * ageCut) * 10) / 10;
+}
+
 /** Slot in the team's roster the rookie takes: the ninth man. */
 export const ROOKIE_SLOT = 8;
 
@@ -512,8 +587,13 @@ export interface LoggedGame extends CareerGame {
 }
 
 /** The league as the career sees it: every NBA team, his own with him on it. */
+/** The league's teams without him: the career's own league once it has one, else the real rosters. */
+export function baseTeams(career: CareerState, nba: TeamInfo[]): TeamInfo[] {
+  return career.league?.teams ?? nba;
+}
+
 export function leagueTeams(career: CareerState, nba: TeamInfo[]): Map<string, TeamInfo> {
-  const map = new Map(nba.map((t) => [t.abbr, t]));
+  const map = new Map(baseTeams(career, nba).map((t) => [t.abbr, t]));
   const mine = career.team ? map.get(career.team) : undefined;
   if (mine) map.set(mine.abbr, withCareerPlayer(mine, career.player.info));
   return map;
@@ -521,7 +601,9 @@ export function leagueTeams(career: CareerState, nba: TeamInfo[]): Map<string, T
 
 export function startSeason(career: CareerState, nba: TeamInfo[], seed: number): void {
   career.team = career.team ?? career.draft?.team ?? null;
-  career.season = newSeason(nba, career.year, career.settings.seasonGames, career.settings.playoffs, seed);
+  if (!career.contract && career.team) career.contract = rookieContract(career.team, career.draft?.pick ?? 30);
+  career.season = newSeason(baseTeams(career, nba), career.year, career.settings.seasonGames, career.settings.playoffs, seed);
+  career.offseason = null;
   career.games = [];
   career.stage = 'season';
 }
@@ -606,6 +688,11 @@ const POINTS_GRADE: [number, Grade][] = [
   [-1.25, 'D'],
 ];
 
+/** The role (ROLES index) his rank on a team earns before form is counted. */
+export function tierForRank(rank: number): number {
+  return rank <= 5 ? 0 : rank === 6 ? 1 : rank <= 8 ? 2 : rank <= 10 ? 3 : 4;
+}
+
 /**
  * How much the coach trusts him: where his overall ranks on the team, moved
  * up or down a step or two by how he played in his last five games.
@@ -615,7 +702,7 @@ export function rotationRole(career: CareerState, nba: TeamInfo[]): Role {
   const me = career.player.info;
   const ovr = playerRating(me);
   const rank = team ? team.players.filter((p) => p.name !== me.name && playerRating(p) > ovr).length + 1 : 9;
-  const base = rank <= 5 ? 0 : rank === 6 ? 1 : rank <= 8 ? 2 : rank <= 10 ? 3 : 4;
+  const base = tierForRank(rank);
   const recent = (career.games ?? []).filter((g) => g.grade !== 'DNP').slice(-5);
   let form: Grade | null = null;
   let shift = 0;

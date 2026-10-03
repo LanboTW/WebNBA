@@ -21,6 +21,13 @@ import {
   recordSeasonGame,
   seasonOver,
   simPlayoffsUntilMine,
+  acceptOffer,
+  beginOffseason,
+  canRetire,
+  cancelTrade,
+  requestTrade,
+  retire,
+  startNextSeason,
   rotationRole,
   train,
   simulateGame,
@@ -37,6 +44,7 @@ import {
 } from '@webnba/shared';
 import { esc } from './boxscore';
 import { POSITION_LABEL } from './careerCreate';
+import { offseasonHtml, retiredHtml } from './careerOffseason';
 import { gradeBadge, seasonHtml, seasonLabel, type SeasonTab } from './careerSeason';
 import { logoHtml } from './logos';
 
@@ -69,7 +77,9 @@ export function careerSummary(c: CareerState): { player: string; team: string; d
   }
   const t = findTeam(c.team ?? c.draft!.team);
   const s = c.season;
+  if (c.stage === 'retired') return { player: c.player.info.name, team: t.abbr, detail: `已退休 · ${(c.history ?? []).length} 個球季 · 總評 ${ovr}` };
   if (!s) return { player: c.player.info.name, team: t.abbr, detail: `${c.year} 選秀第 ${c.draft!.pick} 順位 · ${t.name} · 總評 ${ovr}` };
+  if (c.offseason) return { player: c.player.info.name, team: t.abbr, detail: `${seasonLabel(s.year)} 休賽季 · ${c.player.age} 歲 · 總評 ${ovr}` };
   const [w, l] = record(s, t.abbr);
   const where = s.champion ? (s.champion === t.abbr ? '總冠軍！' : '球季結束') : seasonOver(s) ? '季後賽' : `例行賽 ${s.day}/${s.days}`;
   return { player: c.player.info.name, team: t.abbr, detail: `${seasonLabel(s.year)} 球季 · ${w} 勝 ${l} 敗 · ${where} · 總評 ${ovr}` };
@@ -104,8 +114,8 @@ export class CareerHub {
         this.trainOne(key);
         return;
       }
-      const act = el.closest<HTMLElement>('[data-act]')?.dataset.act;
-      if (act && !this.busy) void this.act(act);
+      const btn = el.closest<HTMLElement>('[data-act]');
+      if (btn?.dataset.act && !this.busy) void this.act(btn.dataset.act, btn.dataset.team);
     });
   }
 
@@ -129,8 +139,9 @@ export class CareerHub {
     this.msg(problem ?? '', !!problem);
   }
 
-  private async act(act: string): Promise<void> {
+  private async act(act: string, team?: string): Promise<void> {
     const c = this.career!;
+    if (await this.offseasonAct(act, team)) return;
     if (act === 'play' || act === 'sim') {
       if (combineDone(c)) return;
       const teams = combineMatch(c);
@@ -213,6 +224,50 @@ export class CareerHub {
     void this.save();
   }
 
+  private confirmRetire = false;
+
+  /** Offseason buttons; returns whether it handled the action. */
+  private async offseasonAct(act: string, team?: string): Promise<boolean> {
+    const c = this.career!;
+    switch (act) {
+      case 'beginOffseason':
+        beginOffseason(c, NBA_TEAMS);
+        break;
+      case 'accept': {
+        const offer = c.offseason?.offers.find((o) => o.team === team);
+        if (!offer) return true;
+        acceptOffer(c, offer);
+        this.host.preview(c.player.info, careerTeam(c));
+        break;
+      }
+      case 'requestTrade':
+        requestTrade(c, NBA_TEAMS);
+        break;
+      case 'cancelTrade':
+        cancelTrade(c);
+        break;
+      case 'askRetire':
+      case 'keepPlaying':
+        this.confirmRetire = act === 'askRetire';
+        this.render();
+        return true;
+      case 'retire':
+        if (!canRetire(c)) return true;
+        retire(c);
+        break;
+      case 'nextSeason':
+        if (!startNextSeason(c, NBA_TEAMS, (Math.random() * 2 ** 31) | 0)) return true;
+        break;
+      default:
+        return false;
+    }
+    this.confirmRetire = false;
+    this.tab = 'home';
+    this.render();
+    await this.save();
+    return true;
+  }
+
   /** One point of training; saved a moment later so a burst of clicks is one save. */
   private trainOne(key: keyof Ratings): void {
     const c = this.career!;
@@ -240,12 +295,21 @@ export class CareerHub {
       `<div class="mehead"><span class="menum">#${p.number}</span><div><b>${esc(p.name)}</b>` +
       `<span>${p.position} ${POSITION_LABEL[p.position]} · ${archetype(c.player.archetype).name} · ${Math.round(p.heightM * 100)} cm · ${c.player.age} 歲</span></div>` +
       `<span class="meovr">${playerRating(p)}</span></div>`;
+    const league = leagueTeams(c, NBA_TEAMS);
     const body =
       c.stage === 'combine'
         ? this.combineHtml(c)
-        : c.stage === 'drafted' || !c.season
-          ? this.draftedHtml(c, reveal)
-          : seasonHtml(c, this.tab, leagueTeams(c, NBA_TEAMS), rotationRole(c, NBA_TEAMS));
+        : c.stage === 'retired'
+          ? retiredHtml(c, league)
+          : c.stage === 'drafted' || !c.season
+            ? this.draftedHtml(c, reveal)
+            : seasonHtml(
+                c,
+                this.tab,
+                league,
+                rotationRole(c, NBA_TEAMS),
+                c.offseason ? offseasonHtml(c, league, this.confirmRetire) : undefined,
+              );
     $('#hubBody').innerHTML = head + body;
   }
 

@@ -1,3 +1,4 @@
+import birthdaysJson from '../data/birthdays.json';
 import customJson from '../data/custom-teams.json';
 import overridesJson from '../data/overrides.json';
 import rosterJson from '../data/roster.json';
@@ -114,4 +115,14 @@ function fnv1a(text: string): string {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h.toString(36);
+}
+
+const BIRTHDAYS = (birthdaysJson as { players: Record<string, string> }).players;
+
+/** A real player's age when the season starting in October of `year` begins (null when unknown). */
+export function ageInSeason(name: string, year: number): number | null {
+  const born = BIRTHDAYS[name];
+  if (!born) return null;
+  const [y, m] = born.split('-').map(Number);
+  return year - y - (m >= 10 ? 1 : 0);
 }
