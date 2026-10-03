@@ -21,6 +21,8 @@ import {
   recordSeasonGame,
   seasonOver,
   simPlayoffsUntilMine,
+  rotationRole,
+  train,
   simulateGame,
   startSeason,
   teamRating,
@@ -30,6 +32,7 @@ import {
   type GameSettings,
   type GameState,
   type PlayerInfo,
+  type Ratings,
   type TeamInfo,
 } from '@webnba/shared';
 import { esc } from './boxscore';
@@ -96,6 +99,11 @@ export class CareerHub {
         this.render();
         return;
       }
+      const key = el.closest<HTMLElement>('[data-train]')?.dataset.train as keyof Ratings | undefined;
+      if (key && !this.busy) {
+        this.trainOne(key);
+        return;
+      }
       const act = el.closest<HTMLElement>('[data-act]')?.dataset.act;
       if (act && !this.busy) void this.act(act);
     });
@@ -149,7 +157,7 @@ export class CareerHub {
       const next = nextCareerGame(c);
       if (!next) return;
       const m = careerMatchup(c, NBA_TEAMS, next);
-      const settings = careerGameSettings(c, (Math.random() * 2 ** 31) | 0, m.rosterIdx);
+      const settings = careerGameSettings(c, (Math.random() * 2 ** 31) | 0, m.rosterIdx, m.role.minutes);
       this.host.play(
         m.teams,
         settings,
@@ -187,7 +195,7 @@ export class CareerHub {
       this.msg(`模擬比賽中…（${i + 1}${limit > 1 ? `/${limit === 200 ? '…' : limit}` : ''}）`);
       await new Promise((r) => setTimeout(r, 20));
       const m = careerMatchup(c, NBA_TEAMS, next);
-      const state = simulateGame(m.teams, careerGameSettings(c, (Math.random() * 2 ** 31) | 0, m.rosterIdx));
+      const state = simulateGame(m.teams, careerGameSettings(c, (Math.random() * 2 ** 31) | 0, m.rosterIdx, m.role.minutes));
       recordSeasonGame(c, NBA_TEAMS, next, careerGame(state, m.rosterIdx, true));
     }
     this.busy = false;
@@ -204,6 +212,17 @@ export class CareerHub {
     this.host.preview(c.player.info, careerTeam(c));
     void this.save();
   }
+
+  /** One point of training; saved a moment later so a burst of clicks is one save. */
+  private trainOne(key: keyof Ratings): void {
+    const c = this.career!;
+    if (!train(c, key)) return;
+    this.render();
+    this.host.preview(c.player.info, careerTeam(c));
+    clearTimeout(this.trainSave);
+    this.trainSave = setTimeout(() => void this.save(), 800);
+  }
+  private trainSave: ReturnType<typeof setTimeout> | undefined;
 
   private finishGame(game: CareerGame): void {
     const c = this.career!;
@@ -226,7 +245,7 @@ export class CareerHub {
         ? this.combineHtml(c)
         : c.stage === 'drafted' || !c.season
           ? this.draftedHtml(c, reveal)
-          : seasonHtml(c, this.tab, leagueTeams(c, NBA_TEAMS));
+          : seasonHtml(c, this.tab, leagueTeams(c, NBA_TEAMS), rotationRole(c, NBA_TEAMS));
     $('#hubBody').innerHTML = head + body;
   }
 

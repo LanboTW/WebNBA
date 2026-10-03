@@ -84,7 +84,7 @@ describe('leaving a solo game', () => {
     tick(s, {}, 30);
     playOut(s);
     expect(s.phase).toBe('final');
-    expect(s.settings.solo).toBeUndefined();
+    expect(s.controlled).toEqual([-1, -1]);
     // An idle player would gift the other team everything; the AI keeps it a game.
     expect(Math.abs(s.score[0] - s.score[1])).toBeLessThan(40);
   });

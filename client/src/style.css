@@ -2282,3 +2282,125 @@ table.standings tr.cut td {
   font-weight: 600;
   color: var(--muted);
 }
+
+/* --------------------------------------------------------------- minutes & training */
+
+.rolecard {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.rolecard > div,
+.rolecard .xpbox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #171b28;
+  text-align: left;
+  font-weight: 400;
+}
+
+.rolecard small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.rolecard b {
+  font-size: 17px;
+}
+
+.rolecard span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.rolecard .xpbox {
+  border-color: var(--accent);
+}
+
+.rolecard .xpbox b {
+  color: var(--accent);
+}
+
+.xpline {
+  display: flex;
+  gap: 18px;
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.xpline b {
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.trainlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trow {
+  display: grid;
+  grid-template-columns: 48px 1fr 28px 112px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.trow b {
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.trow .track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: #252a3b;
+}
+
+.trow .track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.trow .track em {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  border-left: 2px dotted rgba(255, 255, 255, 0.55);
+}
+
+.trow button.small {
+  margin: 0;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.trow button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .rolecard {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .trow {
+    grid-template-columns: 40px 1fr 24px 96px;
+    gap: 6px;
+  }
+}

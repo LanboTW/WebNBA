@@ -1,5 +1,5 @@
 import { nextRandom } from './rng';
-import { RATING_KEYS, teamRating } from './roster';
+import { RATING_KEYS, playerRating, teamRating } from './roster';
 import {
   activeSeriesOf,
   currentRound,
@@ -173,6 +173,8 @@ export interface CareerPlayer {
   info: PlayerInfo;
   archetype: ArchetypeId;
   age: number;
+  /** Unspent experience points (earned in games, spent on training). */
+  xp?: number;
 }
 
 /** DNP: did not play (not graded). */
@@ -341,11 +343,12 @@ export function combineTeams(me: PlayerInfo, seed: number): [TeamInfo, TeamInfo]
 // ----------------------------------------------------------------- games
 
 /** Game settings for a career game: the player's team is team 0, and he is at roster index `me`. */
-export function careerGameSettings(career: CareerState, seed: number, me: number): Partial<GameSettings> {
+export function careerGameSettings(career: CareerState, seed: number, me: number, minutes?: number): Partial<GameSettings> {
   return {
     mode: 'game',
     humanTeams: [0],
     solo: me,
+    ...(minutes !== undefined ? { soloMinutes: Math.min(1, minutes / 48) } : {}),
     difficulty: career.settings.difficulty,
     quarterSeconds: career.settings.quarterSeconds,
     seed,
@@ -356,8 +359,7 @@ export function careerGameSettings(career: CareerState, seed: number, me: number
 /** Plays a game to the final buzzer with nobody at the controls. */
 export function playOut(state: GameState, maxTicks = 30 * 60 * 120): GameState {
   state.settings.humanTeams = [];
-  // The career player too: the AI takes him over.
-  delete state.settings.solo;
+  // The AI takes the career player over too (his coach's minutes plan stays).
   state.controlled = [-1, -1];
   for (let i = 0; i < maxTicks && state.phase !== 'final'; i++) step(state, {});
   return state;
@@ -409,8 +411,24 @@ export function grade(rating: number): Grade {
 export function careerGame(state: GameState, rosterIdx: number, simmed: boolean): CareerGame {
   const stats = statsOf(state, 0, rosterIdx) ?? emptyLine();
   const score: [number, number] = [state.score[0], state.score[1]];
-  const rating = Math.round(projectedGameScore(stats, score) * 10) / 10;
+  const minutes = (stats.secs / (4 * state.settings.quarterSeconds)) * 48;
+  const rating = Math.round(minutesRating(projectedGameScore(stats, score), minutes) * 10) / 10;
   return { stats, score, rating, grade: stats.secs > 0 ? grade(rating) : 'DNP', simmed };
+}
+
+/** Rating for a quiet, average night: a C. */
+const NEUTRAL_RATING = 8.5;
+
+/**
+ * Judges a game by production per 36 minutes, so a reserve is graded on what
+ * he did with his time. Short stints count for less: the fewer the minutes,
+ * the closer the rating stays to an average night.
+ */
+export function minutesRating(gameScore: number, minutes: number): number {
+  if (minutes <= 0) return 0;
+  const per36 = (gameScore * 36) / Math.max(minutes, 12);
+  const weight = Math.min(1, minutes / 30);
+  return NEUTRAL_RATING + (per36 - NEUTRAL_RATING) * weight;
 }
 
 function emptyLine(): PlayerStats {
@@ -489,6 +507,8 @@ export interface LoggedGame extends CareerGame {
   playoff: number;
   /** [us, them] on the NBA scale (what standings and the schedule show). */
   shown: [number, number];
+  /** XP it earned. */
+  xp?: number;
 }
 
 /** The league as the career sees it: every NBA team, his own with him on it. */
@@ -528,12 +548,117 @@ export function nextCareerGame(career: CareerState): NextGame | null {
 }
 
 /** The two teams for his next game, his team first, and where he is in its roster. */
-export function careerMatchup(career: CareerState, nba: TeamInfo[], next: NextGame): { teams: [TeamInfo, TeamInfo]; rosterIdx: number; home: boolean } {
+export function careerMatchup(
+  career: CareerState,
+  nba: TeamInfo[],
+  next: NextGame,
+): { teams: [TeamInfo, TeamInfo]; rosterIdx: number; home: boolean; role: Role } {
   const league = leagueTeams(career, nba);
   const home = next.home === career.team;
-  const mine = league.get(career.team!)!;
+  const role = rotationRole(career, nba);
+  let mine = league.get(career.team!)!;
+  // A starter takes the place of the starter at his position (or the weakest one).
+  if (role.tier === 0) mine = asStarter(mine, career.player.info);
   const opp = league.get(home ? next.away : next.home)!;
-  return { teams: [mine, opp], rosterIdx: mine.players.findIndex((p) => p.name === career.player.info.name), home };
+  return { teams: [mine, opp], rosterIdx: mine.players.findIndex((p) => p.name === career.player.info.name), home, role };
+}
+
+function asStarter(team: TeamInfo, me: PlayerInfo): TeamInfo {
+  const players = team.players.filter((p) => p.name !== me.name);
+  const starters = players.slice(0, 5);
+  let out = starters.findIndex((p) => p.position === me.position);
+  if (out < 0) out = starters.reduce((w, p, i) => (playerRating(p) < playerRating(starters[w]) ? i : w), 0);
+  const benched = starters[out];
+  starters[out] = me;
+  return { ...team, players: [...starters, benched, ...players.slice(5)] };
+}
+
+// ----------------------------------------------------------------- minutes
+
+export interface Role {
+  /** 0 starter .. 4 end of the bench. */
+  tier: number;
+  name: string;
+  /** Minutes per 48 the coach plans to give him. */
+  minutes: number;
+  /** His overall's rank on the team (1 = best). */
+  rank: number;
+  /** Average grade of his last five games he played, or null. */
+  form: Grade | null;
+}
+
+export const ROLES: [string, number][] = [
+  ['先發', 34],
+  ['第六人', 27],
+  ['輪替球員', 19],
+  ['替補', 11],
+  ['板凳末端', 5],
+];
+
+const GRADE_POINTS: Record<Exclude<Grade, 'DNP'>, number> = { 'A+': 2, A: 1.5, 'B+': 1, B: 0.5, 'C+': 0, C: -0.5, D: -1, F: -1.5 };
+const POINTS_GRADE: [number, Grade][] = [
+  [1.75, 'A+'],
+  [1.25, 'A'],
+  [0.75, 'B+'],
+  [0.25, 'B'],
+  [-0.25, 'C+'],
+  [-0.75, 'C'],
+  [-1.25, 'D'],
+];
+
+/**
+ * How much the coach trusts him: where his overall ranks on the team, moved
+ * up or down a step or two by how he played in his last five games.
+ */
+export function rotationRole(career: CareerState, nba: TeamInfo[]): Role {
+  const team = leagueTeams(career, nba).get(career.team ?? '');
+  const me = career.player.info;
+  const ovr = playerRating(me);
+  const rank = team ? team.players.filter((p) => p.name !== me.name && playerRating(p) > ovr).length + 1 : 9;
+  const base = rank <= 5 ? 0 : rank === 6 ? 1 : rank <= 8 ? 2 : rank <= 10 ? 3 : 4;
+  const recent = (career.games ?? []).filter((g) => g.grade !== 'DNP').slice(-5);
+  let form: Grade | null = null;
+  let shift = 0;
+  if (recent.length) {
+    const pts = recent.reduce((s, g) => s + GRADE_POINTS[g.grade as Exclude<Grade, 'DNP'>], 0) / recent.length;
+    form = POINTS_GRADE.find(([min]) => pts >= min)?.[1] ?? 'F';
+    // One good or bad night isn't enough: it takes a couple of games to move.
+    if (recent.length >= 2) shift = Math.round(pts);
+  }
+  const tier = Math.max(0, Math.min(4, base - shift));
+  return { tier, name: ROLES[tier][0], minutes: ROLES[tier][1], rank, form };
+}
+
+// ----------------------------------------------------------------- experience
+
+const XP_DIFFICULTY: Record<Difficulty, number> = { easy: 0.8, normal: 1, hard: 1.25 };
+
+/**
+ * XP for one game: playing well pays most, winning and the playoffs add to
+ * it, a night on the bench still earns practice XP. Scaled so a season brings
+ * about the same growth whatever its length.
+ */
+export function gameXp(career: CareerState, game: CareerGame, playoff: number): number {
+  const won = game.score[0] > game.score[1];
+  const base = game.grade === 'DNP' ? 12 : 25 + Math.max(0, game.rating) * 3 + (won ? 10 : 0);
+  const k = XP_DIFFICULTY[career.settings.difficulty] * (playoff ? 1.5 : 29 / career.settings.seasonGames);
+  return Math.round(base * k);
+}
+
+/** XP to raise a rating by one point from `value`: gets steeper as it climbs. */
+export function trainCost(value: number): number {
+  return Math.round(15 * Math.pow(1.06, value - 50));
+}
+
+/** Spends XP on one point of a rating. Returns whether it went through. */
+export function train(career: CareerState, key: keyof Ratings): boolean {
+  const p = career.player;
+  const value = p.info.ratings[key];
+  const cost = trainCost(value);
+  if (value >= archetype(p.archetype).caps[key] || (p.xp ?? 0) < cost) return false;
+  p.xp = (p.xp ?? 0) - cost;
+  p.info = { ...p.info, ratings: { ...p.info.ratings, [key]: value + 1 } };
+  return true;
 }
 
 /**
@@ -548,7 +673,9 @@ export function recordSeasonGame(career: CareerState, nba: TeamInfo[], next: Nex
   const shown = scaleScore(game.score, career.settings.quarterSeconds);
   const homeAway: [number, number] = home ? shown : [shown[1], shown[0]];
   career.games = career.games ?? [];
-  career.games.push({ ...game, day: next.day, opp: home ? next.away : next.home, home, playoff: next.playoff, shown });
+  const xp = gameXp(career, game, next.playoff);
+  career.player.xp = (career.player.xp ?? 0) + xp;
+  career.games.push({ ...game, day: next.day, opp: home ? next.away : next.home, home, playoff: next.playoff, shown, xp });
   if (next.playoff === 0) {
     const g = nextGameOf(s, me)!;
     g.score = homeAway;

@@ -62,6 +62,73 @@ export function cancelSub(state: GameState, team: 0 | 1, slotId: number): void {
   state.subQueue = state.subQueue.filter((q) => !(q.team === team && q.slotId === slotId));
 }
 
+/** Seconds of play so far (court time of a team, split over its five spots). */
+function elapsed(state: GameState, team: 0 | 1): number {
+  let secs = 0;
+  for (const p of state.players) if (p.team === team) secs += p.stats.secs;
+  for (const b of state.bench[team]) secs += b.stats.secs;
+  return secs / 5;
+}
+
+/**
+ * Career games: the coach keeps the solo player's minutes near his planned
+ * share — in when he is behind it and rested, out when well ahead of it.
+ * While he is on schedule the other rules leave him be (only fatigue and
+ * fouls take him off).
+ */
+function soloRotation(state: GameState, keep: number[], moved: Set<number>, eligible: (b: BenchPlayer) => boolean): void {
+  const solo = state.settings.solo;
+  const share = state.settings.soloMinutes;
+  if (solo === undefined || share === undefined) return;
+  const done = elapsed(state, 0);
+  const slack = Math.max(15, state.settings.quarterSeconds * 0.16);
+  const onCourt = state.players.find((p) => p.team === 0 && p.rosterIdx === solo);
+  if (onCourt) {
+    if (keep.includes(onCourt.id)) return;
+    const ahead = onCourt.stats.secs - share * done;
+    if (share < 0.95 && ahead > slack) {
+      // Ahead of plan: the best rested man for his spot comes in.
+      let best = -1;
+      let bestScore = -Infinity;
+      state.bench[0].forEach((b, i) => {
+        if (!eligible(b) || b.energy < RESTED) return;
+        const score = overall(b.info) + positionFit(b.info, onCourt.slot);
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      });
+      if (best >= 0) {
+        swap(state, onCourt, best);
+        moved.add(onCourt.id);
+      }
+    } else {
+      // On plan: shielded from "upgrade" subs.
+      moved.add(onCourt.id);
+    }
+    return;
+  }
+  const idx = state.bench[0].findIndex((b) => b.rosterIdx === solo);
+  const me = state.bench[0][idx];
+  if (!me || !eligible(me) || me.energy < RESTED) return;
+  if (me.stats.secs + slack * 0.5 > share * done) return;
+  // Behind plan: take the spot that fits him, preferring a tired man.
+  let slot: PlayerState | null = null;
+  let bestScore = -Infinity;
+  for (const p of state.players) {
+    if (p.team !== 0 || keep.includes(p.id) || moved.has(p.id)) continue;
+    const score = positionFit(me.info, p.slot) * 2 - p.energy * 10 - overall(p.info) * 0.2;
+    if (score > bestScore) {
+      bestScore = score;
+      slot = p;
+    }
+  }
+  if (slot) {
+    swap(state, slot, idx);
+    moved.add(slot.id);
+  }
+}
+
 function swap(state: GameState, p: PlayerState, benchIdx: number): void {
   const bench = state.bench[p.team];
   const b = bench[benchIdx];
@@ -89,6 +156,8 @@ export function applySubs(state: GameState, keep: number[] = []): void {
   const fouls = state.settings.rules.fouls;
   const eligible = (b: BenchPlayer) => !(fouls && fouledOut(b));
   const moved = new Set<number>();
+
+  soloRotation(state, keep, moved, eligible);
 
   const queue = state.subQueue;
   state.subQueue = [];

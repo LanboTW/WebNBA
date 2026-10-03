@@ -193,7 +193,7 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
   state.events = [];
   state.tick++;
   lockSolo(state);
-  if (state.settings.solo !== undefined) handleSoloCalls(state, inputs[0]);
+  if (soloHuman(state)) handleSoloCalls(state, inputs[0]);
   else handleSwitching(state, inputs);
   if (state.ballCall && (state.ballCall.timer -= DT) <= 0) state.ballCall = null;
   if (state.settings.mode === 'game') handleTimeoutInput(state, inputs);
@@ -216,10 +216,15 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
   lockSolo(state);
 }
 
+/** A person is playing the solo player (a played-out game keeps his minutes plan but not the lock). */
+function soloHuman(state: GameState): boolean {
+  return state.settings.solo !== undefined && state.settings.humanTeams.includes(0);
+}
+
 /** Solo games: the controls stay on your player (none while he sits). */
 function lockSolo(state: GameState): void {
   const solo = state.settings.solo;
-  if (solo === undefined) return;
+  if (solo === undefined || !soloHuman(state)) return;
   state.controlled[0] = state.players.find((p) => p.team === 0 && p.rosterIdx === solo)?.id ?? -1;
 }
 

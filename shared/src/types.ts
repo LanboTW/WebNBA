@@ -263,6 +263,8 @@ export interface GameSettings {
    * ball calls for it. On the bench, nobody is controlled.
    */
   solo?: number;
+  /** Share of the game (0..1) the coach plans to give the solo player. */
+  soloMinutes?: number;
 }
 
 /** Host-configurable rule groups. */

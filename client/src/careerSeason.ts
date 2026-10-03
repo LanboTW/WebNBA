@@ -1,5 +1,9 @@
 import {
+  RATING_KEYS,
   ROUND_NAME,
+  archetype,
+  playerRating,
+  trainCost,
   activeSeriesOf,
   findTeam,
   nextCareerGame,
@@ -10,6 +14,7 @@ import {
   standings,
   statScale,
   type CareerState,
+  type Role,
   type Grade,
   type LoggedGame,
   type PlayerStats,
@@ -17,12 +22,14 @@ import {
   type TeamInfo,
 } from '@webnba/shared';
 import { esc } from './boxscore';
+import { RATING_LABEL } from './careerCreate';
 import { logoHtml } from './logos';
 
-export type SeasonTab = 'home' | 'schedule' | 'standings' | 'playoffs' | 'stats';
+export type SeasonTab = 'home' | 'train' | 'schedule' | 'standings' | 'playoffs' | 'stats';
 
 const TABS: [SeasonTab, string][] = [
   ['home', '總覽'],
+  ['train', '訓練'],
   ['schedule', '賽程'],
   ['standings', '戰績'],
   ['playoffs', '季後賽'],
@@ -75,7 +82,7 @@ function rankIn(c: CareerState, league: Map<string, TeamInfo>): string {
   return `${conf === 'East' ? '東區' : '西區'}第 ${rank}`;
 }
 
-export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, TeamInfo>): string {
+export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, TeamInfo>, role: Role): string {
   const tabs =
     `<nav class="tabs">` +
     TABS.map(([id, label]) => `<button type="button" class="${id === tab ? 'on' : ''}" data-tab="${id}">${label}</button>`).join('') +
@@ -87,9 +94,11 @@ export function seasonHtml(c: CareerState, tab: SeasonTab, league: Map<string, T
         ? standingsHtml(c, league)
         : tab === 'playoffs'
           ? playoffsHtml(c, league)
-          : tab === 'stats'
+          : tab === 'train'
+            ? trainHtml(c)
+            : tab === 'stats'
             ? statsHtml(c)
-            : homeHtml(c, league);
+            : homeHtml(c, league, role);
   return tabs + body;
 }
 
@@ -100,7 +109,18 @@ export function gradeBadge(grade: Grade): string {
 
 // ----------------------------------------------------------------- overview
 
-function homeHtml(c: CareerState, league: Map<string, TeamInfo>): string {
+/** The coach's view of him: role, planned minutes, rank and recent form. */
+function roleHtml(c: CareerState, role: Role): string {
+  const xp = c.player.xp ?? 0;
+  return (
+    `<div class="rolecard"><div><small>教練信任</small><b>${role.name}</b><span>預計每場約 ${role.minutes} 分鐘</span></div>` +
+    `<div><small>隊內總評</small><b>第 ${role.rank}</b><span>總評 ${playerRating(c.player.info)}</span></div>` +
+    `<div><small>最近 5 場</small><b>${role.form ?? '—'}</b><span>表現好就會多打</span></div>` +
+    `<button type="button" class="xpbox" data-tab="train"><small>經驗值</small><b>${xp}</b><span>去訓練 →</span></button></div>`
+  );
+}
+
+function homeHtml(c: CareerState, league: Map<string, TeamInfo>, role: Role): string {
   const s = c.season!;
   const team = league.get(c.team!)!;
   const [w, l] = record(s, c.team!);
@@ -123,6 +143,7 @@ function homeHtml(c: CareerState, league: Map<string, TeamInfo>): string {
     : '';
   return (
     head +
+    roleHtml(c, role) +
     nextHtml(c, league) +
     (avg.gp ? `<h3>本季平均<small>例行賽上場 ${avg.gp} 場，換算成 48 分鐘 NBA 比賽</small></h3>${line}` : games.length ? `<p class="sub tight soon">本季還沒有上場紀錄。</p>` : '') +
     (recent ? `<h3>最近比賽</h3><ol class="games">${recent}</ol>` : '')
@@ -186,7 +207,7 @@ function resultRow(c: CareerState, g: LoggedGame, league: Map<string, TeamInfo>)
   const tag = g.playoff ? `<small>${ROUND_NAME[g.playoff]}</small>` : '';
   return (
     `<li class="game"><span class="gno">${g.home ? 'vs' : '@'}</span><div><b class="${won ? 'win' : 'loss'}">${won ? '勝' : '敗'} ${g.shown[0]}:${g.shown[1]} ${esc(opp.abbr)}</b>` +
-    `${tag}${g.simmed ? '<small>模擬</small>' : ''}<span>${gameLine(g, c.settings.quarterSeconds)}</span></div>${gradeBadge(g.grade)}</li>`
+    `${tag}${g.simmed ? '<small>模擬</small>' : ''}<span>${gameLine(g, c.settings.quarterSeconds)}${g.xp ? ` · +${g.xp} XP` : ''}</span></div>${gradeBadge(g.grade)}</li>`
   );
 }
 
@@ -258,6 +279,28 @@ function playoffsHtml(c: CareerState, league: Map<string, TeamInfo>): string {
       return `<h3>${ROUND_NAME[r]}<small>${best === 1 ? '一場定勝負' : `${best} 戰 ${Math.ceil(best / 2)} 勝`}</small></h3><div class="bracket">${list.map(series).join('')}</div>`;
     });
   return rounds.join('');
+}
+
+// ----------------------------------------------------------------- training
+
+function trainHtml(c: CareerState): string {
+  const p = c.player;
+  const xp = p.xp ?? 0;
+  const caps = archetype(p.archetype).caps;
+  const rows = RATING_KEYS.map((k) => {
+    const v = p.info.ratings[k];
+    const capped = v >= caps[k];
+    const cost = trainCost(v);
+    return (
+      `<div class="trow"><span>${RATING_LABEL[k]}</span><div class="track"><i style="width:${v}%"></i><em style="left:${caps[k]}%"></em></div><b>${v}</b>` +
+      `<button type="button" class="small" data-train="${k}"${capped || xp < cost ? ' disabled' : ''}>${capped ? '已達上限' : `+1　${cost} XP`}</button></div>`
+    );
+  }).join('');
+  return (
+    `<div class="xpline"><span>經驗值 <b>${xp}</b></span><span>總評 <b>${playerRating(p.info)}</b></span></div>` +
+    `<p class="sub tight">比賽表現越好、贏球、季後賽和較高難度都拿得比較多經驗值；坐板凳也有一點練習經驗。能力越高，加 1 點越貴；虛線是${archetype(p.archetype).name}的上限。</p>` +
+    `<div class="trainlist">${rows}</div>`
+  );
 }
 
 // ----------------------------------------------------------------- stats
