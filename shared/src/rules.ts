@@ -320,10 +320,15 @@ function inboundSpot(pos: Vec3): Vec3 {
 
 function startInbound(state: GameState, team: 0 | 1, spot: Vec3): void {
   applySubs(state);
+  // From the baseline under the hoop it defends (after a score, say) a guard takes it out.
+  const ownBaseline =
+    Math.abs(spot.x) > COURT.halfLength && Math.sign(spot.x) !== Math.sign(attackHoopX(team, state.period));
+  const guard = (p: PlayerState) => p.info.position === 'PG' || p.info.position === 'SG';
+  const guards = ownBaseline && state.players.some((p) => p.team === team && guard(p));
   let passer: PlayerState | null = null;
   let bestD = Infinity;
   for (const p of state.players) {
-    if (p.team !== team) continue;
+    if (p.team !== team || (guards && !guard(p))) continue;
     const d = hdist(p.pos, spot);
     if (d < bestD) {
       bestD = d;

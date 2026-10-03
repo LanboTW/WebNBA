@@ -4,6 +4,7 @@ import {
   HOOP_X,
   NO_INPUT,
   SHOT_SWEET,
+  attackHoopX,
   canDunk,
   createGame,
   giveBall,
@@ -253,6 +254,21 @@ describe('violations', () => {
     const state = soloGame(HOOP_X - 2, 0.5, { rules: { ...ALL_RULES, violations: false } });
     const events = run(state, 150);
     expect(events.some((e) => e.type === 'turnover')).toBe(false);
+  });
+});
+
+describe('inbounds', () => {
+  it('a guard takes the ball out after a score, even with a big man closer', () => {
+    const state = liveGame(0, 0);
+    const s = -Math.sign(attackHoopX(1, state.period));
+    const big = state.players.find((p) => p.team === 1 && p.info.position !== 'PG' && p.info.position !== 'SG')!;
+    placePlayer(state, big.id, s * (COURT.halfLength - 0.5), 1.3);
+    state.phase = 'dead';
+    state.phaseTimer = 0;
+    state.pendingInbound = { team: 1, spot: { x: s * (COURT.halfLength + 0.45), y: 0, z: 1.3 } };
+    run(state, 1, NO_INPUT, NO_INPUT);
+    expect(state.phase).toBe('inbound');
+    expect(['PG', 'SG']).toContain(state.players[state.inbound!.passerId].info.position);
   });
 });
 
