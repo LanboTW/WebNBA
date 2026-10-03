@@ -7,7 +7,8 @@
     "roster:update": "tsx src/update.ts",
     "logos:update": "tsx src/logos.ts",
     "looks:fill": "tsx src/looksFill.ts",
-    "ages:update": "tsx src/ages.ts"
+    "ages:update": "tsx src/ages.ts",
+    "headshots:update": "tsx src/headshots.ts"
   },
   "dependencies": {
     "pngjs": "^7.0.0",

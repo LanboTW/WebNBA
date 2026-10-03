@@ -153,7 +153,7 @@ const MIN_RATING = 25;
  * Shifts ratings (each kept between MIN_RATING and its cap) until `measure`
  * (by default the plain average) is `target`, keeping the shape of the profile.
  */
-function toOverall(raw: Ratings, cap: Ratings, target: number, measure = (r: Ratings) => ratingAverage({ ratings: r })): Ratings {
+export function toOverall(raw: Ratings, cap: Ratings, target: number, measure = (r: Ratings) => ratingAverage({ ratings: r })): Ratings {
   const shifted = (d: number) => {
     const r = {} as Ratings;
     for (const k of RATING_KEYS) r[k] = clamp(raw[k] + d, MIN_RATING, cap[k]);

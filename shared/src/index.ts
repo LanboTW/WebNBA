@@ -10,3 +10,4 @@ export * from './season';
 export * from './offseason';
 export * from './awards';
 export * from './economy';
+export * from './myteam';

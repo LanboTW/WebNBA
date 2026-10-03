@@ -1,0 +1,37 @@
+{
+  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card. Players can add their own packs in the game.",
+  "packs": [
+    {
+      "id": "standard",
+      "name": "標準卡包",
+      "price": 500,
+      "count": 3,
+      "rentalChance": 0.04
+    },
+    {
+      "id": "premium",
+      "name": "高級卡包",
+      "price": 2000,
+      "count": 3,
+      "guaranteeTop": true,
+      "weights": { "white": 4, "green": 18, "blue": 34, "purple": 26, "gold": 11, "pink": 5, "orange": 1.6, "black": 0.5 },
+      "rentalChance": 0.08
+    },
+    {
+      "id": "guards",
+      "name": "後場卡包",
+      "price": 700,
+      "count": 3,
+      "positions": ["PG", "SG"],
+      "rentalChance": 0.04
+    },
+    {
+      "id": "bigs",
+      "name": "禁區卡包",
+      "price": 700,
+      "count": 3,
+      "positions": ["PF", "C"],
+      "rentalChance": 0.04
+    }
+  ]
+}

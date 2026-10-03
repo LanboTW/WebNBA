@@ -26,6 +26,7 @@ import { Input } from './input';
 import { LineupPanel } from './lineup';
 import { PlayerDb } from './playerDb';
 import { coinsText, wallet } from './wallet';
+import { initMyTeam, renderMyTeam } from './myteamUi';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
@@ -74,8 +75,8 @@ function save(key: string, value: string): void {
 
 // ----------------------------------------------------------------- screens
 
-type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub';
-const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub'];
+type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub' | 'myteam';
+const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub', 'myteam'];
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 let current: Screen = 'home';
@@ -88,6 +89,7 @@ function show(next: Screen): void {
   if (next === 'quick') refreshCards();
   if (next === 'practice') renderPractice();
   if (next === 'players') renderPlayerDb();
+  if (next === 'myteam') renderMyTeam();
   if (next === 'home' || next === 'quick' || next === 'practice') careerLoad = refreshCareerTeams();
   if (next === 'career') void renderCareer();
   // Leaving the career screens: back to the rotating stars.
@@ -754,6 +756,7 @@ function frame(now: number): void {
 }
 
 initCareerMenu(show, { preview: previewCareer, play: playCareer });
+initMyTeam();
 show('home');
 // The first player on the court may be yours: wait a moment for the saves.
 void Promise.race([careerLoad, new Promise((r) => setTimeout(r, 800))]).then(() => {

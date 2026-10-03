@@ -54,12 +54,13 @@
     </div>
 
     <div id="home" class="overlay screen">
-      <div class="homebar"><span id="coinStatus" class="auth coins" title="金幣：快速對戰與生涯退休結算可得，可用在新生涯（之後也能買 MyTeam 卡包）">0</span><button type="button" id="authStatus" class="auth">訪客</button></div>
+      <div class="homebar"><span id="coinStatus" class="auth coins" title="金幣：快速對戰與生涯退休結算可得，可用在新生涯與 MyTeam 卡包">0</span><button type="button" id="authStatus" class="auth">訪客</button></div>
       <div class="homemain">
         <h1>WebNBA</h1>
         <p class="sub">3D 籃球 · <span id="season"></span> 名單</p>
         <nav class="homenav">
           <button type="button" data-go="quick" class="primary"><b>快速模式</b><small>選兩隊，對戰電腦或觀戰</small></button>
+          <button type="button" data-go="myteam"><b>MyTeam</b><small>開卡包收集球員卡，組自己的夢幻隊</small></button>
           <button type="button" data-go="career"><b>生涯模式</b><small>自創球員，從新秀打到名人堂</small></button>
           <button type="button" data-go="practice"><b>練習</b><small>一個人投籃、運球</small></button>
           <button type="button" data-go="players"><b>球員資料庫</b><small>所有球隊的球員能力值</small></button>
@@ -202,6 +203,24 @@
           <b>防守</b>　按住 U 加強防守　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
           <b>其他</b>　T 暫停　Esc 數據／換人　C 切換視角　H 隱藏說明
         </p>
+      </div>
+    </div>
+
+    <div id="myteam" class="overlay screen hidden">
+      <div class="panel wide">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>MyTeam</h2><span id="mtCoins" class="mtcoins"></span></div>
+        <div id="mtTabs" class="tabs"></div>
+        <div id="mtBody"></div>
+      </div>
+    </div>
+
+    <div id="packOpen" class="overlay hidden">
+      <div class="po">
+        <h2 id="poTitle"></h2>
+        <p class="fine tap">點卡片翻開</p>
+        <div id="poCards"></div>
+        <p id="poSummary" class="posum"></p>
+        <div class="buttons"><button type="button" id="poAll">全部翻開</button><button type="button" id="poDone" class="primary">完成</button></div>
       </div>
     </div>
 
