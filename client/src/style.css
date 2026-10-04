@@ -4480,3 +4480,70 @@ ul.mtrules {
   max-height: 30dvh;
   overflow-y: auto;
 }
+
+/* ------------------------------------------------- the play wheel */
+
+.pwheel {
+  position: fixed;
+  left: 50%;
+  bottom: 18%;
+  z-index: 6;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 122, 26, 0.5);
+  border-radius: 16px;
+  background: rgba(10, 12, 20, 0.86);
+  pointer-events: auto;
+}
+
+.pwheel p {
+  flex: 1 0 100%;
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pwheel p small {
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.pwheel button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 7px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #1b2030;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.pwheel button b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #1a0d00;
+}
+
+.picon.play {
+  box-shadow: 0 0 0 2px #ffd166;
+}
+
+.picon.play::after {
+  content: '戰術';
+  margin-left: 4px;
+  color: #ffd166;
+  font-weight: 700;
+}

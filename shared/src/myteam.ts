@@ -318,6 +318,8 @@ export interface MyTeamSave {
   stats: Partial<Record<MissionStat, number>>;
   /** Event levels won this week (week:index). */
   events: string[];
+  /** Games in a row with the same starting five (its cohesion grows with them). */
+  chem?: { key: string; games: number };
 }
 
 export function emptyMyTeam(): MyTeamSave {
@@ -453,6 +455,21 @@ export function deckLineup(save: MyTeamSave): OwnedCard[] {
 export function deckRating(save: MyTeamSave): number {
   const starters = save.deck.slice(0, 5).map((r) => deckCard(save, r)?.ovr ?? 0);
   return starters.length ? Math.round(starters.reduce((a, b) => a + b, 0) / starters.length) : 0;
+}
+
+/** The starting five, order aside: the same five keep building cohesion. */
+const starterKey = (save: MyTeamSave): string => [...save.deck.slice(0, 5)].sort().join('|');
+
+/** The deck's cohesion: 40 for a new starting five, +2 a game together, up to 90. */
+export function deckCohesion(save: MyTeamSave): number {
+  const games = save.chem?.key === starterKey(save) ? save.chem.games : 0;
+  return Math.min(90, 40 + 2 * games);
+}
+
+/** A game played with the deck's starting five. */
+export function noteDeckGame(save: MyTeamSave): void {
+  const key = starterKey(save);
+  save.chem = { key, games: save.chem?.key === key ? save.chem.games + 1 : 1 };
 }
 
 // ----------------------------------------------------------------- playing

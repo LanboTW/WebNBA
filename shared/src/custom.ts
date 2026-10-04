@@ -64,6 +64,9 @@ export interface CustomSave {
   retired: RetiredPlayer[];
 }
 
+/** A custom team's cohesion: 40 to start, +2 a game played together, up to 90. */
+export const customCohesion = (team: CustomTeam): number => Math.min(90, 40 + 2 * (team.games ?? 0));
+
 export const emptyCustom = (): CustomSave => ({ v: 1, next: 1, players: [], teams: [], retired: [] });
 
 export function upgradeCustom(raw: unknown): CustomSave | null {

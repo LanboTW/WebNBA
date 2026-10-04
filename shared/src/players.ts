@@ -10,6 +10,7 @@ import {
   isThreePoint,
 } from './constants';
 import { chargeFoul, commonFoul, onFreeThrowRelease, shootingFoul } from './fouls';
+import { activePlay, cohesionOf, passOffChance } from './plays';
 import { nextRandom } from './rng';
 import {
   DUNK_DISTANCE,
@@ -601,6 +602,15 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
   let to: Vec3 = { x: t.pos.x + t.vel.x * flight * lead, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight * lead };
   flight = Math.max(MIN_PASS_FLIGHT, hdist(from, to) / speed);
   to = { x: t.pos.x + t.vel.x * flight * lead, y: t.info.heightM * 0.62, z: t.pos.z + t.vel.z * flight * lead };
+  // The pass to a play's man: a team that knows each other less sometimes throws it off target.
+  const play = activePlay(state, p.team);
+  if (play && targetId === play.targetId && nextRandom(state) < passOffChance(cohesionOf(state, p.team))) {
+    const ex = -(to.z - from.z);
+    const ez = to.x - from.x;
+    const el = Math.hypot(ex, ez) || 1;
+    const sgn = nextRandom(state) < 0.5 ? -1 : 1;
+    to = { ...to, x: to.x + (ex / el) * 1.1 * sgn, z: to.z + (ez / el) * 1.1 * sgn };
+  }
 
   let receiver = targetId;
   let intercepted = false;

@@ -1,6 +1,8 @@
 import {
   DECK_MAX,
   DYNASTY,
+  deckCohesion,
+  noteDeckGame,
   LEVELS,
   LIMITED,
   PRACTICE_COINS,
@@ -504,7 +506,7 @@ function playTab(): string {
   const mode = playMode();
   const body = mode === 'dynasty' ? dynastyHtml() : mode === 'limited' ? limitedHtml() : mode === 'event' ? eventHtml(full) : ladderHtml(full);
   return (
-    `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span>${nextPeriodText(s)}</span></div>` +
+    `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span title="同一組先發連續比賽會越來越高">凝聚力 <b>${deckCohesion(s)}</b></span><span>${nextPeriodText(s)}</span></div>` +
     `<nav class="tabs mtmodes">${PLAY_MODES.map(([k, l]) => `<button type="button" data-mode="${k}" class="${k === mode ? 'on' : ''}">${l}</button>`).join('')}</nav>` +
     (full || mode === 'limited' ? '' : '<p class="msg">牌組至少要 5 張卡才能打 5 對 5，先到「牌組」分頁放卡。</p>') +
     body
@@ -584,6 +586,8 @@ function finishText(out: GameOutcome, won: boolean, forfeit: boolean): string {
 interface GamePlan {
   /** Null for a practice game: nothing booked but coins. */
   kind: GameKind | null;
+  /** Played with the deck's lineup (its cohesion counts, and grows). */
+  deck?: boolean;
   size: 3 | 5;
   /** Your players in roster order (5v5: starters first). */
   cards: OwnedCard[];
@@ -612,6 +616,7 @@ function startGame(plan: GamePlan): void {
     difficulty: plan.difficulty,
     quarterSeconds: Number(pref('quarter', '180')),
     seed: (Math.random() * 2 ** 31) | 0,
+    cohesion: [plan.deck ? deckCohesion(s) : 60, 70],
   };
   if (plan.size === 3) settings.street = { target: Number(pref('target', '21')), makeItTakeIt: false };
   const teams: [TeamInfo, TeamInfo] = [{ ...MYTEAM_INFO, players: plan.cards.map(cardPlayer) }, plan.opponent];
@@ -620,6 +625,10 @@ function startGame(plan: GamePlan): void {
     settings,
     (state, forfeit) => {
       const [a, b] = state.score;
+      if (plan.deck && !forfeit) {
+        noteDeckGame(s);
+        myteam.commit();
+      }
       if (!plan.kind) {
         // Practice: game time (a street game's real clock) pays, nothing else counts.
         const minutes = plan.size === 3 ? state.tick / 30 / 60 : (state.settings.quarterSeconds * 4) / 60;
@@ -681,7 +690,7 @@ function playLevel(kind: 'ladder' | 'dynasty' | 'limited' | 'event', id: string)
   const s = myteam.save;
   if (kind === 'ladder') {
     const level = LEVELS.find((l) => l.id === id);
-    if (level && levelOpen(s, level)) startGame({ kind, size: 5, cards: deckLineup(s), opponent: levelTeam(level), difficulty: level.difficulty, level: id });
+    if (level && levelOpen(s, level)) startGame({ kind, size: 5, cards: deckLineup(s), opponent: levelTeam(level), difficulty: level.difficulty, level: id, deck: true });
   } else if (kind === 'dynasty') {
     const d = DYNASTY.find((x) => x.id === id);
     if (d && dynastyOpen(s, d)) {
@@ -713,7 +722,7 @@ function playLevel(kind: 'ladder' | 'dynasty' | 'limited' | 'event', id: string)
     const lv = theme.levels[index];
     if (!lv) return;
     const cards = lv.size === 3 ? streetCards() : deckLineup(s);
-    startGame({ kind, size: lv.size, cards, opponent: eventTeam(theme, index, eventBase(s)), difficulty: lv.difficulty, event: { week, index } });
+    startGame({ kind, size: lv.size, cards, opponent: eventTeam(theme, index, eventBase(s)), difficulty: lv.difficulty, event: { week, index }, deck: lv.size === 5 });
   }
 }
 
@@ -892,7 +901,7 @@ export function initMyTeam(h: MyTeamHost): void {
         }
       }
     } else if (act === 'practice5') {
-      startGame({ kind: null, size: 5, cards: deckLineup(s), opponent: quickOpponent(s), difficulty: pref('diff', 'normal') as Difficulty });
+      startGame({ kind: null, size: 5, cards: deckLineup(s), opponent: quickOpponent(s), difficulty: pref('diff', 'normal') as Difficulty, deck: true });
       return;
     } else if (act === 'practice3') {
       const cards = streetCards();

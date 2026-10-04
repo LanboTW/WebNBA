@@ -4,7 +4,7 @@ import type { PlayerInput } from '@webnba/shared';
 const RADIUS = 60;
 const SPRINT_AT = 0.92;
 
-type ButtonId = 'shoot' | 'pass' | 'jump' | 'switch' | 'timeout' | 'menu' | 'camera';
+type ButtonId = 'shoot' | 'pass' | 'jump' | 'switch' | 'timeout' | 'menu' | 'camera' | 'plays';
 
 /** What the player is doing right now, so the big buttons can say what they do. */
 export type TouchMode = 'offense' | 'offball' | 'defense' | 'none';
@@ -60,6 +60,7 @@ export class TouchControls {
       <div class="trotate">橫放手機玩起來更順手</div>
       <div class="tsmall">
         <button data-b="switch">換人</button>
+        <button data-b="plays">戰術</button>
         <button data-b="timeout">叫暫停</button>
         <button data-b="camera">視角</button>
         <button data-b="menu">☰</button>
@@ -149,7 +150,7 @@ export class TouchControls {
   }
 
   /** UI buttons pressed since last asked (menu, camera). */
-  consumeTap(id: 'menu' | 'camera'): boolean {
+  consumeTap(id: 'menu' | 'camera' | 'plays'): boolean {
     const had = this.taps.has(id);
     this.taps.delete(id);
     return had;

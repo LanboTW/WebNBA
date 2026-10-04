@@ -14,6 +14,7 @@ import {
   DIFFICULTY_COINS,
   CUSTOM_LIMITS,
   MY_GROUP,
+  customCohesion,
   customTeamInfo,
   keepRetired,
   type GameSettings,
@@ -222,6 +223,18 @@ function tileLabel(t: TeamInfo): string {
   return allMine().find((x) => x.team === t)?.label ?? t.abbr;
 }
 
+/** A custom team behind a select's value (cteam:<id>), if it is one. */
+function customTeamOf(key: string) {
+  return custom.ready ? custom.save.teams.find((t) => `cteam:${t.id}` === key) : undefined;
+}
+/** How well a team knows each other: custom teams build it game by game; everyone else is 70. */
+function cohesionFor(key: string): number {
+  const t = customTeamOf(key);
+  return t ? customCohesion(t) : 70;
+}
+/** The custom teams in the quick game under way (they get a game together at its end). */
+let quickCustom: string[] = [];
+
 /** Reloads the career players from the save slots (keeping the retired ones) into the team lists. */
 async function refreshCareerTeams(): Promise<void> {
   let saves: Awaited<ReturnType<typeof savedCareers>> = [];
@@ -342,6 +355,7 @@ function renderCard(el: HTMLElement, t: TeamInfo): void {
     `<div class="prow"><span>${p.position}　#${p.number} ${esc(p.name)}</span><b class="ovr">${playerRating(p)}</b></div>`;
   el.innerHTML =
     `<div class="thead">${logoHtml(t)}<b>${esc(t.name)}</b><span class="tovr" title="先發五人平均">${teamRating(t)}</span></div>` +
+    (t.group === MY_GROUP && customTeamOf(keyOf(t)) ? `<div class="benchlbl">凝聚力 ${cohesionFor(keyOf(t))}（一起打越多場越高，上限 90）</div>` : '') +
     t.players.slice(0, 5).map(row).join('') +
     `<div class="benchlbl">替補</div>` +
     t.players.slice(5).map(row).join('');
@@ -380,7 +394,9 @@ $('#startBtn').addEventListener('click', () => {
     quarterSeconds: Number(quarterSel.value),
     seed: (Math.random() * 2 ** 31) | 0,
     rules: menuRules(),
+    cohesion: [cohesionFor(homeSel.value), cohesionFor(awaySel.value)],
   });
+  quickCustom = [homeSel.value, awaySel.value].filter((k) => customTeamOf(k));
 });
 
 // ----------------------------------------------------------------- street
@@ -818,6 +834,11 @@ function showFinal(): void {
   }
   if (!careerPlay && !myteamPlay && s.mode === 'game' && s.humanTeams.includes(0) && !paid.has(session)) {
     paid.add(session);
+    // Custom teams that played get to know each other better.
+    const played = [...new Set(quickCustom)].map(customTeamOf).filter((t) => !!t);
+    for (const t of played) t.games = (t.games ?? 0) + 1;
+    if (played.length) custom.commit();
+    quickCustom = [];
     const coins = Math.round((a > b ? QUICK_COINS.win : QUICK_COINS.loss) * DIFFICULTY_COINS[s.difficulty]);
     void wallet.add(coins);
     $('#boxTitle').textContent += `　+${coins} 金幣`;

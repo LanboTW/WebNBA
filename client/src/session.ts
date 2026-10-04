@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {
   DT,
+  PLAY_KINDS,
+  PLAY_NAME,
   attackHoop,
   attackHoopX,
   cancelSub,
@@ -61,6 +63,16 @@ const CALL_TEXT: Record<CallKind, [string, string]> = {
   ball: ['要球！', ''],
   pick: ['叫擋拆', '沒有隊友能來擋'],
   switch: ['換防！', '附近沒有可以換防的隊友'],
+  play: ['', '現在不能叫這個戰術'],
+};
+
+/** What to do once a play is called (a person with the ball makes the pass). */
+const PLAY_HINT: Record<string, string> = {
+  pnr: '等掩護到位再切入',
+  pnp: '掩護後他會拉出三分線',
+  handoff: '隊友來拿球，靠近時傳給他',
+  offscreen: '等射手繞出來再傳',
+  post: '長人卡好位後餵給他',
 };
 
 /** How much faster the game runs while the career player sits on the bench. */
@@ -102,6 +114,9 @@ export class Session {
   private readonly builtFor: number[];
   private lastInput: PlayerInput | null = null;
   private readonly icons: HTMLElement[];
+  /** The play wheel (L held, or the touch 戰術 button). */
+  private readonly wheel = document.createElement('div');
+  private touchWheel = false;
   private readonly timeoutPanel = document.querySelector<HTMLElement>('#timeoutPanel')!;
   private readonly timeoutLineup = new LineupPanel(document.querySelector<HTMLElement>('#timeoutLineup')!);
   private timeoutShown = false;
@@ -169,6 +184,7 @@ export class Session {
     }
     this.prev = this.snapshot();
     hud.show(teams, practice);
+    this.buildWheel();
 
     const iconRoot = document.querySelector('#passIcons')!;
     iconRoot.replaceChildren();
@@ -184,6 +200,29 @@ export class Session {
       iconRoot.appendChild(el);
       return el;
     });
+  }
+
+  /** Your team has the ball in a live game: plays can be called. */
+  private canCallPlay(): boolean {
+    const s = this.state;
+    if (this.team < 0 || s.settings.mode !== 'game' || s.phase !== 'live' || s.ball.mode !== 'held') return false;
+    return s.players[s.ball.holderId]?.team === this.team;
+  }
+
+  private buildWheel(): void {
+    this.wheel.className = 'pwheel hidden';
+    this.wheel.innerHTML =
+      `<p>戰術<small>按 1–5（手把：十字鍵／Y）</small></p>` +
+      PLAY_KINDS.map((k, i) => `<button type="button" data-play="${i + 1}"><b>${i + 1}</b>${PLAY_NAME[k]}</button>`).join('');
+    this.wheel.addEventListener('pointerdown', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-play]');
+      if (!b) return;
+      e.preventDefault();
+      this.input.choosePlay(Number(b.dataset.play));
+      this.touchWheel = false;
+    });
+    document.querySelector('#passIcons')!.after(this.wheel);
+    this.input.canCall = () => this.canCallPlay();
   }
 
   private snapshot(): Snapshot {
@@ -206,6 +245,10 @@ export class Session {
       this.hud.toast(CAMERA_LABEL[next], '', true);
       this.callbacks.onViewChange?.(next);
     }
+    if (this.input.touch?.consumeTap('plays')) this.touchWheel = !this.touchWheel;
+    const callable = this.canCallPlay();
+    if (!callable) this.touchWheel = false;
+    this.wheel.classList.toggle('hidden', !(callable && (this.input.wheelOpen || this.touchWheel)) || this.paused);
     if (s.settings.mode === 'practice' && this.input.consumePress('KeyR')) {
       if (s.players[0].action === 'normal') giveBall(s, 0);
     }
@@ -261,7 +304,7 @@ export class Session {
         inp.pass = true;
         inp.passTarget = mates[tapped].id;
       }
-      for (let i = 0; i < mates.length; i++) {
+      for (let i = 0; i < mates.length && !this.input.wheelOpen; i++) {
         if (this.input.isDown(`Digit${i + 1}`) || this.input.isDown(`Numpad${i + 1}`)) {
           inp.pass = true;
           inp.passTarget = mates[i].id;
@@ -290,6 +333,7 @@ export class Session {
       const v = new THREE.Vector3(m.pos.x, m.pos.y + m.info.heightM + 0.45, m.pos.z).project(this.cam.camera);
       el.classList.remove('hidden');
       el.classList.toggle('aim', m.id === aimed);
+      el.classList.toggle('play', m.id === s.plays[this.team as 0 | 1]?.targetId);
       el.style.left = `${((v.x + 1) / 2) * window.innerWidth}px`;
       el.style.top = `${((1 - v.y) / 2) * window.innerHeight}px`;
       const last = m.info.name.split(' ').slice(1).join(' ') || m.info.name;
@@ -551,7 +595,16 @@ export class Session {
         hud.toast(`換人：${e.inName} 上，${e.outName} 下`, '', true);
         break;
       case 'call':
-        if (e.playerId === s.controlled[0]) hud.toast(CALL_TEXT[e.kind][e.ok ? 0 : 1], e.ok ? '' : 'bad', true);
+        if (e.kind === 'play') {
+          if (this.team < 0 || s.players[e.playerId]?.team !== this.team) break;
+          if (e.ok && e.play) hud.toast(`戰術：${PLAY_NAME[e.play]}`, 'accent', true);
+          if (e.ok && e.play && s.ball.mode === 'held' && s.ball.holderId === e.playerId) hud.toast(PLAY_HINT[e.play], '', true);
+          if (!e.ok) hud.toast(CALL_TEXT.play[1], 'bad', true);
+        } else if (e.playerId === s.controlled[0]) hud.toast(CALL_TEXT[e.kind][e.ok ? 0 : 1], e.ok ? '' : 'bad', true);
+        break;
+      case 'screen':
+        // Only screens that catch someone are worth a word.
+        if (this.team >= 0 && e.caught) hud.toast(e.team === this.team ? '掩護成功！' : '被掩護卡住了', e.team === this.team ? 'perfect' : 'bad', true);
         break;
       case 'timeout':
         this.sfx.whistle();
@@ -577,6 +630,9 @@ export class Session {
     disposeTree(this.scene);
     this.hud.hide();
     this.icons.forEach((el) => el.remove());
+    this.wheel.remove();
+    this.input.canCall = () => false;
+    this.input.wheelOpen = false;
     this.timeoutPanel.classList.add('hidden');
   }
 }

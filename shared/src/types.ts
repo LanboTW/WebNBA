@@ -95,7 +95,29 @@ export const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: '簡單', no
 /** Coins for a game against the computer scale with its level. */
 export const DIFFICULTY_COINS: Record<Difficulty, number> = { easy: 0.8, normal: 1, hard: 1.2, expert: 1.4, legend: 1.6 };
 
-export type AiMode = 'none' | 'drive' | 'cut' | 'screen' | 'roll';
+export type AiMode = 'none' | 'drive' | 'cut' | 'screen' | 'roll' | 'pop' | 'handoff' | 'curl' | 'post';
+
+/** Called plays (戰術). */
+export type PlayKind = 'pnr' | 'pnp' | 'handoff' | 'offscreen' | 'post';
+
+/** A team's play under way. */
+export interface PlayState {
+  kind: PlayKind;
+  /** Who had the ball when it was called. */
+  handlerId: number;
+  /** Who sets the screen (-1: nobody; handoffs and post-ups). */
+  screenerId: number;
+  /** Who it is run for: the screener (pick plays), the handoff receiver, the shooter, the post man. */
+  targetId: number;
+  /** 0 setting up, 1 the screen is set (or the post man has sealed), 2 the target has the ball. */
+  stage: number;
+  /** Seconds before it is dropped. */
+  timer: number;
+  /** Seconds the screener waits before moving (a team that knows each other less is slower). */
+  wait: number;
+  /** The handler hesitated once already (a late pass). */
+  late: boolean;
+}
 
 /** Per-player AI memory. Lives in the state so the sim stays serialisable and deterministic. */
 export interface PlayerAi {
@@ -104,8 +126,10 @@ export interface PlayerAi {
   decisionTimer: number;
   shotTarget: number;
   screenSide: number;
-  /** Screener has reached the screen spot. */
+  /** Screener has reached the screen spot (post man: has sealed). */
   arrived: boolean;
+  /** A defender hung up on a screen: seconds before he can move again. */
+  stuck?: number;
 }
 
 export interface PlayerState {
@@ -259,9 +283,11 @@ export type GameEvent =
   | { type: 'periodEnd'; period: number }
   | { type: 'final'; winner: 0 | 1 }
   /** Solo player's calls: for the ball, for a pick, for a defensive switch (ok = someone answers). */
-  | { type: 'call'; kind: CallKind; playerId: number; ok: boolean };
+  | { type: 'call'; kind: CallKind; playerId: number; ok: boolean; play?: PlayKind }
+  /** A screen in a play caught the defender (or he fought through). */
+  | { type: 'screen'; team: 0 | 1; screenerId: number; caught: boolean };
 
-export type CallKind = 'ball' | 'pick' | 'switch';
+export type CallKind = 'ball' | 'pick' | 'switch' | 'play';
 
 export interface GameSettings {
   /** 'practice' disables clocks, possession rules and inbounds. */
@@ -283,6 +309,8 @@ export interface GameSettings {
   soloMinutes?: number;
   /** 0..1: how much his AI teammates look for the solo player (career cohesion). */
   soloTrust?: number;
+  /** 0-100 per team: how well they run plays together (default 70). */
+  cohesion?: [number, number];
   /**
    * Street game: half court at the +x hoop, first to `target` points (1 inside
    * the arc, 2 beyond), no clocks, free throws, timeouts or subs. Every change
@@ -389,6 +417,8 @@ export interface GameState {
   assign: number[];
   /** Solo player asking a teammate for the ball: who, and seconds left before the ask lapses. */
   ballCall: { playerId: number; timer: number } | null;
+  /** Each team's play under way. */
+  plays: [PlayState | null, PlayState | null];
   events: GameEvent[];
 }
 
@@ -408,6 +438,8 @@ export interface PlayerInput {
   timeout: boolean;
   /** AI only: explicit pass receiver. */
   passTarget?: number;
+  /** Call a play (1-5, in PLAY_KINDS order), for one tick. */
+  play?: number;
 }
 
 export const NO_INPUT: PlayerInput = {

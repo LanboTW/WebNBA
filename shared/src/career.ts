@@ -493,6 +493,7 @@ export function careerGameSettings(career: CareerState, seed: number, me: number
     humanTeams: [0],
     solo: me,
     soloTrust: cohesion(career) / 100,
+    cohesion: [cohesion(career), 70],
     ...(minutes !== undefined ? { soloMinutes: Math.min(1, minutes / 48) } : {}),
     difficulty: career.settings.difficulty,
     quarterSeconds: career.settings.quarterSeconds,

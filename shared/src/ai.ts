@@ -8,7 +8,20 @@ import {
 } from './players';
 import { nextRandom } from './rng';
 import { SHOT_SWEET, baseMakeChance } from './shot';
-import { NO_INPUT, type Difficulty, type GameState, type PlayerInput, type PlayerState } from './types';
+import {
+  activePlay,
+  choosePlay,
+  cohesionOf,
+  curlSpot,
+  defenderOf,
+  doubled,
+  passOffChance,
+  popSpot,
+  postSpot,
+  screenCaught,
+  startPlay,
+} from './plays';
+import { NO_INPUT, type Difficulty, type GameState, type PlayState, type PlayerInput, type PlayerState } from './types';
 
 interface Skill {
   /** Std-dev-ish error on the shot-meter release. */
@@ -27,16 +40,18 @@ interface Skill {
   helpRange: number;
   /** 0..1: how hard the handler goes at a slower or weaker defender. */
   mismatch: number;
+  /** Runs the whole playbook (else only the pick-and-roll). */
+  playbook: boolean;
 }
 
 const SKILLS: Record<Difficulty, Skill> = {
-  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0 },
-  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0 },
-  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0 },
+  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false },
+  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false },
+  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false },
   // Expert reads the floor: more screens, earlier help, goes at mismatches.
-  expert: { shotErr: 0.035, shootThreshold: 0.88, stealRate: 0.14, blockRate: 0.9, react: 1, screenRate: 0.38, switchRate: 0.42, helpRange: 5.5, mismatch: 0.3 },
+  expert: { shotErr: 0.035, shootThreshold: 0.88, stealRate: 0.14, blockRate: 0.9, react: 1, screenRate: 0.38, switchRate: 0.42, helpRange: 5.5, mismatch: 0.3, playbook: true },
   // Hall of Fame: patient (good shots only), near-perfect release, hunts mismatches.
-  legend: { shotErr: 0.022, shootThreshold: 0.95, stealRate: 0.16, blockRate: 1, react: 1, screenRate: 0.42, switchRate: 0.5, helpRange: 6, mismatch: 0.55 },
+  legend: { shotErr: 0.022, shootThreshold: 0.95, stealRate: 0.16, blockRate: 1, react: 1, screenRate: 0.42, switchRate: 0.5, helpRange: 6, mismatch: 0.55, playbook: true },
 };
 
 /** Offensive spots as (distance from the hoop toward mid-court, z). */
@@ -295,6 +310,26 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
     return steer(p, outOfPaint(p, hx), true);
   }
 
+  // A post-up: back him down and shoot over him, or kick it out of a double team.
+  if (p.ai.mode === 'post') {
+    if (distHoop < 2.3 || p.ai.modeTimer <= 0) return shootNow(state, p, sk);
+    if (doubled(state, p) && p.ai.decisionTimer <= 0) {
+      p.ai.decisionTimer = 0.4;
+      const t = bestPass(state, p, false);
+      if (t && t.value > 0.8) {
+        p.ai.mode = 'none';
+        return passTo(t.m);
+      }
+    }
+    return steer(p, rim, false, 0.55);
+  }
+
+  const play = activePlay(state, p.team);
+  if (play && play.handlerId === p.id && state.shotClock > 5) {
+    const act = runPlay(state, p, play, holderHasSpot);
+    if (act) return act;
+  }
+
   if (p.ai.mode === 'drive') {
     if (distHoop < 2.3) return shootNow(state, p, sk);
     const blocked = opponents(state, p.team).some((o) => {
@@ -349,12 +384,42 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
     p.ai.screenSide = Math.sign(p.pos.z) || (rand(state) < 0.5 ? 1 : -1);
     return steer(p, rim, true);
   }
-  if (p.slot <= 1 && distHoop > 6.3 && rand(state) < sk.screenRate) callScreen(state, p);
+  if (p.slot <= 1 && distHoop > 6.3 && !play && rand(state) < sk.screenRate) {
+    if (sk.playbook) startPlay(state, p.team, choosePlay(state, p));
+    else callScreen(state, p);
+  }
   if (state.shotClock < 8 && mine > 0.7) return shootNow(state, p, sk);
   if (state.shotClock < 10 && pass && passValue > 0.8 && rand(state) < 0.3) return passTo(pass.m);
   // Probe: jab toward a slightly different spot.
   const jitter = { x: holderHasSpot.x + (rand(state) - 0.5) * 2.5, z: holderHasSpot.z + (rand(state) - 0.5) * 3 };
   return steer(p, jitter);
+}
+
+/**
+ * The handler's part in a play: wait for it to develop, then get the ball to
+ * its man (a team that knows each other less sometimes hesitates). Null lets
+ * him play on as usual.
+ */
+function runPlay(state: GameState, p: PlayerState, play: PlayState, spot: Target): PlayerInput | null {
+  if (play.kind === 'pnr' || play.kind === 'pnp') {
+    // The screen sets off the drive (screenAi); until then, wait for it.
+    return play.stage === 0 ? steer(p, spot, false, 0.5) : null;
+  }
+  if (play.stage >= 2) return null;
+  const target = state.players[play.targetId];
+  if (!target) return null;
+  let ready = false;
+  if (play.kind === 'handoff') ready = hdist(target.pos, p.pos) < 1.5;
+  else if (play.kind === 'offscreen') ready = play.stage >= 1 && (hdist(target.pos, curlSpot(state, target)) < 1.3 || openness(state, target) > 2.4);
+  else ready = target.ai.arrived && laneRisk(state, p, target) < 0.5;
+  if (!ready) return play.kind === 'handoff' ? NO_INPUT : steer(p, spot, false, 0.5);
+  if (play.late && p.ai.decisionTimer > 0) return NO_INPUT;
+  if (!play.late && rand(state) < passOffChance(cohesionOf(state, p.team)) * 1.2) {
+    play.late = true;
+    p.ai.decisionTimer = 0.45;
+    return NO_INPUT;
+  }
+  return passTo(target);
 }
 
 /**
@@ -410,6 +475,7 @@ function offBallAi(state: GameState, p: PlayerState, holder: PlayerState | null)
     return steer(p, outOfPaint(p, hx), true);
   }
   if (p.ai.mode === 'screen') return screenAi(state, p, holder);
+  if (p.ai.mode === 'handoff' || p.ai.mode === 'curl' || p.ai.mode === 'post' || p.ai.mode === 'pop') return playRoleAi(state, p, holder);
   if (p.ai.mode === 'roll' || p.ai.mode === 'cut') {
     if (p.ai.modeTimer > 0) return steer(p, { x: hx - s * 1.0, z: p.ai.screenSide * 0.7 }, true);
     p.ai.mode = 'none';
@@ -430,41 +496,95 @@ function offBallAi(state: GameState, p: PlayerState, holder: PlayerState | null)
 }
 
 function screenAi(state: GameState, p: PlayerState, holder: PlayerState | null): PlayerInput {
-  const guard = holder ? state.players.find((o) => state.assign[o.id] === holder.id) : undefined;
-  if (!holder || !guard || holder.team !== p.team || p.ai.modeTimer <= 0) {
+  const play = activePlay(state, p.team);
+  const mine = play && play.screenerId === p.id ? play : null;
+  // An off-ball screen frees the shooter; the others free the ball handler.
+  const victim = mine?.kind === 'offscreen' ? state.players[mine.targetId] : holder;
+  const guard = victim ? defenderOf(state, victim) : undefined;
+  if (!holder || !victim || !guard || holder.team !== p.team || p.ai.modeTimer <= 0) {
     p.ai.mode = 'none';
     p.ai.arrived = false;
     return NO_INPUT;
   }
-  // Set up just beside the on-ball defender, on the screener's side.
+  // A team that does not know each other yet is slow to get going.
+  if (mine && mine.wait > 0 && !p.ai.arrived) {
+    mine.wait -= DT;
+    return NO_INPUT;
+  }
   const hx = attackHoop(state, p.team);
-  const ux = hx - holder.pos.x;
-  const uz = -holder.pos.z;
-  const ul = Math.hypot(ux, uz) || 1;
-  const px = -uz / ul;
-  const pz = ux / ul;
   const side = p.ai.screenSide;
-  const spot = { x: guard.pos.x + px * side * 0.75 - (ux / ul) * 0.1, z: guard.pos.z + pz * side * 0.75 - (uz / ul) * 0.1 };
+  let spot: Target;
+  if (mine?.kind === 'offscreen') {
+    // Between the shooter's man and where the shooter is heading.
+    const d = dirTo(guard.pos, curlSpot(state, victim));
+    spot = { x: guard.pos.x + d.x * 0.8, z: guard.pos.z + d.z * 0.8 };
+  } else {
+    // Just beside the on-ball defender, on the screener's side.
+    const ux = hx - holder.pos.x;
+    const uz = -holder.pos.z;
+    const ul = Math.hypot(ux, uz) || 1;
+    const px = -uz / ul;
+    const pz = ux / ul;
+    spot = { x: guard.pos.x + px * side * 0.75 - (ux / ul) * 0.1, z: guard.pos.z + pz * side * 0.75 - (uz / ul) * 0.1 };
+  }
   if (!p.ai.arrived && hdist(p.pos, spot) < 0.45) {
     p.ai.arrived = true;
     p.ai.modeTimer = 0.7;
+    if (mine) mine.stage = Math.max(mine.stage, 1);
+    screenCaught(state, p, guard);
   }
   if (p.ai.arrived) {
     if (p.ai.modeTimer <= 0.05) {
-      // Handler turns the corner away from the screen side; screener rolls.
-      if (holder.ai.mode === 'none' && state.controlled[holder.team] !== holder.id) {
+      // Handler turns the corner away from the screen side; screener rolls (or pops out).
+      if (mine?.kind !== 'offscreen' && holder.ai.mode === 'none' && state.controlled[holder.team] !== holder.id) {
         holder.ai.mode = 'drive';
         holder.ai.modeTimer = 1.6;
         holder.ai.screenSide = -side;
         holder.ai.decisionTimer = 0.2;
       }
-      p.ai.mode = 'roll';
-      p.ai.modeTimer = 1.8;
+      p.ai.mode = mine?.kind === 'pnp' ? 'pop' : 'roll';
+      p.ai.modeTimer = mine?.kind === 'pnp' ? 2.4 : 1.8;
       p.ai.arrived = false;
     }
     return NO_INPUT;
   }
   return steer(p, spot, true);
+}
+
+/** Parts in a play away from the ball: come for a handoff, curl off a screen, seal in the post, pop out. */
+function playRoleAi(state: GameState, p: PlayerState, holder: PlayerState | null): PlayerInput {
+  const play = activePlay(state, p.team);
+  const mode = p.ai.mode;
+  if (mode === 'pop') {
+    if (p.ai.modeTimer > 0) return steer(p, popSpot(state, p), true);
+    p.ai.mode = 'none';
+    return NO_INPUT;
+  }
+  if (!play || play.targetId !== p.id || !holder || holder.team !== p.team) {
+    p.ai.mode = 'none';
+    p.ai.arrived = false;
+    return NO_INPUT;
+  }
+  if (mode === 'handoff') {
+    // Run at the handler and take it from his hands.
+    const d = dirTo(holder.pos, p.pos);
+    const at = { x: holder.pos.x + d.x * 0.9, z: holder.pos.z + d.z * 0.9 };
+    if (hdist(p.pos, holder.pos) < 1.3) return NO_INPUT;
+    return steer(p, at, hdist(p.pos, at) > 2);
+  }
+  if (mode === 'curl') {
+    const hx = attackHoop(state, p.team);
+    if (play.stage < 1) return steer(p, spotFor(p, hx, holder), false);
+    const spot = curlSpot(state, p);
+    return hdist(p.pos, spot) < 0.5 ? NO_INPUT : steer(p, spot, true);
+  }
+  // Post: get to the block and seal.
+  const spot = postSpot(state, p);
+  if (!p.ai.arrived && hdist(p.pos, spot) < 0.5) {
+    p.ai.arrived = true;
+    play.stage = Math.max(play.stage, 1);
+  }
+  return p.ai.arrived ? NO_INPUT : steer(p, spot, true);
 }
 
 // ----------------------------------------------------------------- defence
@@ -498,6 +618,11 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
   const manId = state.assign[p.id];
   const man = manId >= 0 ? state.players[manId] : null;
   const jump = maybeBlock(state, p, sk);
+  // Hung up on a screen.
+  if ((p.ai.stuck ?? 0) > 0) {
+    p.ai.stuck = (p.ai.stuck ?? 0) - DT;
+    return { ...NO_INPUT, jump };
+  }
   if (!man) return { ...steer(p, { x: rim.x - Math.sign(rim.x) * 2, z: 0 }), jump };
 
   // Switch when caught on a set screen.

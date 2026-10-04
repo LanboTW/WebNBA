@@ -1,4 +1,5 @@
 import { aiInput, callScreen } from './ai';
+import { PLAY_KINDS, startPlay, updatePlays } from './plays';
 import { giveBall, updateBall } from './ball';
 import { updateEnergy } from './bench';
 import { BALL_RADIUS, DT, SHOT_CLOCK, attackHoop } from './constants';
@@ -161,6 +162,7 @@ export function createGame(setup: GameSetup): GameState {
     switchLatch: [false, false],
     assign,
     ballCall: null,
+    plays: [null, null],
     events: [],
   };
   for (const team of [0, 1] as const) {
@@ -196,6 +198,8 @@ export function step(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput
   lockSolo(state);
   if (soloHuman(state)) handleSoloCalls(state, inputs[0]);
   else handleSwitching(state, inputs);
+  handlePlayCalls(state, inputs);
+  updatePlays(state);
   if (state.ballCall && (state.ballCall.timer -= DT) <= 0) state.ballCall = null;
   if (state.settings.mode === 'game') handleTimeoutInput(state, inputs);
 
@@ -253,6 +257,17 @@ function handleSoloCalls(state: GameState, inp: PlayerInput | undefined): void {
     state.events.push({ type: 'call', kind: 'pick', playerId: me.id, ok: callScreen(state, me) });
   } else if (holder && holder.team !== me.team) {
     state.events.push({ type: 'call', kind: 'switch', playerId: me.id, ok: callSwitch(state, me) });
+  }
+}
+
+/** A person calls a play (1-5): run around the ball, or for them when they are off it. */
+function handlePlayCalls(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput>>): void {
+  for (const team of state.settings.humanTeams) {
+    const kind = PLAY_KINDS[(inputs[team]?.play ?? 0) - 1];
+    if (!kind) continue;
+    const me = state.players[state.controlled[team]] ?? null;
+    const ok = startPlay(state, team, kind, me);
+    state.events.push({ type: 'call', kind: 'play', playerId: me?.id ?? -1, ok, play: kind });
   }
 }
 

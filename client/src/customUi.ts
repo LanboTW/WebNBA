@@ -3,6 +3,7 @@ import {
   CUSTOM_LIMITS,
   POSITIONS,
   RATING_KEYS,
+  customCohesion,
   customTeamInfo,
   findTeam,
   hasMember,
@@ -256,7 +257,7 @@ function teamsTab(): string {
           : `<button type="button" class="small" data-askdel="${t.id}">刪除</button>`;
       return (
         `<div class="curow${tdraft?.id === t.id ? ' sel' : ''}"><span class="cuabbr" style="background:${esc(t.primary)};color:${esc(t.secondary)}">${esc(info.abbr)}</span>` +
-        `<div class="cuinfo"><b>${esc(info.name)}</b><span>${info.players.length} 人・評分 ${ok ? teamRating(info) : '—'}${ok ? '' : '・人數不足，不能上場'}</span></div>` +
+        `<div class="cuinfo"><b>${esc(info.name)}</b><span>${info.players.length} 人・評分 ${ok ? teamRating(info) : '—'}${ok ? '' : '・人數不足，不能上場'}・凝聚力 ${customCohesion(t)}</span></div>` +
         `<button type="button" class="small" data-tedit="${t.id}">編輯</button>${del}</div>`
       );
     })
