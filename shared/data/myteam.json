@@ -1,5 +1,5 @@
 {
-  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins).",
+  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins, dynasty, limited, events). Dynasty (街頭王朝): 3v3 levels like the ladder, name = the crew. Limited (限定關卡): rule {positions, maxOvr, sameTeam, maxHeight / minHeight (starters average, m), noRentals, tiers, baseOnly}, size 3 or 5 (5 needs a team). Events (活動關卡): weekly themes in turn; each level has size, offset (added to your period base rating), difficulty, reward and pick {sort: rating key or height, positions, teams, conference, group}.",
   "packs": [
     {
       "id": "standard",
@@ -444,6 +444,821 @@
       "stat": "bigWins",
       "target": 1,
       "reward": { "coins": 400 }
+    },
+    {
+      "id": "dy1",
+      "text": "街頭王朝通關第 1 期",
+      "stat": "dynasty",
+      "target": 1,
+      "reward": { "coins": 400 }
+    },
+    {
+      "id": "dy3",
+      "text": "街頭王朝通關 3 期",
+      "stat": "dynasty",
+      "target": 3,
+      "reward": { "coins": 800, "rental": "pink" }
+    },
+    {
+      "id": "dy6",
+      "text": "街頭王朝全部 6 期通關",
+      "stat": "dynasty",
+      "target": 6,
+      "reward": { "coins": 1500, "pack": "premium" }
+    },
+    {
+      "id": "lt5",
+      "text": "完成 5 個限定關卡",
+      "stat": "limited",
+      "target": 5,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "lt10",
+      "text": "完成 10 個限定關卡",
+      "stat": "limited",
+      "target": 10,
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "lt20",
+      "text": "完成全部 20 個限定關卡",
+      "stat": "limited",
+      "target": 20,
+      "reward": { "coins": 1200, "pack": "premium" }
+    },
+    {
+      "id": "ev3",
+      "text": "累計完成 3 個活動關卡",
+      "stat": "events",
+      "target": 3,
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "ev10",
+      "text": "累計完成 10 個活動關卡",
+      "stat": "events",
+      "target": 10,
+      "reward": { "coins": 700 }
+    },
+    {
+      "id": "ev25",
+      "text": "累計完成 25 個活動關卡",
+      "stat": "events",
+      "target": 25,
+      "reward": { "coins": 1500, "pack": "premium" }
+    }
+  ],
+  "dynasty": [
+    {
+      "id": "d1l1",
+      "period": 1,
+      "name": "布魯克林天橋幫",
+      "ovr": 68,
+      "difficulty": "easy",
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "d1l2",
+      "period": 1,
+      "name": "皇后區夜貓",
+      "ovr": 71,
+      "difficulty": "normal",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "d1l3",
+      "period": 1,
+      "name": "哈林區快槍",
+      "ovr": 73,
+      "difficulty": "normal",
+      "reward": { "coins": 200, "rental": "blue" }
+    },
+    {
+      "id": "d1l4",
+      "period": 1,
+      "name": "布朗克斯磚牆",
+      "ovr": 75,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "d1l5",
+      "period": 1,
+      "name": "洛克公園王者",
+      "ovr": 78,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "standard" }
+    },
+    {
+      "id": "d2l1",
+      "period": 2,
+      "name": "芝加哥西區風暴",
+      "ovr": 76,
+      "difficulty": "easy",
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "d2l2",
+      "period": 2,
+      "name": "底特律引擎",
+      "ovr": 79,
+      "difficulty": "normal",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "d2l3",
+      "period": 2,
+      "name": "密爾瓦基鹿角",
+      "ovr": 81,
+      "difficulty": "normal",
+      "reward": { "coins": 200, "rental": "purple" }
+    },
+    {
+      "id": "d2l4",
+      "period": 2,
+      "name": "克里夫蘭鐵匠",
+      "ovr": 83,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "d2l5",
+      "period": 2,
+      "name": "印第安納玉米田",
+      "ovr": 84,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "standard" }
+    },
+    {
+      "id": "d3l1",
+      "period": 3,
+      "name": "威尼斯海灘浪人",
+      "ovr": 81,
+      "difficulty": "easy",
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "d3l2",
+      "period": 3,
+      "name": "康普頓街頭魂",
+      "ovr": 83,
+      "difficulty": "normal",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "d3l3",
+      "period": 3,
+      "name": "奧克蘭碼頭幫",
+      "ovr": 85,
+      "difficulty": "normal",
+      "reward": { "coins": 200, "rental": "gold" }
+    },
+    {
+      "id": "d3l4",
+      "period": 3,
+      "name": "舊金山霧城",
+      "ovr": 86,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "d3l5",
+      "period": 3,
+      "name": "長堤夕陽王",
+      "ovr": 88,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "standard" }
+    },
+    {
+      "id": "d4l1",
+      "period": 4,
+      "name": "休士頓火箭巷",
+      "ovr": 85,
+      "difficulty": "easy",
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "d4l2",
+      "period": 4,
+      "name": "達拉斯牛仔場",
+      "ovr": 87,
+      "difficulty": "normal",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "d4l3",
+      "period": 4,
+      "name": "聖安東尼奧河岸",
+      "ovr": 89,
+      "difficulty": "normal",
+      "reward": { "coins": 200, "rental": "pink" }
+    },
+    {
+      "id": "d4l4",
+      "period": 4,
+      "name": "孟菲斯藍調",
+      "ovr": 90,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "d4l5",
+      "period": 4,
+      "name": "紐奧良爵士角",
+      "ovr": 92,
+      "difficulty": "hard",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    },
+    {
+      "id": "d5l1",
+      "period": 5,
+      "name": "費城自由鐘",
+      "ovr": 88,
+      "difficulty": "easy",
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "d5l2",
+      "period": 5,
+      "name": "波士頓港口",
+      "ovr": 90,
+      "difficulty": "normal",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "d5l3",
+      "period": 5,
+      "name": "巴爾的摩鋼骨",
+      "ovr": 92,
+      "difficulty": "normal",
+      "reward": { "coins": 200, "rental": "orange" }
+    },
+    {
+      "id": "d5l4",
+      "period": 5,
+      "name": "華盛頓紀念碑",
+      "ovr": 94,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "d5l5",
+      "period": 5,
+      "name": "費城雙塔",
+      "ovr": 95,
+      "difficulty": "expert",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    },
+    {
+      "id": "d6l1",
+      "period": 6,
+      "name": "西岸傳說",
+      "ovr": 91,
+      "difficulty": "easy",
+      "reward": { "coins": 150 }
+    },
+    {
+      "id": "d6l2",
+      "period": 6,
+      "name": "東岸傳說",
+      "ovr": 93,
+      "difficulty": "normal",
+      "reward": { "coins": 200 }
+    },
+    {
+      "id": "d6l3",
+      "period": 6,
+      "name": "南方之王",
+      "ovr": 94,
+      "difficulty": "normal",
+      "reward": { "coins": 200, "rental": "black" }
+    },
+    {
+      "id": "d6l4",
+      "period": 6,
+      "name": "北方之王",
+      "ovr": 96,
+      "difficulty": "normal",
+      "reward": { "coins": 250 }
+    },
+    {
+      "id": "d6l5",
+      "period": 6,
+      "name": "街頭名人堂",
+      "ovr": 97,
+      "difficulty": "expert",
+      "boss": true,
+      "reward": { "coins": 500, "pack": "premium" }
+    }
+  ],
+  "limited": [
+    {
+      "id": "x01",
+      "name": "後場風暴",
+      "rule": {
+        "positions": [
+          "PG",
+          "SG"
+        ]
+      },
+      "size": 3,
+      "ovr": 72,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "x02",
+      "name": "小兵立大功",
+      "rule": { "maxOvr": 75 },
+      "size": 3,
+      "ovr": 72,
+      "difficulty": "normal",
+      "reward": { "coins": 300 }
+    },
+    {
+      "id": "x03",
+      "name": "基本功",
+      "rule": { "baseOnly": true },
+      "size": 5,
+      "team": "SAC",
+      "ovr": 76,
+      "difficulty": "normal",
+      "reward": { "coins": 350 }
+    },
+    {
+      "id": "x04",
+      "name": "不靠租借",
+      "rule": { "noRentals": true },
+      "size": 5,
+      "team": "ORL",
+      "ovr": 77,
+      "difficulty": "normal",
+      "reward": { "coins": 350 }
+    },
+    {
+      "id": "x05",
+      "name": "矮個子聯盟",
+      "rule": { "maxHeight": 1.95 },
+      "size": 3,
+      "ovr": 76,
+      "difficulty": "normal",
+      "reward": { "coins": 350, "rental": "gold" }
+    },
+    {
+      "id": "x06",
+      "name": "同隊默契",
+      "rule": { "sameTeam": true },
+      "size": 3,
+      "ovr": 76,
+      "difficulty": "normal",
+      "reward": { "coins": 400 }
+    },
+    {
+      "id": "x07",
+      "name": "雙塔",
+      "rule": {
+        "positions": [
+          "PF",
+          "C"
+        ]
+      },
+      "size": 3,
+      "ovr": 78,
+      "difficulty": "normal",
+      "reward": { "coins": 400 }
+    },
+    {
+      "id": "x08",
+      "name": "白綠逆襲",
+      "rule": {
+        "tiers": [
+          "white",
+          "green"
+        ]
+      },
+      "size": 5,
+      "team": "CHI",
+      "ovr": 74,
+      "difficulty": "normal",
+      "reward": { "coins": 400 }
+    },
+    {
+      "id": "x09",
+      "name": "巨人陣",
+      "rule": { "minHeight": 2.03 },
+      "size": 5,
+      "team": "MEM",
+      "ovr": 80,
+      "difficulty": "normal",
+      "reward": { "coins": 450 }
+    },
+    {
+      "id": "x10",
+      "name": "鋒線大軍",
+      "rule": {
+        "positions": [
+          "SF",
+          "PF"
+        ]
+      },
+      "size": 3,
+      "ovr": 80,
+      "difficulty": "hard",
+      "reward": { "coins": 500, "pack": "standard" }
+    },
+    {
+      "id": "x11",
+      "name": "藍領精神",
+      "rule": { "maxOvr": 80 },
+      "size": 5,
+      "team": "IND",
+      "ovr": 81,
+      "difficulty": "normal",
+      "reward": { "coins": 450 }
+    },
+    {
+      "id": "x12",
+      "name": "純正血統",
+      "rule": { "sameTeam": true },
+      "size": 5,
+      "team": "DAL",
+      "ovr": 82,
+      "difficulty": "normal",
+      "reward": { "coins": 500 }
+    },
+    {
+      "id": "x13",
+      "name": "後衛之城",
+      "rule": {
+        "positions": [
+          "PG",
+          "SG"
+        ]
+      },
+      "size": 5,
+      "team": "MIA",
+      "ovr": 82,
+      "difficulty": "hard",
+      "reward": { "coins": 500, "rental": "pink" }
+    },
+    {
+      "id": "x14",
+      "name": "靠自己",
+      "rule": { "noRentals": true, "maxOvr": 85 },
+      "size": 3,
+      "ovr": 84,
+      "difficulty": "hard",
+      "reward": { "coins": 500 }
+    },
+    {
+      "id": "x15",
+      "name": "小球時代",
+      "rule": { "maxHeight": 1.98 },
+      "size": 5,
+      "team": "GSW",
+      "ovr": 85,
+      "difficulty": "hard",
+      "reward": { "coins": 550 }
+    },
+    {
+      "id": "x16",
+      "name": "原版就好",
+      "rule": { "baseOnly": true },
+      "size": 3,
+      "ovr": 86,
+      "difficulty": "hard",
+      "reward": { "coins": 550 }
+    },
+    {
+      "id": "x17",
+      "name": "城市之光",
+      "rule": { "sameTeam": true, "noRentals": true },
+      "size": 3,
+      "ovr": 86,
+      "difficulty": "hard",
+      "reward": { "coins": 600, "pack": "standard" }
+    },
+    {
+      "id": "x18",
+      "name": "禁區封鎖",
+      "rule": { "minHeight": 2.06 },
+      "size": 3,
+      "ovr": 88,
+      "difficulty": "hard",
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "x19",
+      "name": "金卡以下",
+      "rule": { "maxOvr": 89 },
+      "size": 5,
+      "team": "BOS",
+      "ovr": 90,
+      "difficulty": "expert",
+      "reward": { "coins": 700, "rental": "orange" }
+    },
+    {
+      "id": "x20",
+      "name": "終極考驗",
+      "rule": { "noRentals": true },
+      "size": 5,
+      "team": "OKC",
+      "ovr": 94,
+      "difficulty": "expert",
+      "reward": { "coins": 1000, "pack": "premium" }
+    }
+  ],
+  "events": [
+    {
+      "id": "shooters",
+      "name": "神射手週",
+      "desc": "對手是全聯盟三分最準的射手",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "sort": "three" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "sort": "three" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "three" }
+        }
+      ]
+    },
+    {
+      "id": "towers",
+      "name": "禁區巨塔週",
+      "desc": "對手是全聯盟最高的長人",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "sort": "height" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "sort": "height" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "height" }
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "name": "控衛週",
+      "desc": "對手全是頂尖控球後衛",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": {
+            "positions": [
+              "PG"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": {
+            "positions": [
+              "PG"
+            ]
+          }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": {
+            "positions": [
+              "PG"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "cali",
+      "name": "加州週",
+      "desc": "勇士、湖人、快艇、國王的明星聯軍",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": {
+            "teams": [
+              "GSW",
+              "LAL",
+              "LAC",
+              "SAC"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": {
+            "teams": [
+              "GSW",
+              "LAL",
+              "LAC",
+              "SAC"
+            ]
+          }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": {
+            "teams": [
+              "GSW",
+              "LAL",
+              "LAC",
+              "SAC"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "east",
+      "name": "NBA東明星週",
+      "desc": "NBA東的明星隊",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "conference": "East" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "conference": "East" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "conference": "East" }
+        }
+      ]
+    },
+    {
+      "id": "west",
+      "name": "NBA西明星週",
+      "desc": "NBA西的明星隊",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "conference": "West" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "conference": "West" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "conference": "West" }
+        }
+      ]
+    },
+    {
+      "id": "thieves",
+      "name": "抄截大師週",
+      "desc": "對手是手最快的防守者",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "sort": "steal" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "sort": "steal" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "steal" }
+        }
+      ]
+    },
+    {
+      "id": "flyers",
+      "name": "飛人週",
+      "desc": "對手是彈跳最好的飛人",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "sort": "jump" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "sort": "jump" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "jump" }
+        }
+      ]
+    },
+    {
+      "id": "taiwan",
+      "name": "台灣之光週",
+      "desc": "台灣分組的球員組隊挑戰你",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": { "coins": 300 },
+          "pick": { "group": "台灣" }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "normal",
+          "reward": { "coins": 400 },
+          "pick": { "group": "台灣" }
+        },
+        {
+          "size": 3,
+          "offset": 6,
+          "difficulty": "hard",
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "group": "台灣" }
+        }
+      ]
     }
   ]
 }

@@ -1,7 +1,25 @@
 import {
   DECK_MAX,
-  GAME_COINS,
+  DYNASTY,
   LEVELS,
+  LIMITED,
+  PRACTICE_COINS,
+  cardAllowed,
+  dynastyCleared,
+  dynastyCrew,
+  dynastyLevels,
+  dynastyOpen,
+  eventBase,
+  eventEnds,
+  eventKey,
+  eventTeam,
+  eventTheme,
+  eventWeek,
+  limitedTeam,
+  lineupProblem,
+  practiceCoins,
+  ruleText,
+  type LimitedDef,
   MISSIONS,
   MISSIONS_PER_PERIOD,
   MYTEAM_INFO,
@@ -46,7 +64,6 @@ import {
   type GameOutcome,
   type GameSettings,
   type GameState,
-  type LevelDef,
   type MyTeamSave,
   type OwnedCard,
   type PackDef,
@@ -64,17 +81,18 @@ import { myteam } from './myteamStore';
 import { coinsText, wallet } from './wallet';
 
 /**
- * The MyTeam screen: games (ladder, quick, street 3v3), missions, deck,
- * collection and pack shop, plus the pack-opening reveal. Everything is saved through the myteam store; coins
+ * The MyTeam screen: games (ladder, street dynasty, limited and weekly event
+ * levels), missions, deck, collection, practice games and the pack shop, plus the pack-opening reveal. Everything is saved through the myteam store; coins
  * come from the account wallet.
  */
 
-type Tab = 'play' | 'missions' | 'deck' | 'cards' | 'shop';
+type Tab = 'play' | 'missions' | 'deck' | 'cards' | 'practice' | 'shop';
 const TABS: [Tab, string][] = [
   ['play', '比賽'],
   ['missions', '任務'],
   ['deck', '牌組'],
   ['cards', '收藏'],
+  ['practice', '隨機比賽（練習）'],
   ['shop', '卡包商店'],
 ];
 
@@ -234,10 +252,21 @@ export interface MyTeamHost {
   ): void;
 }
 
+type PlayMode = 'ladder' | 'dynasty' | 'limited' | 'event';
+const PLAY_MODES: [PlayMode, string][] = [
+  ['ladder', '挑戰之路'],
+  ['dynasty', '街頭王朝'],
+  ['limited', '限定關卡'],
+  ['event', '活動關卡'],
+];
+
 let host: MyTeamHost | null = null;
 let ladderPeriod = 0;
-/** Deck refs picked for street games. */
+/** Deck refs picked for 3v3 games (dynasty, events, practice). */
 let streetPick: string[] = [];
+/** The limited level being set up and the cards picked for it (any owned card). */
+let limitedSel: string | null = null;
+let limitedPick: string[] = [];
 const DIFF_LABEL = DIFFICULTY_LABEL;
 
 function pref(key: string, fallback: string): string {
@@ -255,6 +284,11 @@ function setPref(key: string, value: string): void {
   }
 }
 
+const playMode = (): PlayMode => {
+  const m = pref('mode', 'ladder') as PlayMode;
+  return PLAY_MODES.some(([k]) => k === m) ? m : 'ladder';
+};
+
 function rewardText(r: Reward): string {
   const bits: string[] = [];
   if (r.coins) bits.push(`${r.coins} 金幣`);
@@ -270,66 +304,244 @@ function nextPeriodText(s: MyTeamSave): string {
   return `下一期：打完第 ${s.period} 期挑戰之路，或再領 ${need} 個任務獎勵`;
 }
 
-function playTab(): string {
-  const s = myteam.save;
-  if (!ladderPeriod || ladderPeriod > s.period) ladderPeriod = s.period;
-  const lineup = deckLineup(s);
-  const full = lineup.length >= 5;
-  const periods = Array.from({ length: PERIODS }, (_, i) => i + 1)
-    .map((p) => {
-      const open = p <= s.period;
-      return `<button type="button" class="chip${p === ladderPeriod ? ' on' : ''}" data-lp="${p}"${open ? '' : ' disabled'}>第 ${p} 期${
-        periodCleared(s, p) ? ' ✓' : open ? '' : ' 🔒'
+const opt = (v: string, label: string, cur: string) => `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`;
+
+/** Chips to pick cards: `on` refs are picked, the rest open while there is room and `allowed` says so. */
+function pickChips(cards: OwnedCard[], on: string[], max: number, attr: string, allowed: (c: OwnedCard) => boolean = () => true): string {
+  return cards
+    .map((c) => {
+      const ref = refOf(c);
+      const sel = on.includes(ref);
+      const open = sel || (on.length < max && allowed(c));
+      return `<button type="button" class="chip${sel ? ' on' : ''}" ${attr}="${esc(ref)}"${open ? '' : ' disabled'}>${c.position} ${esc(c.name)} ${c.ovr}${
+        isRental(c) ? '（租）' : ''
       }</button>`;
     })
     .join('');
+}
+
+function periodChips(done: (p: number) => boolean): string {
+  const s = myteam.save;
+  return Array.from({ length: PERIODS }, (_, i) => i + 1)
+    .map((p) => {
+      const open = p <= s.period;
+      return `<button type="button" class="chip${p === ladderPeriod ? ' on' : ''}" data-lp="${p}"${open ? '' : ' disabled'}>第 ${p} 期${done(p) ? ' ✓' : open ? '' : ' 🔒'}</button>`;
+    })
+    .join('');
+}
+
+/** A level row: badge, title, a line of facts, and its button (or a lock). */
+function levelRow(o: { cls?: string; badge: string; title: string; line: string; btn: string }): string {
+  return `<div class="mtlevel${o.cls ?? ''}">${o.badge}<div class="lvinfo"><b>${o.title}</b><span>${o.line}</span></div>${o.btn}</div>`;
+}
+
+const sizeBadge = (size: 3 | 5) => `<span class="lvbadge s${size}">${size}v${size}</span>`;
+
+/** The 3v3 lineup picker (from the deck) used by dynasty and event games. */
+function streetPicker(): string {
+  const lineup = deckLineup(myteam.save);
+  return (
+    `<h3 class="mth">街頭陣容<small>${streetPick.length}/3</small></h3><p class="fine left">3 對 3 的比賽用這 3 人，從牌組挑。</p>` +
+    `<div class="chips">${pickChips(lineup, streetPick, 3, 'data-sp')}</div>`
+  );
+}
+
+function settingsBox(street: boolean, full: boolean): string {
+  const quarter = pref('quarter', '180');
+  const target = pref('target', '21');
+  return (
+    `<h3 class="mth">比賽設定</h3><div class="row">` +
+    (full
+      ? `<label>5 對 5 每節長度<select id="mtQuarter">${opt('60', '1 分鐘', quarter)}${opt('120', '2 分鐘', quarter)}${opt('180', '3 分鐘', quarter)}${opt(
+          '300',
+          '5 分鐘',
+          quarter,
+        )}${opt('720', '12 分鐘', quarter)}</select></label>`
+      : '') +
+    (street ? `<label>3 對 3 搶分<select id="mtTarget">${opt('11', '11 分', target)}${opt('21', '21 分', target)}</select></label>` : '') +
+    `</div>`
+  );
+}
+
+function ladderHtml(full: boolean): string {
+  const s = myteam.save;
   const levels = periodLevels(ladderPeriod)
     .map((l, i) => {
       const team = findTeam(l.team);
       const done = s.cleared.includes(l.id);
       const open = levelOpen(s, l);
-      const btn = open
-        ? `<button type="button" class="small${done ? '' : ' go'}" data-level="${l.id}"${full ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>`
-        : '<span class="lock">🔒</span>';
-      return (
-        `<div class="mtlevel${done ? ' done' : ''}${l.boss ? ' boss' : ''}">` +
-        `${logoHtml(team, 'lvlogo')}<div class="lvinfo"><b>${l.boss ? '魔王關' : `第 ${i + 1} 關`}・${esc(team.name)}</b>` +
-        `<span>對手評分 ${l.ovr}・${DIFF_LABEL[l.difficulty]}・${done ? '已過關（再贏 100 金幣）' : `首勝：${rewardText(l.reward)}`}</span></div>${btn}</div>`
-      );
+      return levelRow({
+        cls: `${done ? ' done' : ''}${l.boss ? ' boss' : ''}`,
+        badge: logoHtml(team, 'lvlogo'),
+        title: `${l.boss ? '魔王關' : `第 ${i + 1} 關`}・${esc(team.name)}`,
+        line: `對手評分 ${l.ovr}・${DIFF_LABEL[l.difficulty]}・${done ? '已過關（再贏 100 金幣）' : `首勝：${rewardText(l.reward)}`}`,
+        btn: open ? `<button type="button" class="small${done ? '' : ' go'}" data-level="${l.id}"${full ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>` : '<span class="lock">🔒</span>',
+      });
     })
     .join('');
-  const picks = lineup
-    .map((c) => {
-      const ref = refOf(c);
-      const on = streetPick.includes(ref);
-      return `<button type="button" class="chip${on ? ' on' : ''}" data-sp="${esc(ref)}"${!on && streetPick.length >= 3 ? ' disabled' : ''}>${c.position} ${esc(
-        c.name,
-      )} ${c.ovr}${isRental(c) ? '（租）' : ''}</button>`;
+  return cols(
+    `<div class="chips">${periodChips((p) => periodCleared(s, p))}</div><div class="mtlevels">${levels}</div>`,
+    `<p class="fine left">挑戰之路：真實 NBA 球隊，能力調到關卡評分。打完一期全部關卡就開放下一期。用你的牌組 5 對 5，難度由關卡決定。</p>` +
+      settingsBox(false, true) +
+      '<p class="fine left">比賽中離開算輸、沒有金幣，租借卡有上場就扣一場。</p>',
+  );
+}
+
+function dynastyHtml(): string {
+  const s = myteam.save;
+  const ready = streetPick.length === 3;
+  const levels = dynastyLevels(ladderPeriod)
+    .map((d, i) => {
+      const done = s.cleared.includes(d.id);
+      const open = dynastyOpen(s, d);
+      const crew = dynastyCrew(d)
+        .map((p) => esc(p.name))
+        .join('、');
+      return levelRow({
+        cls: `${done ? ' done' : ''}${d.boss ? ' boss' : ''}`,
+        badge: sizeBadge(3),
+        title: `${d.boss ? '王者關' : `第 ${i + 1} 關`}・${esc(d.name)}`,
+        line: `${crew}・評分 ${d.ovr}・${DIFF_LABEL[d.difficulty]}・${done ? '已過關（再贏 100 金幣）' : `首勝：${rewardText(d.reward)}`}`,
+        btn: open ? `<button type="button" class="small${done ? '' : ' go'}" data-dynasty="${d.id}"${ready ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>` : '<span class="lock">🔒</span>',
+      });
     })
     .join('');
-  const diff = pref('diff', 'normal');
-  const quarter = pref('quarter', '180');
-  const target = pref('target', '21');
-  const opt = (v: string, label: string, cur: string) => `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`;
+  return cols(
+    `<div class="chips">${periodChips((p) => dynastyCleared(s, p))}</div><div class="mtlevels">${levels}</div>`,
+    `<p class="fine left">街頭王朝：一路打倒各地的街頭三人組，每期 5 關，依序解鎖；期數跟著挑戰之路開放。</p>` +
+      streetPicker() +
+      settingsBox(true, false) +
+      (ready ? '' : '<p class="fine left">先挑好 3 名街頭陣容才能開打。</p>'),
+    true,
+  );
+}
+
+/** Cards a limited level can use: every owned card and rental, best first. */
+const limitedCards = (): OwnedCard[] => [...allCards()].sort((a, b) => b.ovr - a.ovr || a.name.localeCompare(b.name));
+
+function limitedLineup(l: LimitedDef): { cards: OwnedCard[]; problem: string | null } {
+  const all = limitedCards();
+  const cards = limitedPick.map((r) => all.find((c) => refOf(c) === r)).filter((c): c is OwnedCard => !!c);
+  return { cards, problem: lineupProblem(l.rule, cards, l.size) };
+}
+
+function limitedHtml(): string {
+  const s = myteam.save;
+  const sel = LIMITED.find((l) => l.id === limitedSel) ?? null;
+  const rows = LIMITED.map((l, i) => {
+    const done = s.cleared.includes(l.id);
+    return levelRow({
+      cls: `${done ? ' done' : ''}${l.id === limitedSel ? ' sel' : ''}`,
+      badge: sizeBadge(l.size),
+      title: `${i + 1}. ${esc(l.name)}`,
+      line: `${ruleText(l.rule).join('・')}・對手 ${l.ovr}${l.team ? `（${esc(findTeam(l.team).name)}）` : ''}・${DIFF_LABEL[l.difficulty]}・${
+        done ? '已完成（再贏 100 金幣）' : rewardText(l.reward)
+      }`,
+      btn: `<button type="button" class="small${l.id === limitedSel ? ' go' : ''}" data-limsel="${l.id}">${l.id === limitedSel ? '設定中' : '選擇'}</button>`,
+    });
+  }).join('');
+  let right = '<p class="fine mtnodetail">選一個限定關卡，這裡挑符合條件的陣容。</p>';
+  if (sel) {
+    const { cards, problem } = limitedLineup(sel);
+    const all = limitedCards();
+    const fits = all.filter((c) => limitedPick.includes(refOf(c)) || (cardAllowed(sel.rule, c, cards) && !cards.some((x) => x.name === c.name)));
+    const shown = fits.slice(0, 60);
+    const avgH = cards.length ? Math.round((cards.reduce((t, c) => t + c.heightM, 0) / cards.length) * 100) : 0;
+    right =
+      `<h3 class="mth">${esc(sel.name)}<small>${sel.size} 對 ${sel.size}</small></h3><ul class="mtrules">${ruleText(sel.rule)
+        .map((r) => `<li>${esc(r)}</li>`)
+        .join('')}</ul>` +
+      `<p class="fine left">已選 ${cards.length}/${sel.size}${cards.length ? `・平均身高 ${avgH} 公分` : ''}${
+        sel.size === 5 ? '・板凳自動用其他符合條件的卡' : ''
+      }</p>` +
+      `<div class="chips mtscroll">${pickChips(shown, limitedPick, sel.size, 'data-lim')}${
+        fits.length > shown.length ? `<span class="fine">…還有 ${fits.length - shown.length} 張</span>` : ''
+      }${fits.length ? '' : '<span class="fine">收藏裡沒有符合條件的卡。</span>'}</div>` +
+      `<div class="mtplay"><span class="fine left">${problem && cards.length === sel.size ? esc(problem) : ''}</span>` +
+      `<button type="button" class="small go" data-act="limitedgame"${problem ? ' disabled' : ''}>開始</button></div>` +
+      settingsBox(sel.size === 3, sel.size === 5);
+  }
+  return cols(`<div class="mtlevels mtscroll">${rows}</div>`, right, true);
+}
+
+function eventHtml(full: boolean): string {
+  const s = myteam.save;
+  const week = eventWeek();
+  const theme = eventTheme(week);
+  const base = eventBase(s);
+  const days = Math.max(1, Math.ceil((eventEnds(week) - Date.now()) / 86_400_000));
+  const ready = streetPick.length === 3;
+  const rows = theme.levels
+    .map((lv, i) => {
+      const t = eventTeam(theme, i, base);
+      const done = s.events.includes(eventKey(week, i));
+      const can = lv.size === 3 ? ready : full;
+      return levelRow({
+        cls: done ? ' done' : '',
+        badge: sizeBadge(lv.size),
+        title: `活動 ${i + 1}・${t.players
+          .slice(0, lv.size)
+          .map((p) => esc(p.name))
+          .join('、')}`,
+        line: `評分 ${Math.min(99, base + lv.offset)}・${DIFF_LABEL[lv.difficulty]}・${done ? '本週已完成（再贏 100 金幣）' : `本週首勝：${rewardText(lv.reward)}`}`,
+        btn: `<button type="button" class="small${done ? '' : ' go'}" data-event="${i}"${can ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>`,
+      });
+    })
+    .join('');
+  return cols(
+    `<div class="mtevent"><b>${esc(theme.name)}</b><span>${esc(theme.desc)}・還有 ${days} 天換下一個活動</span></div><div class="mtlevels">${rows}</div>`,
+    `<p class="fine left">活動關卡每週一換主題，每關每週可以領一次獎勵。評分跟著你目前的期數（第 ${s.period} 期）。</p>` +
+      streetPicker() +
+      settingsBox(true, true),
+    true,
+  );
+}
+
+function playTab(): string {
+  const s = myteam.save;
+  if (!ladderPeriod || ladderPeriod > s.period) ladderPeriod = s.period;
+  const full = deckLineup(s).length >= 5;
+  const mode = playMode();
+  const body = mode === 'dynasty' ? dynastyHtml() : mode === 'limited' ? limitedHtml() : mode === 'event' ? eventHtml(full) : ladderHtml(full);
   return (
     `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span>${nextPeriodText(s)}</span></div>` +
-    (full ? '' : '<p class="msg">牌組至少要 5 張卡才能比賽，先到「牌組」分頁放卡。</p>') +
-    cols(
-      `<h3 class="mth">挑戰之路</h3><div class="chips">${periods}</div><div class="mtlevels">${levels}</div>`,
-      `<h3 class="mth">快速對戰</h3><div class="mtplay"><span class="fine left">對上和你牌組同等級的隨機 NBA 球隊。贏 ${GAME_COINS.win}、輸 ${GAME_COINS.loss} 金幣（再乘難度倍率）。</span>` +
-    `<button type="button" class="small go" data-act="quickgame"${full ? '' : ' disabled'}>開始</button></div>` +
-    `<h3 class="mth">街頭 3 對 3</h3><p class="fine left">從牌組挑 3 人（${streetPick.length}/3），對上 3 名同等級的隨機球員。</p><div class="chips">${picks}</div>` +
-    `<div class="mtplay"><label class="fine">搶 <select id="mtTarget">${opt('11', '11 分', target)}${opt('21', '21 分', target)}</select></label>` +
-    `<button type="button" class="small go" data-act="streetgame"${streetPick.length === 3 ? '' : ' disabled'}>開始</button></div>` +
-    `<h3 class="mth">比賽設定</h3><div class="row"><label>快速對戰／街頭難度<select id="mtDiff">${DIFFICULTIES.map((d) => opt(d, `${DIFF_LABEL[d]}（金幣 ×${DIFFICULTY_COINS[d]}）`, diff)).join('')}</select></label>` +
-    `<label>每節長度<select id="mtQuarter">${opt('60', '1 分鐘', quarter)}${opt('120', '2 分鐘', quarter)}${opt('180', '3 分鐘', quarter)}${opt(
-      '300',
-      '5 分鐘',
-      quarter,
-    )}${opt('720', '12 分鐘', quarter)}</select></label></div>` +
-      '<p class="fine left">比賽中離開算輸、沒有金幣，租借卡一樣扣一場。挑戰之路的難度由關卡決定。</p>',
-    )
+    `<nav class="tabs mtmodes">${PLAY_MODES.map(([k, l]) => `<button type="button" data-mode="${k}" class="${k === mode ? 'on' : ''}">${l}</button>`).join('')}</nav>` +
+    (full || mode === 'limited' ? '' : '<p class="msg">牌組至少要 5 張卡才能打 5 對 5，先到「牌組」分頁放卡。</p>') +
+    body
   );
+}
+
+/** 隨機比賽（練習）: random opponents, no rentals used, coins by game time. */
+function practiceTab(): string {
+  const s = myteam.save;
+  const size = pref('psize', '5');
+  const full = deckLineup(s).length >= 5;
+  const diff = pref('diff', 'normal');
+  const quarter = Number(pref('quarter', '180'));
+  const left =
+    `<nav class="tabs mtsize">${[
+      ['5', '5 對 5'],
+      ['3', '3 對 3'],
+    ]
+      .map(([k, l]) => `<button type="button" data-psize="${k}" class="${k === size ? 'on' : ''}">${l}</button>`)
+      .join('')}</nav>` +
+    (size === '5'
+      ? `<div class="mtplay"><span class="fine left">用你的牌組，對上和牌組同等級的隨機 NBA 球隊。這場約 ${(quarter * 4) / 60} 分鐘：輸 ${practiceCoins(
+          (quarter * 4) / 60,
+          false,
+          diff as Difficulty,
+        )}、贏 ${practiceCoins((quarter * 4) / 60, true, diff as Difficulty)} 金幣。</span>` +
+        `<button type="button" class="small go" data-act="practice5"${full ? '' : ' disabled'}>開始</button></div>`
+      : streetPicker() +
+        `<div class="mtplay"><span class="fine left">對上 3 名同等級的隨機球員，金幣依實際比賽分鐘數。</span>` +
+        `<button type="button" class="small go" data-act="practice3"${streetPick.length === 3 ? '' : ' disabled'}>開始</button></div>`);
+  const right =
+    `<h3 class="mth">難度</h3><div class="row"><label>電腦難度<select id="mtDiff">${DIFFICULTIES.map((d) => opt(d, `${DIFF_LABEL[d]}（金幣 ×${DIFFICULTY_COINS[d]}）`, diff)).join(
+      '',
+    )}</select></label></div>` +
+    settingsBox(size === '3', size === '5') +
+    `<p class="fine left">隨機比賽是練習：不扣租借卡、不算任務。金幣依比賽時間給，每 3 分鐘 ${PRACTICE_COINS.per3} 金幣，贏球 ×${PRACTICE_COINS.win}，再乘難度倍率；中途離開沒有金幣。</p>`;
+  return `<div class="mtbar"><span>牌組評分 <b>${deckRating(s)}</b></span><span>隨機比賽（練習）</span></div>` + cols(left, right);
 }
 
 function missionsTab(): string {
@@ -369,53 +581,67 @@ function finishText(out: GameOutcome, won: boolean, forfeit: boolean): string {
   return bits.join('・');
 }
 
-function startGame(kind: GameKind, opts: { level?: LevelDef } = {}): void {
+interface GamePlan {
+  /** Null for a practice game: nothing booked but coins. */
+  kind: GameKind | null;
+  size: 3 | 5;
+  /** Your players in roster order (5v5: starters first). */
+  cards: OwnedCard[];
+  opponent: TeamInfo;
+  difficulty: Difficulty;
+  level?: string;
+  event?: { week: number; index: number };
+}
+
+const streetCards = (): OwnedCard[] =>
+  streetPick
+    .map((r) => deckCard(myteam.save, r))
+    .filter((c): c is OwnedCard => !!c)
+    .sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
+
+const avgOvr = (cards: OwnedCard[]) => Math.round(cards.reduce((t, c) => t + c.ovr, 0) / Math.max(1, cards.length));
+
+function startGame(plan: GamePlan): void {
   if (!host) return;
   const s = myteam.save;
-  const diff = (opts.level?.difficulty ?? pref('diff', 'normal')) as Difficulty;
-  let teams: [TeamInfo, TeamInfo];
-  let used: string[];
+  if (plan.cards.length < plan.size) return;
+  const used = plan.cards.map(refOf);
   const settings: Partial<GameSettings> = {
     mode: 'game',
     humanTeams: [0],
-    difficulty: diff,
+    difficulty: plan.difficulty,
     quarterSeconds: Number(pref('quarter', '180')),
     seed: (Math.random() * 2 ** 31) | 0,
   };
-  if (kind === 'street') {
-    const cards = streetPick.map((r) => deckCard(s, r)).filter((c): c is OwnedCard => !!c);
-    if (cards.length !== 3) return;
-    cards.sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
-    used = cards.map(refOf);
-    const avg = Math.round(cards.reduce((t, c) => t + c.ovr, 0) / cards.length);
-    teams = [
-      { ...MYTEAM_INFO, players: cards.map(cardPlayer) },
-      { abbr: '對手', name: '街頭對手', primary: '#2a5db0', secondary: '#ffffff', players: streetOpponents(3, avg, cards.map((c) => c.name)) },
-    ];
-    settings.street = { target: Number(pref('target', '21')), makeItTakeIt: false };
-  } else {
-    const lineup = deckLineup(s);
-    if (lineup.length < 5) return;
-    used = lineup.map(refOf);
-    teams = [{ ...MYTEAM_INFO, players: lineup.map(cardPlayer) }, opts.level ? levelTeam(opts.level) : quickOpponent(s)];
-  }
+  if (plan.size === 3) settings.street = { target: Number(pref('target', '21')), makeItTakeIt: false };
+  const teams: [TeamInfo, TeamInfo] = [{ ...MYTEAM_INFO, players: plan.cards.map(cardPlayer) }, plan.opponent];
   host.play(
     teams,
     settings,
     (state, forfeit) => {
+      const [a, b] = state.score;
+      if (!plan.kind) {
+        // Practice: game time (a street game's real clock) pays, nothing else counts.
+        const minutes = plan.size === 3 ? state.tick / 30 / 60 : (state.settings.quarterSeconds * 4) / 60;
+        const coins = forfeit ? 0 : practiceCoins(minutes, a > b, plan.difficulty);
+        if (coins) void wallet.add(coins);
+        message = `隨機比賽：${forfeit ? '中途離開，沒有金幣' : `${a > b ? '勝利' : '落敗'}・+${coins} 金幣`}`;
+        return message;
+      }
       const rows = teamRows(state, 0);
       const sum = (f: (st: PlayerStats) => number) => rows.reduce((t, r) => t + f(r.stats), 0);
       // A full game's rentals count only if they got on the floor.
-      const played = kind === 'street' ? used : used.filter((_, i) => (rows.find((r) => r.rosterIdx === i)?.stats.secs ?? 0) > 0);
-      const [a, b] = state.score;
+      const played = plan.size === 3 ? used : used.filter((_, i) => (rows.find((r) => r.rosterIdx === i)?.stats.secs ?? 0) > 0);
       const out = recordGame(s, {
-        kind,
+        kind: plan.kind,
         won: a > b,
         margin: a - b,
-        level: opts.level?.id,
+        level: plan.level,
+        event: plan.event,
+        street: plan.size === 3,
         used: played,
         forfeit,
-        difficulty: diff,
+        difficulty: plan.difficulty,
         totals: {
           points: sum((x) => x.pts),
           threes: sum((x) => x.tpm),
@@ -425,6 +651,7 @@ function startGame(kind: GameKind, opts: { level?: LevelDef } = {}): void {
         },
       });
       streetPick = streetPick.filter((r) => deckCard(s, r));
+      limitedPick = limitedPick.filter((r) => allCards().some((c) => refOf(c) === r));
       myteam.commit();
       if (out.coins) void wallet.add(out.coins);
       if (out.drops.length) pending = { title: out.firstClear ? '過關獎勵' : '獎勵', drops: out.drops };
@@ -439,6 +666,55 @@ function startGame(kind: GameKind, opts: { level?: LevelDef } = {}): void {
       }
     },
   );
+}
+
+/** A street trio for a quick 3v3 at your level. */
+const streetTeam = (cards: OwnedCard[]): TeamInfo => ({
+  abbr: '對手',
+  name: '街頭對手',
+  primary: '#2a5db0',
+  secondary: '#ffffff',
+  players: streetOpponents(3, avgOvr(cards), cards.map((c) => c.name)),
+});
+
+function playLevel(kind: 'ladder' | 'dynasty' | 'limited' | 'event', id: string): void {
+  const s = myteam.save;
+  if (kind === 'ladder') {
+    const level = LEVELS.find((l) => l.id === id);
+    if (level && levelOpen(s, level)) startGame({ kind, size: 5, cards: deckLineup(s), opponent: levelTeam(level), difficulty: level.difficulty, level: id });
+  } else if (kind === 'dynasty') {
+    const d = DYNASTY.find((x) => x.id === id);
+    if (d && dynastyOpen(s, d)) {
+      const crew: TeamInfo = { abbr: '王朝', name: d.name, primary: '#b0302a', secondary: '#ffffff', players: dynastyCrew(d) };
+      startGame({ kind, size: 3, cards: streetCards(), opponent: crew, difficulty: d.difficulty, level: id });
+    }
+  } else if (kind === 'limited') {
+    const l = LIMITED.find((x) => x.id === id);
+    if (!l) return;
+    const { cards, problem } = limitedLineup(l);
+    if (problem) return;
+    const starters = [...cards].sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
+    let lineup = starters;
+    if (l.size === 5) {
+      // The bench: the best other cards that fit too.
+      const bench: OwnedCard[] = [];
+      for (const c of limitedCards()) {
+        if (bench.length >= DECK_MAX - 5) break;
+        const all = [...starters, ...bench];
+        if (!all.some((x) => x.name === c.name) && cardAllowed(l.rule, c, all)) bench.push(c);
+      }
+      lineup = [...starters, ...bench];
+    }
+    startGame({ kind, size: l.size, cards: lineup, opponent: limitedTeam(l), difficulty: l.difficulty, level: id });
+  } else {
+    const week = eventWeek();
+    const index = Number(id);
+    const theme = eventTheme(week);
+    const lv = theme.levels[index];
+    if (!lv) return;
+    const cards = lv.size === 3 ? streetCards() : deckLineup(s);
+    startGame({ kind, size: lv.size, cards, opponent: eventTeam(theme, index, eventBase(s)), difficulty: lv.difficulty, event: { week, index } });
+  }
 }
 
 // ----------------------------------------------------------------- render
@@ -459,7 +735,17 @@ export function renderMyTeam(): void {
   streetPick = streetPick.filter((r) => s.deck.includes(r));
   root.innerHTML =
     (message ? `<p class="msg">${esc(message)}</p>` : '') +
-    (tab === 'play' ? playTab() : tab === 'missions' ? missionsTab() : tab === 'deck' ? deckTab() : tab === 'cards' ? cardsTab() : shopTab());
+    (tab === 'play'
+      ? playTab()
+      : tab === 'missions'
+        ? missionsTab()
+        : tab === 'deck'
+          ? deckTab()
+          : tab === 'cards'
+            ? cardsTab()
+            : tab === 'practice'
+              ? practiceTab()
+              : shopTab());
   hydrateCards(root, allCards());
 }
 
@@ -565,9 +851,30 @@ export function initMyTeam(h: MyTeamHost): void {
       const i = Number(data('data-slot'));
       slot = slot === i ? null : i;
     } else if (data('data-lp')) ladderPeriod = Number(data('data-lp'));
+    else if (data('data-mode')) {
+      setPref('mode', data('data-mode')!);
+      message = '';
+    } else if (data('data-psize')) setPref('psize', data('data-psize')!);
     else if (data('data-level')) {
-      const level = LEVELS.find((l) => l.id === data('data-level'));
-      if (level && levelOpen(s, level)) startGame('ladder', { level });
+      playLevel('ladder', data('data-level')!);
+      return;
+    } else if (data('data-dynasty')) {
+      playLevel('dynasty', data('data-dynasty')!);
+      return;
+    } else if (data('data-event') !== null) {
+      playLevel('event', data('data-event')!);
+      return;
+    } else if (data('data-limsel')) {
+      const id = data('data-limsel')!;
+      if (limitedSel !== id) limitedPick = [];
+      limitedSel = id;
+      if (window.innerWidth < 1100) $('#myteam').scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (data('data-lim')) {
+      const ref = data('data-lim')!;
+      const size = LIMITED.find((l) => l.id === limitedSel)?.size ?? 5;
+      limitedPick = limitedPick.includes(ref) ? limitedPick.filter((r) => r !== ref) : [...limitedPick, ref].slice(0, size);
+    } else if (act === 'limitedgame' && limitedSel) {
+      playLevel('limited', limitedSel);
       return;
     } else if (data('data-sp')) {
       const ref = data('data-sp')!;
@@ -584,11 +891,12 @@ export function initMyTeam(h: MyTeamHost): void {
           return;
         }
       }
-    } else if (act === 'quickgame') {
-      startGame('quick');
+    } else if (act === 'practice5') {
+      startGame({ kind: null, size: 5, cards: deckLineup(s), opponent: quickOpponent(s), difficulty: pref('diff', 'normal') as Difficulty });
       return;
-    } else if (act === 'streetgame') {
-      startGame('street');
+    } else if (act === 'practice3') {
+      const cards = streetCards();
+      startGame({ kind: null, size: 3, cards, opponent: streetTeam(cards), difficulty: pref('diff', 'normal') as Difficulty });
       return;
     } else if (data('data-buy')) {
       void buy(data('data-buy')!);
@@ -640,6 +948,8 @@ export function initMyTeam(h: MyTeamHost): void {
     if (el.id === 'mtDiff') setPref('diff', el.value);
     if (el.id === 'mtQuarter') setPref('quarter', el.value);
     if (el.id === 'mtTarget') setPref('target', el.value);
+    // The practice tab's coin line follows the settings.
+    if (tab === 'practice') renderMyTeam();
   });
   $('#poCards').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('.flip');

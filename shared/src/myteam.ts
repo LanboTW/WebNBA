@@ -1,7 +1,7 @@
 import headshotsJson from '../data/headshots.json';
 import myteamJson from '../data/myteam.json';
 import { POSITIONS, toOverall } from './career';
-import { NBA_TEAMS, RATING_KEYS, findTeam, overallOf, playerRating, teamRating } from './roster';
+import { NBA_TEAMS, RATING_KEYS, TEAMS, findTeam, overallOf, playerRating, teamRating } from './roster';
 import { DIFFICULTY_COINS, type Difficulty, type Look, type PlayerInfo, type Position, type Ratings, type TeamInfo } from './types';
 
 /**
@@ -316,10 +316,12 @@ export interface MyTeamSave {
   claimed: string[];
   /** Running totals the missions count. */
   stats: Partial<Record<MissionStat, number>>;
+  /** Event levels won this week (week:index). */
+  events: string[];
 }
 
 export function emptyMyTeam(): MyTeamSave {
-  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {} };
+  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {}, events: [] };
 }
 
 /** Accepts anything that looks like a save, filling what is missing. */
@@ -337,6 +339,7 @@ export function upgradeMyTeam(raw: unknown): MyTeamSave | null {
     cleared: Array.isArray(s.cleared) ? s.cleared : [],
     claimed: Array.isArray(s.claimed) ? s.claimed : [],
     stats: s.stats && typeof s.stats === 'object' ? s.stats : {},
+    events: Array.isArray(s.events) ? s.events : [],
   };
 }
 
@@ -475,7 +478,13 @@ export type MissionStat =
   | 'packs'
   | 'cards'
   | 'deckRating'
-  | 'bigWins';
+  | 'bigWins'
+  /** Street dynasty periods fully beaten. */
+  | 'dynasty'
+  /** Limited levels beaten. */
+  | 'limited'
+  /** Event levels won (each counts once a week). */
+  | 'events';
 
 /** What a level, a mission or a boss gives. */
 export interface Reward {
@@ -536,7 +545,9 @@ export function periodCleared(save: MyTeamSave, period: number): boolean {
 export function statValue(save: MyTeamSave, key: MissionStat): number {
   if (key === 'cards') return save.cards.length;
   if (key === 'packs') return save.packsOpened;
-  if (key === 'cleared') return save.cleared.length;
+  if (key === 'cleared') return LEVELS.filter((l) => save.cleared.includes(l.id)).length;
+  if (key === 'limited') return LIMITED.filter((l) => save.cleared.includes(l.id)).length;
+  if (key === 'dynasty') return Array.from({ length: PERIODS }, (_, i) => i + 1).filter((p) => dynastyCleared(save, p)).length;
   if (key === 'deckRating') {
     // Your own cards' best five: rentals do not count.
     const own = { ...save, rentals: [] };
@@ -611,15 +622,19 @@ export function grantReward(save: MyTeamSave, reward: Reward, rand: () => number
   return { coins, drops };
 }
 
-export type GameKind = 'ladder' | 'quick' | 'street';
+export type GameKind = 'ladder' | 'quick' | 'street' | 'dynasty' | 'limited' | 'event';
 
 export interface GameResult {
   kind: GameKind;
   won: boolean;
   /** Your score minus theirs. */
   margin: number;
-  /** Ladder level id. */
+  /** Ladder, dynasty or limited level id. */
   level?: string;
+  /** An event level: its week and place in the week. */
+  event?: { week: number; index: number };
+  /** A 3v3 game (counts as a street win). */
+  street?: boolean;
   /** Deck refs that played (rentals among them lose a game). */
   used: string[];
   /** Your team's totals. */
@@ -646,7 +661,7 @@ export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number =
   const add = (k: MissionStat, n: number) => (save.stats[k] = (save.stats[k] ?? 0) + n);
   add('games', 1);
   if (won) add('wins', 1);
-  if (won && g.kind === 'street') add('streetWins', 1);
+  if (won && (g.kind === 'street' || g.street)) add('streetWins', 1);
   if (won && g.margin >= 20) add('bigWins', 1);
   if (!g.forfeit) {
     add('points', g.totals.points);
@@ -668,13 +683,24 @@ export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number =
   let coins = 0;
   let drops: DropResult[] = [];
   let firstClear = false;
-  const level = g.level ? LEVELS.find((l) => l.id === g.level) : undefined;
+  const level = g.level ? [...LEVELS, ...DYNASTY, ...LIMITED].find((l) => l.id === g.level) : undefined;
+  const theme = g.event ? eventTheme(g.event.week) : undefined;
   if (g.forfeit) coins = 0;
-  else if (g.kind === 'ladder' && level) {
+  else if (level) {
     if (won && !save.cleared.includes(level.id)) {
       firstClear = true;
       save.cleared.push(level.id);
       ({ coins, drops } = grantReward(save, level.reward, rand));
+    } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
+  } else if (g.event && theme?.levels[g.event.index]) {
+    // Only this week's wins are kept; each level pays once a week.
+    const key = eventKey(g.event.week, g.event.index);
+    save.events = save.events.filter((k) => k.startsWith(`${g.event!.week}:`));
+    if (won && !save.events.includes(key)) {
+      firstClear = true;
+      save.events.push(key);
+      add('events', 1);
+      ({ coins, drops } = grantReward(save, theme.levels[g.event.index].reward, rand));
     } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
   } else coins = won ? GAME_COINS.win : GAME_COINS.loss;
   if (!firstClear) coins = Math.round(coins * DIFFICULTY_COINS[g.difficulty ?? 'normal']);
@@ -692,4 +718,185 @@ export function claimMission(
   save.claimed.push(id);
   const r = grantReward(save, m.reward, rand);
   return { ...r, unlocked: updatePeriod(save) };
+}
+
+// ------------------------------------------------- dynasty, limited, events
+
+/** Street dynasty (街頭王朝): 3v3 crews, five a period, beaten in order like the ladder. */
+export interface DynastyDef {
+  id: string;
+  period: number;
+  /** The crew. */
+  name: string;
+  /** Each of its three players rates about this. */
+  ovr: number;
+  difficulty: Difficulty;
+  boss?: boolean;
+  reward: Reward;
+}
+
+/** What a limited level lets you play with. Height limits are the lineup's average (m). */
+export interface LineupRule {
+  positions?: Position[];
+  maxOvr?: number;
+  sameTeam?: boolean;
+  maxHeight?: number;
+  minHeight?: number;
+  noRentals?: boolean;
+  tiers?: TierId[];
+  baseOnly?: boolean;
+}
+
+/** Limited levels (限定關卡): a lineup rule, 3v3 or 5v5 (against `team`), one reward each. */
+export interface LimitedDef {
+  id: string;
+  name: string;
+  rule: LineupRule;
+  size: 3 | 5;
+  team?: string;
+  ovr: number;
+  difficulty: Difficulty;
+  reward: Reward;
+}
+
+/** Who an event team is made of: the best by a rating (or height) among a set of players. */
+export interface EventPick {
+  sort?: keyof Ratings | 'height';
+  positions?: Position[];
+  teams?: string[];
+  conference?: 'East' | 'West';
+  /** A custom-team menu group, e.g. 台灣. */
+  group?: string;
+}
+
+export interface EventLevelDef {
+  size: 3 | 5;
+  /** Added to your period's base rating. */
+  offset: number;
+  difficulty: Difficulty;
+  reward: Reward;
+  pick: EventPick;
+}
+
+/** A week's event (活動關卡): three themed levels, each paying once a week. */
+export interface EventTheme {
+  id: string;
+  name: string;
+  desc: string;
+  levels: EventLevelDef[];
+}
+
+const MODES = myteamJson as unknown as { dynasty: DynastyDef[]; limited: LimitedDef[]; events: EventTheme[] };
+export const DYNASTY: DynastyDef[] = MODES.dynasty;
+export const LIMITED: LimitedDef[] = MODES.limited;
+export const EVENT_THEMES: EventTheme[] = MODES.events;
+
+/** A repeatable random stream from a seed (opponents stay the same each visit). */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export const dynastyLevels = (period: number): DynastyDef[] => DYNASTY.filter((d) => d.period === period);
+
+/** Playable: the ladder has opened its period and the crew before it is beaten. */
+export function dynastyOpen(save: MyTeamSave, d: DynastyDef): boolean {
+  if (d.period > save.period) return false;
+  const list = dynastyLevels(d.period);
+  const i = list.indexOf(d);
+  return i <= 0 || save.cleared.includes(list[i - 1].id);
+}
+
+export function dynastyCleared(save: MyTeamSave, period: number): boolean {
+  const list = dynastyLevels(period);
+  return list.length > 0 && list.every((d) => save.cleared.includes(d.id));
+}
+
+/** The crew's three players (the same every time). */
+export const dynastyCrew = (d: DynastyDef): PlayerInfo[] => streetOpponents(3, d.ovr, [], seeded(hash(d.id)));
+
+/** A limited level's opponent: a rescaled NBA team, or a fixed street trio. */
+export function limitedTeam(l: LimitedDef): TeamInfo {
+  if (l.size === 5) return scaleTeam(findTeam(l.team ?? 'NYK'), l.ovr);
+  return { abbr: '限定', name: l.name, primary: '#7a3cff', secondary: '#ffffff', players: streetOpponents(3, l.ovr, [], seeded(hash(l.id))) };
+}
+
+/** Whether a card fits the rule next to the cards already picked. */
+export function cardAllowed(rule: LineupRule, card: OwnedCard, picked: OwnedCard[] = []): boolean {
+  if (rule.positions && !rule.positions.includes(card.position)) return false;
+  if (rule.maxOvr !== undefined && card.ovr > rule.maxOvr) return false;
+  if (rule.noRentals && isRental(card)) return false;
+  if (rule.tiers && !rule.tiers.includes(card.tier)) return false;
+  if (rule.baseOnly && !card.base) return false;
+  if (rule.sameTeam && picked.length && picked[0].team !== card.team) return false;
+  return true;
+}
+
+/** Why a lineup cannot play this rule, or null when it can. */
+export function lineupProblem(rule: LineupRule, cards: OwnedCard[], size: number): string | null {
+  if (cards.length !== size) return `要選 ${size} 人`;
+  if (new Set(cards.map((c) => c.name)).size !== cards.length) return '同一名球員只能上一張';
+  if (cards.some((c, i) => !cardAllowed(rule, c, cards.slice(0, i)))) return '有卡不符合限定條件';
+  const h = cards.reduce((t, c) => t + c.heightM, 0) / cards.length;
+  if (rule.maxHeight !== undefined && h > rule.maxHeight + 1e-9) return `平均身高 ${Math.round(h * 100)} 公分，要 ≤ ${Math.round(rule.maxHeight * 100)}`;
+  if (rule.minHeight !== undefined && h < rule.minHeight - 1e-9) return `平均身高 ${Math.round(h * 100)} 公分，要 ≥ ${Math.round(rule.minHeight * 100)}`;
+  return null;
+}
+
+/** The rule in words, one condition each. */
+export function ruleText(rule: LineupRule): string[] {
+  const out: string[] = [];
+  if (rule.positions) out.push(`只能用 ${rule.positions.join('／')}`);
+  if (rule.maxOvr !== undefined) out.push(`每張卡總評 ≤ ${rule.maxOvr}`);
+  if (rule.sameTeam) out.push('全部同一支 NBA 球隊');
+  if (rule.maxHeight !== undefined) out.push(`平均身高 ≤ ${Math.round(rule.maxHeight * 100)} 公分`);
+  if (rule.minHeight !== undefined) out.push(`平均身高 ≥ ${Math.round(rule.minHeight * 100)} 公分`);
+  if (rule.noRentals) out.push('不能用租借卡');
+  if (rule.tiers) out.push(`只能用${rule.tiers.map((t) => tier(t).name).join('、')}卡`);
+  if (rule.baseOnly) out.push('只能用基本卡（不能用強化卡）');
+  return out;
+}
+
+/** Weeks since 1970 starting on Mondays: the event that is on. */
+export const eventWeek = (now: number = Date.now()): number => Math.floor((Math.floor(now / 86_400_000) + 3) / 7);
+export const eventTheme = (week: number): EventTheme => EVENT_THEMES[((week % EVENT_THEMES.length) + EVENT_THEMES.length) % EVENT_THEMES.length];
+/** Event levels are rated from your period (its ladder's second level). */
+export const eventBase = (save: MyTeamSave): number => periodLevels(save.period)[1]?.ovr ?? 75;
+export const eventKey = (week: number, index: number): string => `${week}:${index}`;
+/** When the week ends (local midnight going into Monday). */
+export const eventEnds = (week: number): number => (week * 7 - 3 + 7) * 86_400_000;
+
+/** An event level's opponent: the theme's best players, rescaled around its rating. */
+export function eventTeam(theme: EventTheme, index: number, base: number): TeamInfo {
+  const lv = theme.levels[index];
+  const pk = lv.pick;
+  const target = Math.min(99, base + lv.offset);
+  const teams = pk.group
+    ? TEAMS.filter((t) => t.group === pk.group)
+    : NBA_TEAMS.filter((t) => (!pk.teams || pk.teams.includes(t.abbr)) && (!pk.conference || t.conference === pk.conference));
+  const pool = teams.flatMap((t) => t.players).filter((p) => !pk.positions || pk.positions.includes(p.position));
+  const by = (p: PlayerInfo) => (pk.sort === 'height' ? p.heightM : pk.sort ? p.ratings[pk.sort] : playerRating(p));
+  const best = [...pool].sort((a, b) => by(b) - by(a) || playerRating(b) - playerRating(a));
+  const n = lv.size === 3 ? 3 : 8;
+  // Each level of the week a different slice: level 1 the best, then the next ones.
+  const start = Math.min(index * 2, Math.max(0, best.length - n));
+  const chosen = best.slice(start, start + n);
+  const starters = chosen.slice(0, Math.min(chosen.length, lv.size)).sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
+  const players = [...starters, ...chosen.slice(starters.length)].map((p, i) => {
+    const want = Math.max(45, Math.min(99, i < lv.size ? target : target - 4));
+    return { ...p, ratings: toOverall(p.ratings, CAPS, want, (r) => overallOf(p.position, r)) };
+  });
+  return { abbr: '活動', name: theme.name, primary: '#d4a017', secondary: '#14161f', players };
+}
+
+/** Practice games (隨機比賽) pay by game time: 20 coins every 3 minutes, a win 1.5x, times the level. */
+export const PRACTICE_COINS = { per3: 20, win: 1.5 };
+export function practiceCoins(minutes: number, won: boolean, difficulty: Difficulty): number {
+  return Math.round((minutes / 3) * PRACTICE_COINS.per3 * (won ? PRACTICE_COINS.win : 1) * DIFFICULTY_COINS[difficulty]);
 }

@@ -18,6 +18,22 @@ import {
   tierOf,
   upgradeMyTeam,
   cardPlayer,
+  DYNASTY,
+  EVENT_THEMES,
+  LIMITED,
+  cardAllowed,
+  dynastyCrew,
+  dynastyLevels,
+  dynastyOpen,
+  eventBase,
+  eventKey,
+  eventTeam,
+  eventTheme,
+  eventWeek,
+  limitedTeam,
+  lineupProblem,
+  practiceCoins,
+  ruleText,
 } from '../src';
 
 function seeded(seed: number): () => number {
@@ -188,5 +204,87 @@ describe('MyTeam play', () => {
     const ps = streetOpponents(3, 80, [], seeded(2));
     expect(new Set(ps.map((p) => p.name)).size).toBe(3);
     for (const p of ps) expect(Math.abs(playerRating(p) - 80)).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('MyTeam modes: dynasty, limited, events, practice', () => {
+  const totals = { points: 0, threes: 0, assists: 0, blocks: 0, steals: 0 };
+
+  it('ships 30 dynasty crews, 20 limited levels and full event themes', () => {
+    expect(DYNASTY).toHaveLength(30);
+    expect(LIMITED).toHaveLength(20);
+    expect(EVENT_THEMES.length).toBeGreaterThanOrEqual(7);
+    for (const t of EVENT_THEMES) expect(t.levels).toHaveLength(3);
+    for (const l of LIMITED) {
+      if (l.size === 5) expect(l.team).toBeTruthy();
+      expect(ruleText(l.rule).length).toBeGreaterThan(0);
+    }
+    const ids = [...LEVELS, ...DYNASTY, ...LIMITED].map((l) => l.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const m of MISSIONS) expect(() => statValue(newMyTeam(seeded(1)), m.stat)).not.toThrow();
+  });
+
+  it('dynasty crews are fixed, rated to their level and beaten in order', () => {
+    const d = DYNASTY[0];
+    const crew = dynastyCrew(d);
+    expect(crew).toHaveLength(3);
+    expect(dynastyCrew(d).map((p) => p.name)).toEqual(crew.map((p) => p.name));
+    const avg = crew.reduce((s, p) => s + playerRating(p), 0) / 3;
+    expect(Math.abs(avg - d.ovr)).toBeLessThanOrEqual(3);
+    const save = newMyTeam(seeded(2));
+    const list = dynastyLevels(1);
+    expect(dynastyOpen(save, list[1])).toBe(false);
+    for (const l of list) recordGame(save, { kind: 'dynasty', won: true, margin: 3, level: l.id, used: [], totals, street: true }, seeded(1));
+    expect(statValue(save, 'dynasty')).toBe(1);
+    expect(statValue(save, 'cleared')).toBe(0);
+    expect(statValue(save, 'streetWins')).toBe(5);
+  });
+
+  it('limited rules check each card and the lineup', () => {
+    const cards = cardCatalog();
+    const guards = cards.filter((c) => c.position === 'PG').slice(0, 3).map(ownCard);
+    expect(lineupProblem({ positions: ['PG', 'SG'] }, guards, 3)).toBeNull();
+    const big = ownCard(cards.find((c) => c.position === 'C')!);
+    expect(cardAllowed({ positions: ['PG', 'SG'] }, big)).toBe(false);
+    expect(lineupProblem({ positions: ['PG', 'SG'] }, [...guards.slice(0, 2), big], 3)).not.toBeNull();
+    expect(lineupProblem({}, guards.slice(0, 2), 3)).toBe('要選 3 人');
+    expect(lineupProblem({ maxHeight: 1.5 }, guards, 3)).toContain('平均身高');
+    const a = ownCard(cards[0]);
+    const other = ownCard(cards.find((c) => c.team !== a.team)!);
+    expect(cardAllowed({ sameTeam: true }, other, [a])).toBe(false);
+    for (const l of LIMITED) {
+      const t = limitedTeam(l);
+      expect(t.players.length).toBeGreaterThanOrEqual(l.size);
+    }
+    const save = newMyTeam(seeded(3));
+    recordGame(save, { kind: 'limited', won: true, margin: 2, level: LIMITED[0].id, used: [], totals }, seeded(1));
+    expect(statValue(save, 'limited')).toBe(1);
+  });
+
+  it('event levels pay once a week and the week rolls over', () => {
+    const save = newMyTeam(seeded(4));
+    const week = eventWeek(Date.UTC(2026, 9, 5, 12));
+    expect(eventWeek(Date.UTC(2026, 9, 11, 12))).toBe(week);
+    expect(eventWeek(Date.UTC(2026, 9, 12, 12))).toBe(week + 1);
+    const theme = eventTheme(week);
+    for (let i = 0; i < 3; i++) {
+      const t = eventTeam(theme, i, eventBase(save));
+      expect(t.players.length).toBeGreaterThanOrEqual(theme.levels[i].size);
+    }
+    const first = recordGame(save, { kind: 'event', won: true, margin: 2, event: { week, index: 0 }, used: [], totals }, seeded(1));
+    expect(first.firstClear).toBe(true);
+    const again = recordGame(save, { kind: 'event', won: true, margin: 2, event: { week, index: 0 }, used: [], totals });
+    expect(again.firstClear).toBe(false);
+    const next = recordGame(save, { kind: 'event', won: true, margin: 2, event: { week: week + 1, index: 0 }, used: [], totals }, seeded(1));
+    expect(next.firstClear).toBe(true);
+    expect(save.events).toEqual([eventKey(week + 1, 0)]);
+    expect(statValue(save, 'events')).toBe(2);
+  });
+
+  it('practice pays by game time and level', () => {
+    expect(practiceCoins(12, false, 'normal')).toBe(80);
+    expect(practiceCoins(12, true, 'normal')).toBe(120);
+    expect(practiceCoins(20, true, 'legend')).toBe(320);
+    expect(practiceCoins(3, false, 'easy')).toBe(16);
   });
 });
