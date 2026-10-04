@@ -58,10 +58,12 @@ export class TouchControls {
         <button data-b="shoot" class="tb shoot">投籃</button>
       </div>
       <div class="trotate">橫放手機玩起來更順手</div>
-      <div class="tsmall">
+      <div class="tsmall tl">
         <button data-b="switch">換人</button>
         <button data-b="plays">戰術</button>
         <button data-b="timeout">叫暫停</button>
+      </div>
+      <div class="tsmall tr">
         <button data-b="camera">視角</button>
         <button data-b="menu">☰</button>
       </div>`;

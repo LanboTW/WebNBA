@@ -2,8 +2,17 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>WebNBA</title>
+    <!-- Added to the home screen it opens full screen, without the browser bars. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="WebNBA" />
+    <meta name="theme-color" content="#07080d" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -209,6 +218,11 @@
           <b>防守</b>　按住 U 加強防守　K 抄截　空白鍵 蓋火鍋／搶籃板　L 切換球員<br />
           <b>其他</b>　T 暫停　Esc 數據／換人　C 切換視角　H 隱藏說明
         </p>
+        <h3>手機全螢幕</h3>
+        <p class="keys">
+          <b>iPhone</b>　用 Safari 開啟 → 分享 → 「加入主畫面」，之後從主畫面圖示開啟就沒有網址列，橫放能多出不少空間。<br />
+          <b>Android</b>　用 Chrome 開啟 → 右上 ⋮ → 「加到主畫面」或「安裝應用程式」。
+        </p>
       </div>
     </div>
 
@@ -294,6 +308,7 @@
     <div id="boxscore" class="overlay hidden">
       <div class="panel wide boxpanel">
         <h2 id="boxTitle">暫停</h2>
+        <p id="boxInfo" class="sub hidden"></p>
         <nav id="boxTabs" class="tabs"></nav>
         <div class="boxcols">
           <div id="boxTables"></div>

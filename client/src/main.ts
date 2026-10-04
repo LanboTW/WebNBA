@@ -796,6 +796,13 @@ $('#boxTabs').addEventListener('click', (e) => {
 function showBox(title: string, canResume: boolean): void {
   if (!session) return;
   $('#boxTitle').textContent = title;
+  // Fouls and timeouts left: phones hide that row of the HUD, so it shows here.
+  const info = session.state.settings.mode === 'game' && !session.state.settings.street;
+  $('#boxInfo').classList.toggle('hidden', !info);
+  if (info)
+    $('#boxInfo').innerHTML = ([0, 1] as const)
+      .map((t) => `<span><b>${esc(session!.teams[t].abbr)}</b> ${$(`#ti${t}`).innerHTML}</span>`)
+      .join('');
   $('#boxTables').innerHTML = renderBoxScore(session.state, session.teams);
   const both = $('#boxTables').children.length === 2;
   boxTeam = session.team === 1 ? 1 : 0;

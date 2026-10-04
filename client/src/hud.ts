@@ -178,8 +178,11 @@ export class Hud {
     el.className = `toast ${cls} ${small ? 'small' : ''}`;
     el.textContent = text;
     this.toasts.appendChild(el);
-    while (this.toasts.children.length > 4) this.toasts.firstChild?.remove();
-    setTimeout(() => el.remove(), 1600);
+    // Phones keep fewer on screen at once.
+    const most = document.body.classList.contains('touch') ? 2 : 4;
+    while (this.toasts.children.length > most) this.toasts.firstChild?.remove();
+    el.addEventListener('animationend', () => el.remove());
+    setTimeout(() => el.remove(), 2000);
   }
 
   /** Career games show the one-player controls (call for the ball, pick, switch). */

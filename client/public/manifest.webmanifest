@@ -1,0 +1,17 @@
+{
+  "name": "WebNBA",
+  "short_name": "WebNBA",
+  "description": "3D 籃球：快速對戰、MyTeam、生涯模式",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#07080d",
+  "theme_color": "#07080d",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

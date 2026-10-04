@@ -63,15 +63,15 @@ body {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 6px 14px;
+  padding: 4px 12px;
   border-left: 6px solid var(--team, #888);
-  min-width: 118px;
+  min-width: 110px;
   justify-content: space-between;
 }
 
 #scoreboard .logo {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   margin: -4px 0;
 }
@@ -100,14 +100,16 @@ body {
 }
 
 #scoreboard .pts {
-  font-size: 26px;
+  font-size: 23px;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
   min-width: 2ch;
   text-align: center;
 }
 
 #scoreboard .center {
-  padding: 4px 14px;
+  padding: 3px 14px;
+  line-height: 1.2;
   text-align: center;
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
@@ -120,7 +122,7 @@ body {
 }
 
 #scoreboard .clock {
-  font-size: 20px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -147,7 +149,7 @@ body {
 
 #teaminfo {
   position: absolute;
-  top: 66px;
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -169,7 +171,7 @@ body {
 
 #banner {
   position: absolute;
-  top: 128px;
+  top: 114px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 18px;
@@ -207,7 +209,7 @@ body {
 
 #statline {
   position: absolute;
-  top: 90px;
+  top: 78px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 13px;
@@ -325,7 +327,7 @@ body {
 
 #toasts {
   position: absolute;
-  top: 30%;
+  top: 156px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -335,7 +337,7 @@ body {
 }
 
 .toast {
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 800;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -344,7 +346,7 @@ body {
 }
 
 .toast.small {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .toast.perfect {
@@ -444,7 +446,8 @@ body {
   align-items: flex-start;
   justify-content: center;
   background: radial-gradient(ellipse at center, rgba(20, 24, 40, 0.75), rgba(4, 5, 9, 0.92));
-  padding: 16px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
   overflow-y: auto;
 }
 
@@ -907,17 +910,25 @@ button.small {
 
 #touch .tsmall {
   position: absolute;
-  left: max(10px, env(safe-area-inset-left));
-  top: 10px;
+  top: max(6px, env(safe-area-inset-top));
   display: flex;
-  gap: 6px;
+  gap: 5px;
+}
+
+#touch .tsmall.tl {
+  left: max(10px, env(safe-area-inset-left));
+}
+
+#touch .tsmall.tr {
+  right: max(10px, env(safe-area-inset-right));
 }
 
 #touch .tsmall button {
-  border-radius: 10px;
-  padding: 7px 12px;
-  font-size: 13px;
+  border-radius: 9px;
+  padding: 5px 10px;
+  font-size: 12px;
   border-width: 1px;
+  background: rgba(10, 12, 20, 0.4);
 }
 
 #touch .trotate {
@@ -957,57 +968,136 @@ body.touch #help {
   display: none;
 }
 
+/* Phones: only the essentials over the court. Fouls, timeouts and your line are in the pause menu. */
+body.touch #teaminfo,
 body.touch #statline {
-  font-size: 11px;
+  display: none;
 }
 
-/* Phones in portrait: utility buttons go below the scoreboard. */
+body.touch #scoreboard {
+  top: max(4px, env(safe-area-inset-top));
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+body.touch #scoreboard .team {
+  gap: 6px;
+  padding: 2px 8px;
+  min-width: 0;
+  border-left-width: 4px;
+  font-size: 12px;
+}
+
+body.touch #scoreboard .team.right {
+  border-right-width: 4px;
+}
+
+body.touch #scoreboard .logo {
+  width: 20px;
+  height: 20px;
+  margin: -2px 0;
+}
+
+body.touch #scoreboard .pts {
+  font-size: 17px;
+}
+
+body.touch #scoreboard .center {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+  min-width: 0;
+}
+
+body.touch #scoreboard .period {
+  font-size: 10px;
+}
+
+body.touch #scoreboard .clock {
+  font-size: 14px;
+}
+
+body.touch #scoreboard .shotclock {
+  padding: 0 7px;
+  min-width: 30px;
+  font-size: 13px;
+}
+
+body.touch #banner,
+body.touch #benchNote {
+  top: calc(max(4px, env(safe-area-inset-top)) + 38px);
+  font-size: 14px;
+}
+
+body.touch #toasts {
+  top: calc(max(4px, env(safe-area-inset-top)) + 70px);
+  gap: 2px;
+}
+
+body.touch .toast {
+  font-size: 17px;
+  animation-duration: 1.2s;
+}
+
+body.touch .toast.small {
+  font-size: 13px;
+}
+
+body.touch #touch button {
+  background: rgba(10, 12, 20, 0.35);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+body.touch #touch button.on {
+  background: rgba(255, 122, 26, 0.75);
+}
+
+/* Teammates' tags: just the number to tap. */
+body.touch .picon span {
+  display: none;
+}
+
+body.touch #gradebox {
+  top: calc(max(4px, env(safe-area-inset-top)) + 38px);
+  right: max(10px, env(safe-area-inset-right));
+  gap: 2px 6px;
+  padding: 4px 6px;
+  border-radius: 9px;
+}
+
+body.touch .lgrade {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  border-radius: 8px;
+}
+
+body.touch .lstats span {
+  min-width: 26px;
+  padding: 1px 3px;
+  font-size: 9px;
+}
+
+body.touch .lstats b {
+  font-size: 13px;
+}
+
+body.touch #lgFeed {
+  font-size: 10px;
+}
+
+/* Phones held upright (menus only, really): the button rows go under the scoreboard. */
 @media (max-width: 500px) {
-  #touch .tsmall {
-    flex-direction: column;
-    top: 112px;
-    gap: 5px;
-  }
-  #touch .tsmall button {
-    padding: 5px 9px;
-    font-size: 12px;
-  }
-  body.touch #statline {
-    max-width: 96vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  body.touch #touch .tsmall {
+    top: calc(max(4px, env(safe-area-inset-top)) + 40px);
   }
 }
 
-/* Phones in landscape: compact HUD, utility buttons stacked down the left edge. */
+/* Short screens (phones in landscape): the big buttons a little smaller. */
 @media (max-height: 500px) {
-  #scoreboard {
-    top: 6px;
-    transform: translateX(-50%) scale(0.78);
-    transform-origin: top center;
-  }
-  #teaminfo {
-    top: 50px;
-    font-size: 11px;
-  }
-  #statline {
-    top: 68px;
-  }
-  #banner {
-    top: 96px;
-  }
-  #touch .tsmall {
-    flex-direction: column;
-    top: 8px;
-    gap: 5px;
-  }
-  #touch .tsmall button {
-    padding: 5px 9px;
-    font-size: 12px;
-  }
   #touch .tbig {
-    transform: scale(0.85);
+    transform: scale(0.82);
     transform-origin: bottom right;
   }
 }
@@ -4546,4 +4636,94 @@ ul.mtrules {
   margin-left: 4px;
   color: #ffd166;
   font-weight: 700;
+}
+
+/* ----------------------------------------------- pause menus: buttons always in reach */
+
+/* The buttons sit at the top and only the tables scroll, so 繼續 is never below the fold. */
+#boxscore .panel,
+#timeoutPanel .panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+}
+
+#boxscore .panel > *,
+#timeoutPanel .panel > * {
+  flex-shrink: 0;
+}
+
+#boxscore .panel > h2,
+#timeoutPanel .panel > h2 {
+  order: -2;
+}
+
+#boxscore .panel > .buttons,
+#timeoutPanel .panel > .buttons {
+  order: -1;
+  margin: 0 0 14px;
+}
+
+#boxscore .boxcols,
+#timeoutLineup {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#boxInfo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+
+#boxInfo b {
+  color: var(--text);
+}
+
+#boxInfo i {
+  font-style: normal;
+  opacity: 0.25;
+}
+
+#boxInfo .bonus {
+  color: var(--bad);
+}
+
+@media (max-height: 500px) {
+  #boxscore .panel,
+  #timeoutPanel .panel {
+    padding: 12px 16px;
+  }
+
+  #boxscore .panel > h2,
+  #timeoutPanel .panel > h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+  }
+
+  #boxscore .panel > .buttons,
+  #timeoutPanel .panel > .buttons {
+    margin-bottom: 8px;
+  }
+
+  #boxscore .panel > .buttons button,
+  #timeoutPanel .panel > .buttons button {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  #timeoutSub {
+    margin: 0 0 8px;
+  }
+}
+
+@media (max-height: 500px) {
+  #boxscore.overlay,
+  #timeoutPanel.overlay {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
 }
