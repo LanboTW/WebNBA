@@ -328,7 +328,7 @@ function trainHtml(c: CareerState): string {
   }).join('');
   return (
     `<div class="xpline"><span>經驗值 <b>${xp}</b></span><span>總評 <b>${playerRating(p.info)}</b>${gearOvr(c)}</span></div>` +
-    `<p class="sub tight">比賽表現越好、贏球、季後賽和較高難度都拿得比較多經驗值；坐板凳也有一點練習經驗。能力越高、總評越高，加 1 點越貴（總評 80 以上明顯變貴）；虛線是${archetype(p.archetype).name}的上限。</p>` +
+    `<p class="sub tight">比賽表現越好、贏球、季後賽和較高難度都拿得比較多經驗值；坐板凳也有一點練習經驗。能力越高、總評越高，加 1 點越貴（總評 80 以上明顯變貴）；按住加點鈕 2 秒可連續加點；虛線是${archetype(p.archetype).name}的上限。</p>` +
     `<div class="trainlist">${rows}</div>`
   );
 }

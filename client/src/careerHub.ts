@@ -131,6 +131,18 @@ function careerDbSource(c: CareerState, league: Map<string, TeamInfo>): DbSource
   };
 }
 
+/** A training button being held down (steps: 0 still waiting, -1 just started repeating, then points added). */
+interface Hold {
+  key: keyof Ratings;
+  id: number;
+  x: number;
+  y: number;
+  steps: number;
+  timer: number;
+}
+const TRAIN_HOLD_MS = 2000;
+const TRAIN_REPEAT_MS = 120;
+
 export class CareerHub {
   career: CareerState | null = null;
   private busy = false;
@@ -152,14 +164,77 @@ export class CareerHub {
         return;
       }
       const key = el.closest<HTMLElement>('[data-train]')?.dataset.train as keyof Ratings | undefined;
-      if (key && !this.busy) {
-        this.trainOne(key);
+      if (key) {
+        // Mouse and touch go through the press below; this is the keyboard's Enter / Space.
+        if (e.detail === 0 && !this.busy) this.trainOne(key);
         return;
       }
       const btn = el.closest<HTMLElement>('[data-act]');
       if (btn?.dataset.act && !this.busy) void this.act(btn.dataset.act, btn.dataset.team ?? btn.dataset.arg);
     });
+    this.holdToTrain();
   }
+
+  /**
+   * Training buttons: a tap adds one point; held for 2 seconds they keep
+   * adding until let go, out of XP or at the cap. The page redraws under the
+   * finger each step, so the press is tracked on the body, not the button.
+   */
+  private holdToTrain(): void {
+    const body = $('#hubBody');
+    body.addEventListener('contextmenu', (e) => {
+      if ((e.target as HTMLElement).closest('[data-train]')) e.preventDefault();
+    });
+    body.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-train]');
+      if (!btn || btn.disabled || this.busy) return;
+      this.endHold(false);
+      try {
+        body.setPointerCapture(e.pointerId);
+      } catch {
+        // Pointer already gone: the window listeners below still end it.
+      }
+      btn.classList.add('charging');
+      const key = btn.dataset.train as keyof Ratings;
+      const hold: Hold = { key, id: e.pointerId, x: e.clientX, y: e.clientY, steps: 0, timer: 0 };
+      hold.timer = window.setTimeout(() => {
+        hold.timer = window.setInterval(() => {
+          if ($('#hub').classList.contains('hidden') || this.busy || !this.trainOne(key, true)) return this.endHold(false);
+          hold.steps = Math.max(hold.steps, 0) + 1;
+          $(`#hubBody [data-train="${key}"]`)?.classList.add('repeating');
+        }, TRAIN_REPEAT_MS);
+        hold.steps = -1;
+      }, TRAIN_HOLD_MS);
+      this.hold = hold;
+    });
+    window.addEventListener('pointermove', (e) => {
+      const h = this.hold;
+      // Dragging away before it starts repeating is a scroll, not a press.
+      if (h && h.id === e.pointerId && h.steps === 0 && Math.hypot(e.clientX - h.x, e.clientY - h.y) > 12) this.endHold(false);
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (this.hold?.id === e.pointerId) this.endHold(true);
+    });
+    window.addEventListener('pointercancel', (e) => {
+      if (this.hold?.id === e.pointerId) this.endHold(false);
+    });
+    window.addEventListener('blur', () => this.endHold(false));
+  }
+
+  /** Stops a training press; `tap` adds the one point a short press is worth. */
+  private endHold(tap: boolean): void {
+    const h = this.hold;
+    if (!h) return;
+    this.hold = null;
+    clearTimeout(h.timer);
+    clearInterval(h.timer);
+    for (const el of document.querySelectorAll('#hubBody .charging, #hubBody .repeating')) el.classList.remove('charging', 'repeating');
+    if (h.steps === 0) {
+      if (tap && !this.busy) this.trainOne(h.key);
+    } else if (h.steps > 0 && this.career) this.host.preview(careerInfo(this.career), careerTeam(this.career));
+  }
+  private hold: Hold | null = null;
 
   open(career: CareerState): void {
     this.career = career;
@@ -367,13 +442,15 @@ export class CareerHub {
   }
 
   /** One point of training; saved a moment later so a burst of clicks is one save. */
-  private trainOne(key: keyof Ratings): void {
+  /** One point on `key`; false when it can't (out of XP or at the cap). `quiet` leaves the 3D preview for later. */
+  private trainOne(key: keyof Ratings, quiet = false): boolean {
     const c = this.career!;
-    if (!train(c, key)) return;
+    if (!train(c, key)) return false;
     this.render();
-    this.host.preview(careerInfo(c), careerTeam(c));
+    if (!quiet) this.host.preview(careerInfo(c), careerTeam(c));
     clearTimeout(this.trainSave);
     this.trainSave = setTimeout(() => void this.save(), 800);
+    return true;
   }
   private trainSave: ReturnType<typeof setTimeout> | undefined;
 
