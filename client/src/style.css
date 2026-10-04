@@ -4319,3 +4319,164 @@ ul.mtrules {
   max-height: 34dvh;
   overflow-y: auto;
 }
+
+/* ------------------------------------------------- 自訂隊伍/人員 */
+
+.culist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.curow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #151925;
+}
+
+.curow.small {
+  padding: 5px 10px;
+}
+
+.curow.sel {
+  border-color: var(--accent);
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.curow button.small {
+  flex: 0 0 auto;
+}
+
+.cuinfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.cuinfo b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cuinfo span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cuovr {
+  flex: 0 0 auto;
+  width: 34px;
+  font-size: 17px;
+  text-align: center;
+}
+
+.cuovr.r-elite {
+  color: #ffb547;
+}
+
+.cuovr.r-good {
+  color: #3ddc84;
+}
+
+.cuovr.r-weak {
+  color: var(--muted);
+}
+
+.cuabbr {
+  flex: 0 0 auto;
+  min-width: 46px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.cuslot {
+  flex: 0 0 auto;
+  width: 34px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cuconfirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.cuactions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cuactions span {
+  flex: 1;
+  color: #ff9b7a;
+}
+
+.curatings {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px 18px;
+}
+
+.curating {
+  display: grid;
+  grid-template-columns: 56px 1fr 30px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.curating b {
+  text-align: right;
+}
+
+.cupool small {
+  color: var(--muted);
+}
+
+#cuBody input[type='search'] {
+  width: 100%;
+  margin: 6px 0;
+}
+
+#cuBody input[type='color'] {
+  width: 64px;
+  height: 34px;
+  padding: 2px;
+}
+
+@media (min-width: 640px) {
+  .curatings {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1100px) {
+  #custom .culist.cuwide {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #custom .mtcols .col:last-child {
+    max-height: calc(100dvh - 190px);
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+}
+
+#custom .chips.mtscroll {
+  max-height: 30dvh;
+  overflow-y: auto;
+}

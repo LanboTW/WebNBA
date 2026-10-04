@@ -12,6 +12,10 @@ import {
   teamRating,
   type Difficulty,
   DIFFICULTY_COINS,
+  CUSTOM_LIMITS,
+  MY_GROUP,
+  customTeamInfo,
+  keepRetired,
   type GameSettings,
   type GameState,
   type PlayerInfo,
@@ -28,6 +32,8 @@ import { LineupPanel } from './lineup';
 import { PlayerDb } from './playerDb';
 import { coinsText, wallet } from './wallet';
 import { initMyTeam, renderMyTeam } from './myteamUi';
+import { initCustom, renderCustom } from './customUi';
+import { custom } from './myteamStore';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
@@ -76,8 +82,8 @@ function save(key: string, value: string): void {
 
 // ----------------------------------------------------------------- screens
 
-type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub' | 'myteam';
-const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub', 'myteam'];
+type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub' | 'myteam' | 'custom';
+const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub', 'myteam', 'custom'];
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 /** Screens with a player on the court behind them; the rest are menus that need the room. */
@@ -95,7 +101,8 @@ function show(next: Screen): void {
   if (next === 'practice') renderPractice();
   if (next === 'players') renderPlayerDb();
   if (next === 'myteam') renderMyTeam();
-  if (next === 'home' || next === 'quick' || next === 'practice') careerLoad = refreshCareerTeams();
+  if (next === 'custom') renderCustom();
+  if (next === 'home' || next === 'quick' || next === 'practice' || next === 'custom') careerLoad = refreshCareerTeams();
   if (next === 'career') void renderCareer();
   document.body.classList.toggle('menu-solid', !session && !SHOWCASE_SCREENS.includes(next));
   if (!session) {
@@ -175,29 +182,47 @@ function fillTeamSelect(sel: HTMLSelectElement): void {
   }
 }
 
-// ----------------------------------------------------------------- career players
+// ----------------------------------------------------------------- my teams
 
-/** Saved career players, each on his team (in its starting five): picked like any team. */
-interface CareerTeam {
+/**
+ * 我的球隊: in quick games and practice, the custom teams and each career
+ * player's team (him in its starting five); in street games, two pick-lists:
+ * the career players (retired ones too) and the custom players.
+ */
+interface MyEntry {
+  /** The selects' value: career:<slot>, cteam:<id>, cstars or cplayers. */
   key: string;
   team: TeamInfo;
-  player: PlayerInfo;
+  /** The tile caption. */
+  label: string;
+  /** The dropdown text. */
+  option: string;
+  /** A career player's team: him (practice starts on him). */
+  player?: PlayerInfo;
 }
-const CAREER_GROUP = '我的球隊';
-let careerTeams: CareerTeam[] = [];
+const CAREER_GROUP = MY_GROUP;
+/** Saved career players on their teams (also the home screen's stars). */
+let careerTeams: MyEntry[] = [];
+let quickMine: MyEntry[] = [];
+let streetMine: MyEntry[] = [];
+/** The team lists with 我的球隊 added: quick games and practice, and street games. */
+const quickGroups = new Map(teamGroups);
+const streetGroups = new Map(teamGroups);
+const isMineKey = (k: string) => /^(career:|cteam:|cstars$|cplayers$)/.test(k);
+const allMine = () => [...quickMine, ...streetMine];
 
-/** A select's value to its team: an NBA (or custom) abbr, or career:<slot>. */
+/** A select's value to its team: an NBA (or data-file) abbr, or one of 我的球隊. */
 function teamFor(key: string): TeamInfo {
-  return careerTeams.find((x) => x.key === key)?.team ?? findTeam(key);
+  return allMine().find((x) => x.key === key)?.team ?? findTeam(key);
 }
 function keyOf(t: TeamInfo): string {
-  return careerTeams.find((x) => x.team === t)?.key ?? t.abbr;
+  return allMine().find((x) => x.team === t)?.key ?? t.abbr;
 }
 function tileLabel(t: TeamInfo): string {
-  return careerTeams.find((x) => x.team === t)?.player.name ?? t.abbr;
+  return allMine().find((x) => x.team === t)?.label ?? t.abbr;
 }
 
-/** Reloads the career players from the save slots into the team lists. */
+/** Reloads the career players from the save slots (keeping the retired ones) into the team lists. */
 async function refreshCareerTeams(): Promise<void> {
   let saves: Awaited<ReturnType<typeof savedCareers>> = [];
   try {
@@ -209,29 +234,64 @@ async function refreshCareerTeams(): Promise<void> {
     const base = careerPlayTeam(career, NBA_TEAMS);
     if (!base) return [];
     const player = base.players.find((p) => p.name === career.player.info.name)!;
-    return [{ key: `career:${slot}`, team: base, player }];
+    return [{ key: `career:${slot}`, team: base, label: player.name, option: `${player.name}（${base.name}）　${teamRating(base)}`, player }];
   });
-  teamGroups.delete(CAREER_GROUP);
-  if (careerTeams.length) teamGroups.set(CAREER_GROUP, careerTeams.map((x) => x.team));
-  for (const [sel, pref] of [
-    [homeSel, 'home'],
-    [awaySel, 'away'],
-    [practiceTeam, 'practiceTeam'],
-    [streetTeam, 'streetTeam'],
+  // Retired careers join the roster (older retired saves too, the first time they are seen).
+  if (custom.ready && saves.some(({ career }) => keepRetired(custom.save, career))) {
+    for (const { career } of saves) keepRetired(custom.save, career);
+    custom.commit();
+  }
+  rebuildMine();
+}
+
+/** Rebuilds 我的球隊 from the career players and the custom players and teams. */
+function rebuildMine(): void {
+  const cs = custom.ready ? custom.save : null;
+  const teams = (cs?.teams ?? [])
+    .map((t) => ({ t, info: customTeamInfo(cs!, t) }))
+    .filter((x) => x.info.players.length >= CUSTOM_LIMITS.teamMin);
+  quickMine = [
+    ...teams.map(({ t, info }) => ({ key: `cteam:${t.id}`, team: info, label: info.abbr, option: `${info.name}（${info.abbr}）　${teamRating(info)}` })),
+    ...careerTeams,
+  ];
+  const seen = new Set<string>();
+  const stars = [...careerTeams.map((x) => x.player!), ...(cs?.retired ?? []).map((r) => r.info)].filter((p) => !seen.has(p.name) && !!seen.add(p.name));
+  const own = (cs?.players ?? []).map((p) => p.info);
+  streetMine = [];
+  if (stars.length) {
+    const team: TeamInfo = { abbr: '生涯', name: '生涯球員', primary: '#ff7a1a', secondary: '#14161f', group: MY_GROUP, players: stars };
+    streetMine.push({ key: 'cstars', team, label: '生涯球員', option: `生涯球員（${stars.length} 人，含退休）` });
+  }
+  if (own.length) {
+    const team: TeamInfo = { abbr: '自訂', name: '自訂隊員', primary: '#7a3cff', secondary: '#ffffff', group: MY_GROUP, players: own };
+    streetMine.push({ key: 'cplayers', team, label: '自訂隊員', option: `自訂隊員（${own.length} 人）` });
+  }
+  for (const [groups, list] of [
+    [quickGroups, quickMine],
+    [streetGroups, streetMine],
+  ] as const) {
+    groups.delete(MY_GROUP);
+    if (list.length) groups.set(MY_GROUP, list.map((x) => x.team));
+  }
+  for (const [sel, pref, list] of [
+    [homeSel, 'home', quickMine],
+    [awaySel, 'away', quickMine],
+    [practiceTeam, 'practiceTeam', quickMine],
+    [streetTeam, 'streetTeam', streetMine],
   ] as const) {
     const was = sel.value;
-    sel.querySelector('optgroup[data-career]')?.remove();
-    if (careerTeams.length) {
+    sel.querySelector('optgroup[data-mine]')?.remove();
+    if (list.length) {
       const group = document.createElement('optgroup');
-      group.label = CAREER_GROUP;
-      group.dataset.career = '1';
-      for (const x of careerTeams) group.appendChild(new Option(`${x.player.name}（${x.team.name}）　${teamRating(x.team)}`, x.key));
+      group.label = MY_GROUP;
+      group.dataset.mine = '1';
+      for (const x of list) group.appendChild(new Option(x.option, x.key));
       sel.appendChild(group);
     }
-    // Keep the pick, or bring back a remembered career pick now that it is loaded.
+    // Keep the pick, or bring back a remembered pick of 我的球隊 now that it is loaded.
     const saved = load(pref, '');
-    sel.value = was.startsWith('career:') || !saved.startsWith('career:') ? was : saved;
-    if (!sel.value) sel.value = was && !was.startsWith('career:') ? was : 'GSW';
+    sel.value = isMineKey(was) || !isMineKey(saved) ? was : saved;
+    if (!sel.value) sel.value = was && !isMineKey(was) ? was : 'GSW';
   }
   menuPicker.sync();
   practicePicker.sync();
@@ -259,7 +319,7 @@ diffSel.value = load('diff', 'normal');
 quarterSel.value = load('quarter', '180');
 
 // The picker edits whichever side's card is selected; on phones that is two steps.
-const menuPicker = new TeamPicker($('#menuPicker'), teamGroups, homeSel, keyOf, tileLabel);
+const menuPicker = new TeamPicker($('#menuPicker'), quickGroups, homeSel, keyOf, tileLabel);
 let pickSide: 'home' | 'away' = 'home';
 function setPickSide(side: 'home' | 'away'): void {
   pickSide = side;
@@ -332,10 +392,11 @@ $('#startBtn').addEventListener('click', () => {
 type QuickKind = 'full' | 'street';
 let quickKind: QuickKind = load('quickKind', 'full') === 'street' ? 'street' : 'full';
 
-/** A seat: the team's key (as in the selects) and his roster index. */
+/** A seat: the team's key (as in the selects), his roster index and name (lists of 我的球隊 can change order). */
 interface Seat {
   team: string;
   idx: number;
+  name?: string;
 }
 const STREET_SIDES: [TeamInfo, TeamInfo] = [
   { abbr: '紅隊', name: '紅隊', primary: '#c8372d', secondary: '#ffffff', players: [] },
@@ -360,14 +421,15 @@ streetTeam.value = load('streetTeam', 'GSW');
 if (!streetTeam.value) streetTeam.value = 'GSW';
 streetTarget.value = load('streetTarget', '21');
 streetMitt.checked = load('streetMitt', '0') === '1';
-const streetPicker = new TeamPicker($('#streetPicker'), teamGroups, streetTeam, keyOf, tileLabel);
+const streetPicker = new TeamPicker($('#streetPicker'), streetGroups, streetTeam, keyOf, tileLabel);
 streetTeam.addEventListener('change', renderStreet);
 
-/** The player in a seat (a career seat waits until the saves have loaded). */
+/** The player in a seat (one of 我的球隊 waits until it has loaded). */
 function seatPlayer(s: Seat | null | undefined): { p: PlayerInfo; t: TeamInfo } | null {
   if (!s) return null;
-  const t = careerTeams.find((x) => x.key === s.team)?.team ?? (s.team.startsWith('career:') ? null : findTeam(s.team));
-  const p = t?.players[s.idx];
+  const t = allMine().find((x) => x.key === s.team)?.team ?? (isMineKey(s.team) ? null : findTeam(s.team));
+  let p = t?.players[s.idx];
+  if (t && s.name && p?.name !== s.name) p = t.players.find((x) => x.name === s.name);
   return t && p ? { p, t } : null;
 }
 
@@ -441,7 +503,8 @@ $('#quick').addEventListener('click', (e) => {
     streetSel = { side: Number(seat.dataset.side) as 0 | 1, i: Number(seat.dataset.i) };
     renderStreet();
   } else if (pick) {
-    streetSeats[streetSel.side][streetSel.i] = { team: streetTeam.value, idx: Number(pick.dataset.pi) };
+    const idx = Number(pick.dataset.pi);
+    streetSeats[streetSel.side][streetSel.i] = { team: streetTeam.value, idx, name: teamFor(streetTeam.value).players[idx]?.name };
     saveSeats();
     // On to the next empty seat: yours first, then the other side.
     const order = ([0, 1] as const).flatMap((side) => Array.from({ length: streetSize }, (_, i) => ({ side, i })));
@@ -452,7 +515,7 @@ $('#quick').addEventListener('click', (e) => {
 });
 
 function randomStreet(): void {
-  const pool = [...ALL_TEAMS, ...careerTeams.map((x) => x.team)].flatMap((t) =>
+  const pool = [...ALL_TEAMS, ...streetMine.map((x) => x.team)].flatMap((t) =>
     t.players.map((p, idx) => ({ team: keyOf(t), idx, name: p.name })),
   );
   const used = new Set<string>();
@@ -462,7 +525,7 @@ function randomStreet(): void {
       let s = pool[Math.floor(Math.random() * pool.length)];
       while (used.has(s.name)) s = pool[Math.floor(Math.random() * pool.length)];
       used.add(s.name);
-      streetSeats[side][i] = { team: s.team, idx: s.idx };
+      streetSeats[side][i] = { team: s.team, idx: s.idx, name: s.name };
     }
   }
   saveSeats();
@@ -512,11 +575,11 @@ fillTeamSelect(practiceTeam);
 practiceTeam.value = load('practiceTeam', homeSel.value);
 if (!practiceTeam.value) practiceTeam.value = 'GSW';
 let practicePlayer = Number(load('practicePlayer', '0'));
-const practicePicker = new TeamPicker($('#practicePicker'), teamGroups, practiceTeam, keyOf, tileLabel);
+const practicePicker = new TeamPicker($('#practicePicker'), quickGroups, practiceTeam, keyOf, tileLabel);
 practiceTeam.addEventListener('change', () => {
   // A career team: start on him.
   const mine = careerTeams.find((x) => x.key === practiceTeam.value);
-  practicePlayer = mine ? mine.team.players.indexOf(mine.player) : 0;
+  practicePlayer = mine?.player ? mine.team.players.indexOf(mine.player) : 0;
   renderPractice();
 });
 
@@ -800,6 +863,10 @@ function frame(now: number): void {
 }
 
 initCareerMenu(show, { preview: previewCareer, play: playCareer });
+initCustom({ careerPlayers: () => careerTeams.map((x) => x.player!) });
+// Custom players and teams change 我的球隊.
+custom.onChange(() => rebuildMine());
+
 initMyTeam({
   play(teams, settings, finish, after) {
     sfx.unlock();

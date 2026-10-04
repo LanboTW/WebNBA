@@ -44,16 +44,16 @@ export const POSITION_LABEL: Record<Position, string> = {
 };
 
 type LookKey = keyof Look;
-interface LookField {
+export interface LookField {
   key: LookKey;
   label: string;
   options: [Look[LookKey], string][];
   swatch?: boolean;
 }
 
-const HAIR_COLORS = ['#1d1612', '#4a2f1d', '#8a5a2b', '#d9b26a', '#b5482a', '#9a9a9a', '#ececec'];
+export const HAIR_COLORS = ['#1d1612', '#4a2f1d', '#8a5a2b', '#d9b26a', '#b5482a', '#9a9a9a', '#ececec'];
 
-const LOOK_FIELDS: LookField[] = [
+export const LOOK_FIELDS: LookField[] = [
   { key: 'skin', label: '膚色', swatch: true, options: [1, 2, 3, 4, 5, 6].map((n) => [n, skinColor(n)]) },
   {
     key: 'hair',

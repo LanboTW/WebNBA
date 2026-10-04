@@ -62,6 +62,7 @@
           <button type="button" data-go="quick" class="primary"><b>快速模式</b><small>選兩隊，對戰電腦或觀戰</small></button>
           <button type="button" data-go="myteam"><b>MyTeam</b><small>開卡包收集球員卡，組自己的夢幻隊</small></button>
           <button type="button" data-go="career"><b>生涯模式</b><small>自創球員，從新秀打到名人堂</small></button>
+          <button type="button" data-go="custom"><b>自訂隊伍/人員</b><small>自創球員、組自己的隊伍、退休名冊</small></button>
           <button type="button" data-go="practice"><b>練習</b><small>一個人投籃、運球</small></button>
           <button type="button" data-go="players"><b>球員資料庫</b><small>所有球隊的球員能力值</small></button>
           <button type="button" data-go="settings"><b>設定</b><small>畫質、視角、規則</small></button>
@@ -216,6 +217,14 @@
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>MyTeam</h2><span id="mtCoins" class="mtcoins"></span></div>
         <div id="mtTabs" class="tabs"></div>
         <div id="mtBody"></div>
+      </div>
+    </div>
+
+    <div id="custom" class="overlay screen hidden">
+      <div class="panel duo">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>自訂隊伍/人員</h2></div>
+        <div id="cuTabs" class="tabs"></div>
+        <div id="cuBody"></div>
       </div>
     </div>
 
