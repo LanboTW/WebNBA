@@ -816,21 +816,33 @@ const XP_DIFFICULTY: Record<Difficulty, number> = { easy: 0.8, normal: 1, hard: 
  */
 export function gameXp(career: CareerState, game: CareerGame, playoff: number): number {
   const won = game.score[0] > game.score[1];
-  const base = game.grade === 'DNP' ? 12 : 25 + Math.max(0, game.rating) * 3 + (won ? 10 : 0);
+  // A great night pays, but only so much: a star's games would otherwise speed up his own growth.
+  const base = game.grade === 'DNP' ? 12 : 25 + Math.min(XP_RATING_CAP, Math.max(0, game.rating)) * 3 + (won ? 10 : 0);
   const k = XP_DIFFICULTY[career.settings.difficulty] * (playoff ? 1.5 : 29 / career.settings.seasonGames);
   return Math.round(base * k);
 }
 
-/** XP to raise a rating by one point from `value`: gets steeper as it climbs. */
-export function trainCost(value: number): number {
-  return Math.round(15 * Math.pow(1.06, value - 50));
+/** Game ratings above this earn no more XP. */
+export const XP_RATING_CAP = 14;
+/** Ratings above this cost much more to train (the last points to a star's peak are slow). */
+export const TRAIN_STEEP_FROM = 80;
+
+/**
+ * XP to raise a rating by one point from `value`: gets steeper as it climbs,
+ * and every point costs more the better he already is overall (past 80 a
+ * star's last steps to his peak are slow; 99 is for the very best).
+ */
+export function trainCost(value: number, ovr = 0): number {
+  const steep = Math.pow(1.05, Math.max(0, value - TRAIN_STEEP_FROM));
+  const star = Math.pow(1.13, Math.max(0, ovr - TRAIN_STEEP_FROM)) * Math.pow(1.12, Math.max(0, ovr - 90));
+  return Math.round(15 * Math.pow(1.06, value - 50) * steep * star);
 }
 
 /** Spends XP on one point of a rating. Returns whether it went through. */
 export function train(career: CareerState, key: keyof Ratings): boolean {
   const p = career.player;
   const value = p.info.ratings[key];
-  const cost = trainCost(value);
+  const cost = trainCost(value, playerRating(p.info));
   if (value >= archetype(p.archetype).caps[key] || (p.xp ?? 0) < cost) return false;
   p.xp = (p.xp ?? 0) - cost;
   p.info = { ...p.info, ratings: { ...p.info.ratings, [key]: value + 1 } };

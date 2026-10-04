@@ -19,6 +19,10 @@ import {
   money,
   moneyText,
   settlement,
+  settlementParts,
+  SETTLE_HOF,
+  SETTLE_PER_SEASON,
+  SETTLE_TROPHY,
   type CareerState,
 } from '@webnba/shared';
 import { RATING_LABEL } from './careerCreate';
@@ -96,9 +100,12 @@ export function shopHtml(c: CareerState, coins: number): string {
 export function settleHtml(c: CareerState): string {
   if (c.settled) return `<div class="coinbox"><h3>退休結算<small>已換成金幣</small></h3></div>`;
   if (!canSettle(c)) return '';
+  const parts = settlementParts(c);
   return (
     `<div class="coinbox"><h3>退休結算<small>每個存檔一次</small></h3>` +
-    `<p class="sub tight">剩下的 ${moneyText(money(c))} 資金和 ${c.player.xp ?? 0} 經驗值可以換成 <b>${coinsText(settlement(c))}</b> 金幣（10 萬美元或 10 經驗值換 1 金幣），金幣可以用在新的生涯。</p>` +
+    `<p class="sub tight">剩下的 ${moneyText(money(c))} 資金和 ${c.player.xp ?? 0} 經驗值可以換成 <b>${coinsText(settlement(c))}</b> 金幣：` +
+    `10 萬美元或 10 經驗值換 1 金幣，最多每季 ${coinsText(SETTLE_PER_SEASON)}（${(c.history ?? []).length} 季上限 ${coinsText(parts.cap)}，這次 ${coinsText(parts.leftover)}）` +
+    `${parts.honours ? `，再加榮譽 ${coinsText(parts.honours)}（名人堂 ${coinsText(SETTLE_HOF)}、每座 MVP 和總冠軍 ${SETTLE_TROPHY}）` : `；進名人堂另加 ${coinsText(SETTLE_HOF)}、每座 MVP 和總冠軍 ${SETTLE_TROPHY}`}。金幣可以用在新的生涯和 MyTeam。</p>` +
     `<div class="buttons"><button type="button" class="primary" data-act="settle">結算成金幣</button></div></div>`
   );
 }

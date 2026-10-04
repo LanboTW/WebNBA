@@ -155,6 +155,36 @@ describe('career economy', () => {
     expect(settle(c)).toBe(0);
   });
 
+  it('retirement coins are capped by seasons played, plus honours', async () => {
+    const { settlementParts, SETTLE_PER_SEASON, SETTLE_HOF, SETTLE_TROPHY } = await import('../src');
+    const c = career();
+    c.stage = 'retired';
+    c.money = 10_000_000;
+    c.player.xp = 0;
+    c.history = [{ mine: ['mvp', 'champ', 'allstar'] }, { mine: ['champ'] }] as unknown as CareerState['history'];
+    c.hall = [{ name: c.player.info.name, year: 2030, team: 'BOS', note: '', me: true }];
+    const p = settlementParts(c);
+    expect(p.cap).toBe(2 * SETTLE_PER_SEASON);
+    expect(p.leftover).toBe(p.cap);
+    expect(p.honours).toBe(SETTLE_HOF + 3 * SETTLE_TROPHY);
+    expect(settle(c)).toBe(p.total);
+  });
+
+  it('fans level off near the ceiling; awards add, not multiply', async () => {
+    const { fansAfterAwards, FANS_CEILING, endorsement } = await import('../src');
+    expect(fansAfterAwards(1_000_000, ['mvp'])).toBeGreaterThan(2_800_000);
+    let fans = 1_000_000;
+    for (let i = 0; i < 60; i++) fans = fansAfterAwards(fans, ['mvp', 'champ', 'allstar']);
+    expect(fans).toBeLessThan(FANS_CEILING * 1.05);
+    expect(endorsement(FANS_CEILING)).toBe(5000);
+  });
+
+  it('training costs climb with his overall past 80', async () => {
+    const { trainCost } = await import('../src');
+    expect(trainCost(80, 90)).toBeGreaterThan(trainCost(80, 80) * 3);
+    expect(trainCost(80, 70)).toBe(trainCost(80, 80));
+  });
+
   it('a star season makes him a bigger name', () => {
     const c = career();
     finishSeason(c, 14, 28);

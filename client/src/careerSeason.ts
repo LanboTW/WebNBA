@@ -320,7 +320,7 @@ function trainHtml(c: CareerState): string {
     const v = p.info.ratings[k];
     const plus = boosts[k] ? `<small class="gearplus" title="裝備加成">+${boosts[k]}</small>` : '';
     const capped = v >= caps[k];
-    const cost = trainCost(v);
+    const cost = trainCost(v, playerRating(p.info));
     return (
       `<div class="trow"><span>${RATING_LABEL[k]}</span><div class="track"><i style="width:${v}%"></i><em style="left:${caps[k]}%"></em></div><b>${v}${plus}</b>` +
       `<button type="button" class="small" data-train="${k}"${capped || xp < cost ? ' disabled' : ''}>${capped ? '已達上限' : `+1　${cost} XP`}</button></div>`
@@ -328,7 +328,7 @@ function trainHtml(c: CareerState): string {
   }).join('');
   return (
     `<div class="xpline"><span>經驗值 <b>${xp}</b></span><span>總評 <b>${playerRating(p.info)}</b>${gearOvr(c)}</span></div>` +
-    `<p class="sub tight">比賽表現越好、贏球、季後賽和較高難度都拿得比較多經驗值；坐板凳也有一點練習經驗。能力越高，加 1 點越貴；虛線是${archetype(p.archetype).name}的上限。</p>` +
+    `<p class="sub tight">比賽表現越好、贏球、季後賽和較高難度都拿得比較多經驗值；坐板凳也有一點練習經驗。能力越高、總評越高，加 1 點越貴（總評 80 以上明顯變貴）；虛線是${archetype(p.archetype).name}的上限。</p>` +
     `<div class="trainlist">${rows}</div>`
   );
 }

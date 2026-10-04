@@ -215,40 +215,43 @@ export function startingFans(pick: number): number {
 
 const MIN_FANS = 5_000;
 
+/** Where a following levels off: gains shrink as it nears this. */
+export const FANS_CEILING = 20_000_000;
+/** New fans come slower the closer he is to the ceiling, and stop there. */
+const room = (fans: number) => Math.max(0, 1 - fans / FANS_CEILING);
+
 /** A game moves his following: big nights and wins add, duds cost a little. Playoffs count double. */
 export function fansAfterGame(c: CareerState, game: CareerGame, playoff: number): number {
   const fans = c.fans ?? startingFans(c.draft?.pick ?? 30);
   if (game.grade === 'DNP') return fans;
   const won = game.score[0] > game.score[1];
-  let delta = (game.rating - 8) * (300 + fans * 0.0004) + (won ? 200 + fans * 0.0005 : 0);
+  let delta = Math.min(game.rating - 8, 20) * 1200 + (won ? 1000 : 0);
+  if (delta > 0) delta *= room(fans);
   if (playoff) delta *= 2;
   return Math.max(MIN_FANS, Math.round(fans + delta));
 }
 
-/** Awards bring new fans: [times, plus]. */
-const AWARD_FANS: Partial<Record<AwardId, [number, number]>> = {
-  mvp: [1.5, 200_000],
-  champ: [1.15, 100_000],
-  fmvp: [1.1, 100_000],
-  allstar: [1.15, 50_000],
-  roy: [1, 100_000],
-  pts: [1, 30_000],
-  reb: [1, 30_000],
-  ast: [1, 30_000],
-  stl: [1, 30_000],
-  blk: [1, 30_000],
+/** Awards bring new fans. */
+const AWARD_FANS: Partial<Record<AwardId, number>> = {
+  mvp: 2_000_000,
+  champ: 1_000_000,
+  fmvp: 500_000,
+  allstar: 500_000,
+  roy: 300_000,
+  pts: 200_000,
+  reb: 200_000,
+  ast: 200_000,
+  stl: 200_000,
+  blk: 200_000,
 };
 
 export function fansAfterAwards(fans: number, mine: AwardId[]): number {
-  for (const id of mine) {
-    const [k, add] = AWARD_FANS[id] ?? [1, 0];
-    fans = fans * k + add;
-  }
+  for (const id of mine) fans += (AWARD_FANS[id] ?? 0) * room(fans);
   return Math.round(fans);
 }
 
-/** Endorsements at the end of a season: about 100 萬 dollars per 10 萬 fans. */
-export const endorsement = (fans: number) => Math.round(fans / 1000);
+/** Endorsements at the end of a season: about 25 萬 dollars per 10 萬 fans (5,000 萬 at 2,000 萬 fans). */
+export const endorsement = (fans: number) => Math.round(fans / 4000);
 
 /** All-Star voting: fans add up to 15% to his case (full at 200 萬 fans). */
 export const fanVote = (fans: number) => 1 + 0.15 * Math.min(1, fans / 2_000_000);
@@ -294,8 +297,26 @@ export const WAN_PER_COIN = 5;
 export const XP_PER_COIN = 5;
 export const COIN_TRANSFER_MAX = 2000;
 
+/** Coins money and XP can turn into: 1,500 for each season he played. */
+export const SETTLE_PER_SEASON = 1500;
+/** On top: the Hall of Fame, and each MVP and title. */
+export const SETTLE_HOF = 3000;
+export const SETTLE_TROPHY = 500;
+
+/** What his retirement is worth in coins: leftovers (capped by seasons played) plus his honours. */
+export function settlementParts(c: CareerState): { leftover: number; cap: number; honours: number; total: number } {
+  const raw = Math.floor(money(c) * COINS_PER_WAN) + Math.floor((c.player.xp ?? 0) * COINS_PER_XP);
+  const seasons = (c.history ?? []).length;
+  const cap = Math.max(1, seasons) * SETTLE_PER_SEASON;
+  const leftover = Math.min(raw, cap);
+  const mine = (c.history ?? []).flatMap((h) => h.mine ?? []);
+  const trophies = mine.filter((a) => a === 'mvp' || a === 'champ').length;
+  const honours = ((c.hall ?? []).some((h) => h.me) ? SETTLE_HOF : 0) + trophies * SETTLE_TROPHY;
+  return { leftover, cap, honours, total: leftover + honours };
+}
+
 export function settlement(c: CareerState): number {
-  return Math.floor(money(c) * COINS_PER_WAN) + Math.floor((c.player.xp ?? 0) * COINS_PER_XP);
+  return settlementParts(c).total;
 }
 
 export function canSettle(c: CareerState): boolean {

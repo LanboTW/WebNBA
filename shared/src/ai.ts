@@ -7,6 +7,7 @@ import {
   teammates,
 } from './players';
 import { nextRandom } from './rng';
+import { playerRating } from './roster';
 import { SHOT_SWEET, baseMakeChance } from './shot';
 import {
   activePlay,
@@ -42,16 +43,18 @@ interface Skill {
   mismatch: number;
   /** Runs the whole playbook (else only the pick-and-roll). */
   playbook: boolean;
+  /** Sends a second defender at a star (1), and at whoever has the hot hand too (2); 0 never. */
+  double: number;
 }
 
 const SKILLS: Record<Difficulty, Skill> = {
-  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false },
-  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false },
-  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false },
+  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false, double: 0 },
+  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false, double: 1 },
+  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0, playbook: false, double: 1 },
   // Expert reads the floor: more screens, earlier help, goes at mismatches.
-  expert: { shotErr: 0.035, shootThreshold: 0.88, stealRate: 0.14, blockRate: 0.9, react: 1, screenRate: 0.38, switchRate: 0.42, helpRange: 5.5, mismatch: 0.3, playbook: true },
+  expert: { shotErr: 0.035, shootThreshold: 0.88, stealRate: 0.14, blockRate: 0.9, react: 1, screenRate: 0.38, switchRate: 0.42, helpRange: 5.5, mismatch: 0.3, playbook: true, double: 2 },
   // Hall of Fame: patient (good shots only), near-perfect release, hunts mismatches.
-  legend: { shotErr: 0.022, shootThreshold: 0.95, stealRate: 0.16, blockRate: 1, react: 1, screenRate: 0.42, switchRate: 0.5, helpRange: 6, mismatch: 0.55, playbook: true },
+  legend: { shotErr: 0.022, shootThreshold: 0.95, stealRate: 0.16, blockRate: 1, react: 1, screenRate: 0.42, switchRate: 0.5, helpRange: 6, mismatch: 0.55, playbook: true, double: 2 },
 };
 
 /** Offensive spots as (distance from the hoop toward mid-court, z). */
@@ -185,6 +188,17 @@ function trustBonus(state: GameState, m: PlayerState): number {
   return (trust - 0.3) * 0.25;
 }
 
+/**
+ * How far over a fair share of his team's shots he is (0 up to about 30%):
+ * a team spreads the ball, so the AI cools on a player who has taken them all.
+ */
+export function usageOver(state: GameState, p: PlayerState): number {
+  const team = [...state.players.filter((o) => o.team === p.team), ...state.bench[p.team]];
+  const total = team.reduce((s, o) => s + o.stats.fga, 0);
+  if (total < 8) return 0;
+  return Math.max(0, p.stats.fga / total - 0.26);
+}
+
 function bestPass(state: GameState, p: PlayerState, inbound: boolean): { m: PlayerState; value: number } | null {
   let best: { m: PlayerState; value: number } | null = null;
   const s = Math.sign(attackHoop(state, p.team));
@@ -194,7 +208,7 @@ function bestPass(state: GameState, p: PlayerState, inbound: boolean): { m: Play
     const open = Math.min(4, openness(state, m));
     const value = inbound
       ? open * 0.25 + (m.slot === 0 ? 0.4 : 0) - laneRisk(state, p, m)
-      : shotValue(state, m) * 0.95 + open * 0.03 - laneRisk(state, p, m) + trustBonus(state, m);
+      : shotValue(state, m) * 0.95 + open * 0.03 - laneRisk(state, p, m) + trustBonus(state, m) - usageOver(state, m) * 3;
     if (!best || value > best.value) best = { m, value };
   }
   return best;
@@ -360,7 +374,7 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
     return steer(p, holderHasSpot, true);
   }
 
-  const mine = shotValue(state, p);
+  const mine = shotValue(state, p) - usageOver(state, p) * 2.5;
   const pass = bestPass(state, p, false);
   const drive = driveValue(state, p) + sk.mismatch * mismatchEdge(state, p);
   const passValue = pass?.value ?? 0;
@@ -657,7 +671,7 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
     }
     sprint = hdist(p.pos, target) > 1.5;
   } else {
-    target = helpTarget(state, p, rim, holder, sk.helpRange) ?? {
+    target = helpTarget(state, p, rim, holder, sk.helpRange) ?? doubleTarget(state, p, rim, holder, sk) ?? {
       x: man.pos.x + (rim.x - man.pos.x) * 0.33 + (ball.x - man.pos.x) * 0.15,
       z: man.pos.z + (rim.z - man.pos.z) * 0.33 + (ball.z - man.pos.z) * 0.15,
     };
@@ -669,6 +683,34 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
     }
   }
   return { ...steer(p, target, sprint, sk.react), jump };
+}
+
+/**
+ * A star with the ball in scoring range draws a second defender: the one whose
+ * own man is the least threat. A star is clearly the best player on the floor
+ * for his team; at the top levels, so is whoever has been scoring at will.
+ */
+function doubleTarget(state: GameState, p: PlayerState, rim: Target, holder: PlayerState | null, sk: Skill): Target | null {
+  if (!sk.double || !holder || holder.team === p.team || state.phase !== 'live' || hdist(holder.pos, rim) > 8) return null;
+  const mates = state.players.filter((o) => o.team === holder.team && o !== holder);
+  const best = Math.max(0, ...mates.map((o) => playerRating(o.info)));
+  const star = playerRating(holder.info) >= Math.max(84, best + 5);
+  const teamPts = state.score[holder.team];
+  const hot = sk.double >= 2 && holder.stats.pts >= 10 && holder.stats.pts >= teamPts * 0.4;
+  if (!star && !hot) return null;
+  const onBall = state.players.find((d) => state.assign[d.id] === holder.id);
+  // The helper leaves the man who matters least (and is close enough to get there).
+  const helpers = state.players.filter((o) => o.team === p.team && o !== onBall && hdist(o.pos, holder.pos) < 6);
+  const threat = (d: PlayerState) => {
+    const man = state.players[state.assign[d.id]];
+    return man ? shotValue(state, man) + (hdist(man.pos, rim) < 3 ? 0.5 : 0) : 0;
+  };
+  const doubler = helpers.sort((a, b) => threat(a) - threat(b))[0];
+  if (doubler?.id !== p.id) return null;
+  // Beside him, away from the man already on him.
+  const side = onBall ? dirTo(onBall.pos, holder.pos) : dirTo(rim, holder.pos);
+  const d = dirTo(holder.pos, rim);
+  return { x: holder.pos.x + d.x * 0.7 + side.z * 0.6, z: holder.pos.z + d.z * 0.7 - side.x * 0.6 };
 }
 
 /** If the ball handler has beaten their man near the rim, the nearest helper steps into the lane. */
