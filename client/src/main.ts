@@ -11,6 +11,7 @@ import {
   playerRating,
   teamRating,
   type Difficulty,
+  DIFFICULTY_COINS,
   type GameSettings,
   type GameState,
   type PlayerInfo,
@@ -182,7 +183,7 @@ interface CareerTeam {
   team: TeamInfo;
   player: PlayerInfo;
 }
-const CAREER_GROUP = '生涯隊伍';
+const CAREER_GROUP = '我的球隊';
 let careerTeams: CareerTeam[] = [];
 
 /** A select's value to its team: an NBA (or custom) abbr, or career:<slot>. */
@@ -736,7 +737,7 @@ function showBox(title: string, canResume: boolean): void {
   $('#boxscore').classList.remove('hidden');
 }
 
-/** Quick games against the computer pay coins: 150 for a win, 50 for a loss. */
+/** Quick games against the computer pay coins: 150 for a win, 50 for a loss, scaled by its level. */
 const QUICK_COINS = { win: 150, loss: 50 };
 const paid = new WeakSet<Session>();
 
@@ -754,7 +755,7 @@ function showFinal(): void {
   }
   if (!careerPlay && !myteamPlay && s.mode === 'game' && s.humanTeams.includes(0) && !paid.has(session)) {
     paid.add(session);
-    const coins = a > b ? QUICK_COINS.win : QUICK_COINS.loss;
+    const coins = Math.round((a > b ? QUICK_COINS.win : QUICK_COINS.loss) * DIFFICULTY_COINS[s.difficulty]);
     void wallet.add(coins);
     $('#boxTitle').textContent += `　+${coins} 金幣`;
   }

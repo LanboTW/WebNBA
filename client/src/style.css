@@ -4205,3 +4205,50 @@ body.menu-solid .overlay.screen {
     margin: 0;
   }
 }
+
+/* ------------------------------------------------------- the career player */
+
+table.standings tr.me td,
+.box table tr.me td {
+  background: rgba(255, 122, 26, 0.3);
+  color: #fff;
+  font-weight: 700;
+}
+
+table.standings tr.me td:first-child,
+.box table tr.me td:first-child {
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+table.dbtable tr.me td:first-child {
+  background: #5a3310;
+}
+
+i.star {
+  margin-right: 4px;
+  font-style: normal;
+  color: #ffb547;
+}
+
+b.mine::before,
+span.mine::before {
+  content: '★ ';
+  color: #ffb547;
+}
+
+b.mine,
+span.mine {
+  font-weight: 800;
+}
+
+ol.ladder li.mine {
+  padding-left: 6px;
+  border-radius: 6px;
+  background: rgba(255, 122, 26, 0.22);
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.chip.mechip.on {
+  border-color: var(--accent);
+  background: rgba(255, 122, 26, 0.28);
+}

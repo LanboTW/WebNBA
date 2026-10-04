@@ -38,6 +38,9 @@ import {
   sellCard,
   tier,
   type Difficulty,
+  DIFFICULTIES,
+  DIFFICULTY_LABEL,
+  DIFFICULTY_COINS,
   type DropResult,
   type GameKind,
   type GameOutcome,
@@ -235,7 +238,7 @@ let host: MyTeamHost | null = null;
 let ladderPeriod = 0;
 /** Deck refs picked for street games. */
 let streetPick: string[] = [];
-const DIFF_LABEL: Record<Difficulty, string> = { easy: '簡單', normal: '普通', hard: '困難' };
+const DIFF_LABEL = DIFFICULTY_LABEL;
 
 function pref(key: string, fallback: string): string {
   try {
@@ -313,16 +316,12 @@ function playTab(): string {
     (full ? '' : '<p class="msg">牌組至少要 5 張卡才能比賽，先到「牌組」分頁放卡。</p>') +
     cols(
       `<h3 class="mth">挑戰之路</h3><div class="chips">${periods}</div><div class="mtlevels">${levels}</div>`,
-      `<h3 class="mth">快速對戰</h3><div class="mtplay"><span class="fine left">對上和你牌組同等級的隨機 NBA 球隊。贏 ${GAME_COINS.win}、輸 ${GAME_COINS.loss} 金幣。</span>` +
+      `<h3 class="mth">快速對戰</h3><div class="mtplay"><span class="fine left">對上和你牌組同等級的隨機 NBA 球隊。贏 ${GAME_COINS.win}、輸 ${GAME_COINS.loss} 金幣（再乘難度倍率）。</span>` +
     `<button type="button" class="small go" data-act="quickgame"${full ? '' : ' disabled'}>開始</button></div>` +
     `<h3 class="mth">街頭 3 對 3</h3><p class="fine left">從牌組挑 3 人（${streetPick.length}/3），對上 3 名同等級的隨機球員。</p><div class="chips">${picks}</div>` +
     `<div class="mtplay"><label class="fine">搶 <select id="mtTarget">${opt('11', '11 分', target)}${opt('21', '21 分', target)}</select></label>` +
     `<button type="button" class="small go" data-act="streetgame"${streetPick.length === 3 ? '' : ' disabled'}>開始</button></div>` +
-    `<h3 class="mth">比賽設定</h3><div class="row"><label>快速對戰／街頭難度<select id="mtDiff">${opt('easy', '簡單', diff)}${opt('normal', '普通', diff)}${opt(
-      'hard',
-      '困難',
-      diff,
-    )}</select></label>` +
+    `<h3 class="mth">比賽設定</h3><div class="row"><label>快速對戰／街頭難度<select id="mtDiff">${DIFFICULTIES.map((d) => opt(d, `${DIFF_LABEL[d]}（金幣 ×${DIFFICULTY_COINS[d]}）`, diff)).join('')}</select></label>` +
     `<label>每節長度<select id="mtQuarter">${opt('60', '1 分鐘', quarter)}${opt('120', '2 分鐘', quarter)}${opt('180', '3 分鐘', quarter)}${opt(
       '300',
       '5 分鐘',
@@ -416,6 +415,7 @@ function startGame(kind: GameKind, opts: { level?: LevelDef } = {}): void {
         level: opts.level?.id,
         used: played,
         forfeit,
+        difficulty: diff,
         totals: {
           points: sum((x) => x.pts),
           threes: sum((x) => x.tpm),

@@ -2,7 +2,7 @@ import headshotsJson from '../data/headshots.json';
 import myteamJson from '../data/myteam.json';
 import { POSITIONS, toOverall } from './career';
 import { NBA_TEAMS, RATING_KEYS, findTeam, overallOf, playerRating, teamRating } from './roster';
-import type { Difficulty, Look, PlayerInfo, Position, Ratings, TeamInfo } from './types';
+import { DIFFICULTY_COINS, type Difficulty, type Look, type PlayerInfo, type Position, type Ratings, type TeamInfo } from './types';
 
 /**
  * MyTeam: collect player cards with coins, build a deck, play with it.
@@ -626,6 +626,8 @@ export interface GameResult {
   totals: { points: number; threes: number; assists: number; blocks: number; steals: number };
   /** Left before the end: a loss with no coins. */
   forfeit?: boolean;
+  /** The computer's level: scales the game's coins (not level rewards). */
+  difficulty?: Difficulty;
 }
 
 export interface GameOutcome {
@@ -675,6 +677,7 @@ export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number =
       ({ coins, drops } = grantReward(save, level.reward, rand));
     } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
   } else coins = won ? GAME_COINS.win : GAME_COINS.loss;
+  if (!firstClear) coins = Math.round(coins * DIFFICULTY_COINS[g.difficulty ?? 'normal']);
   return { coins, drops, firstClear, gone, unlocked: updatePeriod(save) };
 }
 

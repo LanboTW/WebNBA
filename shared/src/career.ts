@@ -806,7 +806,7 @@ export function rotationRole(career: CareerState, nba: TeamInfo[]): Role {
 
 // ----------------------------------------------------------------- experience
 
-const XP_DIFFICULTY: Record<Difficulty, number> = { easy: 0.8, normal: 1, hard: 1.25 };
+const XP_DIFFICULTY: Record<Difficulty, number> = { easy: 0.8, normal: 1, hard: 1.25, expert: 1.5, legend: 1.8 };
 
 /**
  * XP for one game: playing well pays most, winning and the playoffs add to

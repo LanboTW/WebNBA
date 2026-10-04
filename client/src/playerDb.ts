@@ -52,8 +52,11 @@ export class PlayerDb {
   private view: View = 'ratings';
   private sort: SortKey = 'ovr';
   private desc = true;
+  /** His row stays on top whatever the sort. */
+  private pinMe = true;
   private source: DbSource | null = null;
   private table: HTMLElement | null = null;
+  private readonly bound = new WeakSet<HTMLElement>();
 
   /** Draws into `root` (replacing what is there) from `source`. */
   mount(root: HTMLElement, source: DbSource): void {
@@ -70,6 +73,10 @@ export class PlayerDb {
       `</select>` +
       `<input type="search" data-db="query" placeholder="搜尋球員" value="${esc(this.query)}" />` +
       `<nav class="chips">${(['all', ...POSITIONS] as const).map((p) => `<button type="button" data-pos="${p}" class="chip${p === this.pos ? ' on' : ''}">${p === 'all' ? '全部位置' : p}</button>`).join('')}</nav>` +
+      (source.me
+        ? `<nav class="chips"><button type="button" data-me="pin" class="chip mechip${this.pinMe ? ' on' : ''}">★ 置頂我</button>` +
+          `<button type="button" data-me="only" class="chip mechip${this.query === source.me ? ' on' : ''}">只看我</button></nav>`
+        : '') +
       (source.line
         ? `<nav class="chips">${(
             [
@@ -90,12 +97,33 @@ export class PlayerDb {
       this.query = (e.target as HTMLInputElement).value;
       this.drawTable();
     });
+    // One click handler per root, however often it is re-drawn.
+    if (this.bound.has(root)) {
+      this.drawTable();
+      return;
+    }
+    this.bound.add(root);
     root.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
       const pos = el.closest<HTMLElement>('[data-pos]')?.dataset.pos;
       const view = el.closest<HTMLElement>('[data-view]')?.dataset.view as View | undefined;
       const sort = el.closest<HTMLElement>('[data-sort]')?.dataset.sort as SortKey | undefined;
-      if (pos) {
+      const me = el.closest<HTMLElement>('[data-me]')?.dataset.me;
+      if (me === 'pin') {
+        this.pinMe = !this.pinMe;
+        el.closest('[data-me]')!.classList.toggle('on', this.pinMe);
+      } else if (me === 'only') {
+        // Toggle: his name in the search box, or back to everyone.
+        this.query = this.query === this.source!.me ? '' : this.source!.me!;
+        if (this.query) {
+          this.scope = 'all';
+          this.pos = 'all';
+          root.querySelector<HTMLSelectElement>('[data-db="scope"]')!.value = 'all';
+          root.querySelectorAll<HTMLElement>('[data-pos]').forEach((b) => b.classList.toggle('on', b.dataset.pos === 'all'));
+        }
+        root.querySelector<HTMLInputElement>('[data-db="query"]')!.value = this.query;
+        el.closest('[data-me]')!.classList.toggle('on', !!this.query);
+      } else if (pos) {
         this.pos = pos as Position | 'all';
         root.querySelectorAll<HTMLElement>('[data-pos]').forEach((b) => b.classList.toggle('on', b.dataset.pos === pos));
       } else if (view) {
@@ -190,7 +218,9 @@ export class PlayerDb {
   private drawTable(): void {
     if (!this.table) return;
     const cols = this.columns();
+    const me = this.source!.me;
     const rows = this.rows().sort((a, b) => {
+      if (this.pinMe && me && (a.p.name === me) !== (b.p.name === me)) return a.p.name === me ? -1 : 1;
       const x = this.value(a, this.sort);
       const y = this.value(b, this.sort);
       const c = typeof x === 'string' ? x.localeCompare(y as string) : x - (y as number);
@@ -199,7 +229,6 @@ export class PlayerDb {
     const head = cols
       .map(([k, l]) => `<th data-sort="${k}" class="${k === this.sort ? `sorted ${this.desc ? 'desc' : 'asc'}` : ''}">${l}</th>`)
       .join('');
-    const me = this.source!.me;
     const f1 = (v: number | undefined) => (v === undefined ? '—' : v.toFixed(1));
     const body = rows
       .map((r) => {
@@ -208,7 +237,7 @@ export class PlayerDb {
             ? STAT_COLS.map(([k]) => `<td>${r.line ? (k === 'gp' ? r.line.gp : f1(r.line[k])) : '—'}</td>`).join('')
             : RATING_KEYS.map((k) => `<td class="${tier(r.p.ratings[k])}">${r.p.ratings[k]}</td>`).join('');
         return (
-          `<tr class="${r.p.name === me ? 'me' : ''}"><td class="dbname">${esc(r.p.name)}</td>` +
+          `<tr class="${r.p.name === me ? 'me' : ''}"><td class="dbname">${r.p.name === me ? '<i class="star">★</i>' : ''}${esc(r.p.name)}</td>` +
           `<td class="dbteam">${logoHtml(r.t, 'slogo')}${esc(r.t.abbr)}</td><td>${r.p.position}</td>` +
           `<td>${Math.round(r.p.heightM * 100)}</td><td>${r.age ?? '—'}</td><td class="dbovr ${tier(r.ovr)}">${r.ovr}</td>${cells}</tr>`
         );

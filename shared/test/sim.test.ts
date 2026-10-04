@@ -272,6 +272,15 @@ describe('full AI game', () => {
     return state;
   }
 
+  it('the expert and Hall of Fame computers play full games', () => {
+    for (const difficulty of ['expert', 'legend'] as const) {
+      const state = createGame({ teams: [GSW, LAL], settings: { seed: 5, humanTeams: [], quarterSeconds: 120, difficulty } });
+      for (let i = 0; i < 30 * 60 * 20 && state.phase !== 'final'; i++) step(state, {});
+      expect(state.phase).toBe('final');
+      expect(Math.min(...state.score)).toBeGreaterThan(4);
+    }
+  });
+
   it('plays four quarters to a final with consistent stats', () => {
     const state = playFull(3);
     expect(state.phase).toBe('final');

@@ -139,6 +139,17 @@ describe('MyTeam play', () => {
     expect(again.coins).toBe(100);
   });
 
+  it('game coins scale with the computer level, level rewards do not', () => {
+    const save = newMyTeam(seeded(6));
+    expect(recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals, difficulty: 'legend' }).coins).toBe(240);
+    expect(recordGame(save, { kind: 'quick', won: false, margin: -3, used: [], totals, difficulty: 'easy' }).coins).toBe(40);
+    expect(recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals }).coins).toBe(150);
+    const first = periodLevels(1)[0];
+    const out = recordGame(save, { kind: 'ladder', won: true, margin: 5, level: first.id, used: [], totals, difficulty: 'legend' }, seeded(1));
+    expect(out.firstClear).toBe(true);
+    expect(out.coins).toBe(first.reward.coins ?? 0);
+  });
+
   it('rentals lose a game each time they play and then leave the deck', () => {
     const save = newMyTeam(seeded(5));
     const r = save.rentals[0];

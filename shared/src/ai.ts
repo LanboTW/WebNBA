@@ -19,12 +19,24 @@ interface Skill {
   blockRate: number;
   /** Scales defensive movement input (reaction / effort). */
   react: number;
+  /** Chance a guard calls a screen on a slow possession. */
+  screenRate: number;
+  /** Chance a defender caught on a set screen switches. */
+  switchRate: number;
+  /** How far from the rim (m) a beaten drive draws a helper. */
+  helpRange: number;
+  /** 0..1: how hard the handler goes at a slower or weaker defender. */
+  mismatch: number;
 }
 
 const SKILLS: Record<Difficulty, Skill> = {
-  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8 },
-  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92 },
-  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1 },
+  easy: { shotErr: 0.13, shootThreshold: 1.0, stealRate: 0.04, blockRate: 0.3, react: 0.8, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0 },
+  normal: { shotErr: 0.08, shootThreshold: 0.9, stealRate: 0.08, blockRate: 0.55, react: 0.92, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0 },
+  hard: { shotErr: 0.05, shootThreshold: 0.85, stealRate: 0.12, blockRate: 0.8, react: 1, screenRate: 0.25, switchRate: 0.25, helpRange: 4.5, mismatch: 0 },
+  // Expert reads the floor: more screens, earlier help, goes at mismatches.
+  expert: { shotErr: 0.035, shootThreshold: 0.88, stealRate: 0.14, blockRate: 0.9, react: 1, screenRate: 0.38, switchRate: 0.42, helpRange: 5.5, mismatch: 0.3 },
+  // Hall of Fame: patient (good shots only), near-perfect release, hunts mismatches.
+  legend: { shotErr: 0.022, shootThreshold: 0.95, stealRate: 0.16, blockRate: 1, react: 1, screenRate: 0.42, switchRate: 0.5, helpRange: 6, mismatch: 0.55 },
 };
 
 /** Offensive spots as (distance from the hoop toward mid-court, z). */
@@ -180,6 +192,15 @@ function openness(state: GameState, p: PlayerState): number {
 }
 
 /** Expected points of attacking the rim, discounted when defenders clog the lane. */
+/** 0..1: how much quicker and better with the ball he is than the man guarding him. */
+function mismatchEdge(state: GameState, p: PlayerState): number {
+  const guard = state.players.find((o) => state.assign[o.id] === p.id);
+  if (!guard || hdist(guard.pos, p.pos) > 2.5) return 0;
+  const r = p.info.ratings;
+  const edge = (r.speed + r.handle) / 2 - (guard.info.ratings.speed + guard.info.ratings.defense) / 2;
+  return Math.max(0, Math.min(1, edge / 25));
+}
+
 function driveValue(state: GameState, p: PlayerState): number {
   const hx = attackHoop(state, p.team);
   const lx = hx - p.pos.x;
@@ -306,7 +327,7 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
 
   const mine = shotValue(state, p);
   const pass = bestPass(state, p, false);
-  const drive = driveValue(state, p);
+  const drive = driveValue(state, p) + sk.mismatch * mismatchEdge(state, p);
   const passValue = pass?.value ?? 0;
 
   if (state.shotClock < 3.5) {
@@ -328,7 +349,7 @@ function handlerDecision(state: GameState, p: PlayerState, sk: Skill): PlayerInp
     p.ai.screenSide = Math.sign(p.pos.z) || (rand(state) < 0.5 ? 1 : -1);
     return steer(p, rim, true);
   }
-  if (p.slot <= 1 && distHoop > 6.3 && rand(state) < 0.25) callScreen(state, p);
+  if (p.slot <= 1 && distHoop > 6.3 && rand(state) < sk.screenRate) callScreen(state, p);
   if (state.shotClock < 8 && mine > 0.7) return shootNow(state, p, sk);
   if (state.shotClock < 10 && pass && passValue > 0.8 && rand(state) < 0.3) return passTo(pass.m);
   // Probe: jab toward a slightly different spot.
@@ -482,7 +503,7 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
   // Switch when caught on a set screen.
   if (holder && man.id === holder.id) {
     const screener = opponents(state, p.team).find((o) => o.ai.mode === 'screen' && o.ai.arrived && hdist(o.pos, p.pos) < 0.95);
-    if (screener && hdist(holder.pos, p.pos) > 1.6 && rand(state) < 0.25 * sk.react) {
+    if (screener && hdist(holder.pos, p.pos) > 1.6 && rand(state) < sk.switchRate * sk.react) {
       const partner = state.players.find((d) => state.assign[d.id] === screener.id);
       if (partner) {
         state.assign[partner.id] = holder.id;
@@ -511,7 +532,7 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
     }
     sprint = hdist(p.pos, target) > 1.5;
   } else {
-    target = helpTarget(state, p, rim, holder) ?? {
+    target = helpTarget(state, p, rim, holder, sk.helpRange) ?? {
       x: man.pos.x + (rim.x - man.pos.x) * 0.33 + (ball.x - man.pos.x) * 0.15,
       z: man.pos.z + (rim.z - man.pos.z) * 0.33 + (ball.z - man.pos.z) * 0.15,
     };
@@ -526,8 +547,8 @@ function defenseAi(state: GameState, p: PlayerState, sk: Skill, holder: PlayerSt
 }
 
 /** If the ball handler has beaten their man near the rim, the nearest helper steps into the lane. */
-function helpTarget(state: GameState, p: PlayerState, rim: Target, holder: PlayerState | null): Target | null {
-  if (!holder || holder.team === p.team || hdist(holder.pos, rim) > 4.5) return null;
+function helpTarget(state: GameState, p: PlayerState, rim: Target, holder: PlayerState | null, range: number): Target | null {
+  if (!holder || holder.team === p.team || hdist(holder.pos, rim) > range) return null;
   const onBall = state.players.find((d) => state.assign[d.id] === holder.id);
   if (!onBall || hdist(onBall.pos, rim) < hdist(holder.pos, rim) + 0.4) return null;
   const d = dirTo(holder.pos, rim);

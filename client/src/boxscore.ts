@@ -54,10 +54,13 @@ export function renderBoxScore(state: GameState, teams: [TeamInfo, TeamInfo]): s
         { secs: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, tov: 0, ftm: 0, fta: 0, pf: 0 },
       );
       const head = `<tr><th>球員</th>${COLS.map(([h]) => `<th>${h}</th>`).join('')}<th>體力</th></tr>`;
+      // A solo game (career): his line stands out.
+      const solo = state.settings.solo !== undefined && state.settings.humanTeams.includes(team) ? state.settings.solo : -1;
       const body = rows
         .map((r) => {
+          const me = r.rosterIdx === solo;
           const tags = [r.slotId >= 0 ? '<em class="on">場上</em>' : '', r.stats.pf >= FOUL_OUT ? '<em class="out">犯滿</em>' : ''].join('');
-          return `<tr class="${r.slotId >= 0 ? '' : 'benchrow'}"><td>${esc(r.info.name)} <small>#${r.info.number} ${r.info.position}</small>${tags}</td>${COLS.map(([, f]) => `<td>${f(r.stats)}</td>`).join('')}<td>${energyBar(r.energy)}</td></tr>`;
+          return `<tr class="${r.slotId >= 0 ? '' : 'benchrow'}${me ? ' me' : ''}"><td>${me ? '<i class="star">★</i>' : ''}${esc(r.info.name)} <small>#${r.info.number} ${r.info.position}</small>${tags}</td>${COLS.map(([, f]) => `<td>${f(r.stats)}</td>`).join('')}<td>${energyBar(r.energy)}</td></tr>`;
         })
         .join('');
       const totals = COLS.map(([h, f]) => `<td>${h === '時間' ? '' : f(total)}</td>`).join('');

@@ -315,9 +315,11 @@ export class CreateForm {
       `<h3>生涯設定<small>難度建立後不能更改</small></h3>` +
       `<div class="row">` +
       `<label>難度${sel('difficulty', d.settings.difficulty, [
-        ['easy', '簡單'],
+        ['easy', '簡單（經驗值 ×0.8）'],
         ['normal', '普通'],
-        ['hard', '困難（經驗值較多）'],
+        ['hard', '困難（經驗值 ×1.25）'],
+        ['expert', '專家（經驗值 ×1.5）'],
+        ['legend', '名人堂（經驗值 ×1.8）'],
       ])}</label>` +
       `<label>每節長度${sel('quarter', d.settings.quarterSeconds, [
         [60, '1 分鐘'],

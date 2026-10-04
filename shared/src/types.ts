@@ -87,7 +87,13 @@ export interface PlayerStats {
 export type PlayerAction = 'normal' | 'shooting' | 'release';
 export type ShotKind = 'jumper' | 'layup' | 'dunk' | 'free';
 export type ShotQuality = 'perfect' | 'good' | 'early' | 'late';
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert' | 'legend';
+
+/** The computer's levels, easiest first. */
+export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard', 'expert', 'legend'];
+export const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: '簡單', normal: '普通', hard: '困難', expert: '專家', legend: '名人堂' };
+/** Coins for a game against the computer scale with its level. */
+export const DIFFICULTY_COINS: Record<Difficulty, number> = { easy: 0.8, normal: 1, hard: 1.2, expert: 1.4, legend: 1.6 };
 
 export type AiMode = 'none' | 'drive' | 'cut' | 'screen' | 'roll';
 

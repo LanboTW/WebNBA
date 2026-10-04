@@ -52,12 +52,12 @@ export function awardsHtml(c: CareerState, league: Map<string, TeamInfo>): strin
     const lines = seasonLines(c, league);
     const ladder = (title: string, note: string, list: AwardPick[]) =>
       list.length
-        ? `<h3>${title}<small>${note}</small></h3><ol class="ladder">${list.map((p) => `<li>${who(p, me, league)}<span>${lineText(p)}</span></li>`).join('')}</ol>`
+        ? `<h3>${title}<small>${note}</small></h3><ol class="ladder">${list.map((p) => `<li class="${p.name === me ? 'mine' : ''}">${who(p, me, league)}<span>${lineText(p)}</span></li>`).join('')}</ol>`
         : '';
     const leaders = statLeaders(c, lines);
     const rows = STAT_KEYS.map((k) => {
       const p = leaders[k];
-      return p ? `<tr><td>${STAT_TITLE[k]}</td><td>${who(p, me, league)}</td><td>${f1(p.line[k])}</td></tr>` : '';
+      return p ? `<tr class="${p.name === me ? 'me' : ''}"><td>${STAT_TITLE[k]}</td><td>${who(p, me, league)}</td><td>${f1(p.line[k])}</td></tr>` : '';
     }).join('');
     race =
       ladder('MVP 排行', `${label(s.year)} 球季目前為止，看數據和球隊戰績`, mvpRace(c, lines)) +
