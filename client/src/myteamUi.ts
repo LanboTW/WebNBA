@@ -342,9 +342,13 @@ const sizeBadge = (size: 3 | 5) => `<span class="lvbadge s${size}">${size}v${siz
 /** The 3v3 lineup picker (from the deck) used by dynasty and event games. */
 function streetPicker(): string {
   const lineup = deckLineup(myteam.save);
+  // Folded once all three are picked, so the levels come first; tap to change.
+  const names = lineup.filter((c) => streetPick.includes(refOf(c))).map((c) => esc(c.name));
   return (
-    `<h3 class="mth">街頭陣容<small>${streetPick.length}/3</small></h3><p class="fine left">3 對 3 的比賽用這 3 人，從牌組挑。</p>` +
-    `<div class="chips">${pickChips(lineup, streetPick, 3, 'data-sp')}</div>`
+    `<details class="mtfold"${streetPick.length < 3 ? ' open' : ''}><summary><h3 class="mth">街頭陣容<small>${streetPick.length}/3</small></h3>` +
+    `<span>${names.length ? names.join('、') : '還沒挑'}<em>更換</em></span></summary>` +
+    `<p class="fine left">3 對 3 的比賽用這 3 人，從牌組挑。</p>` +
+    `<div class="chips">${pickChips(lineup, streetPick, 3, 'data-sp')}</div></details>`
   );
 }
 

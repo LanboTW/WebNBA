@@ -38,6 +38,7 @@ import { custom } from './myteamStore';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
 import { Session } from './session';
 import { Showcase } from './showcase';
+import { openBugReport, type BugContext } from './bugReport';
 import { TeamPicker } from './teamPicker';
 import { TouchControls, isTouchDevice } from './touch';
 
@@ -88,7 +89,12 @@ const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', '
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 /** Screens with a player on the court behind them; the rest are menus that need the room. */
-const SHOWCASE_SCREENS: Screen[] = ['home', 'career', ...CAREER_SCREENS];
+/**
+ * Phones skip the player on the court behind the menus: on a small screen the
+ * menus need all the room (and the battery is better spent on games).
+ */
+const PHONE = isTouchDevice() && Math.min(screen.width, screen.height) < 600;
+const SHOWCASE_SCREENS: Screen[] = PHONE ? [] : ['home', 'career', ...CAREER_SCREENS];
 let current: Screen = 'home';
 /** The first background player waits for the saves (see the end of this file). */
 let booted = false;
@@ -659,7 +665,7 @@ let restyle: PlayerInfo | null = null;
 
 /** The career screens' live preview: same team, so just restyle him (once per frame at most). */
 function previewCareer(player: PlayerInfo, team: TeamInfo): void {
-  if (session) return;
+  if (session || PHONE) return;
   if (showcase?.hold && showcase.team.abbr === team.abbr && showcase.team.primary === team.primary) {
     if (!restyle) {
       requestAnimationFrame(() => {
@@ -907,6 +913,38 @@ initMyTeam({
     $('#quitBtn').textContent = '離開（算輸）';
   },
 });
+// ----------------------------------------------------------------- bug reports
+
+const SCREEN_NAME: Record<Screen, string> = {
+  home: '主畫面',
+  quick: '快速模式',
+  practice: '練習',
+  players: '球員資料庫',
+  settings: '設定',
+  career: '生涯存檔',
+  account: '帳號',
+  create: '建立球員',
+  hub: '生涯',
+  myteam: 'MyTeam',
+  custom: '自訂隊伍/人員',
+};
+
+/** What goes along with a report: the screen, and in a game its mode and score. */
+function bugContext(): BugContext {
+  if (!session) return { 畫面: SCREEN_NAME[current] };
+  const s = session.state;
+  const mode = careerPlay ? '生涯' : myteamPlay ? 'MyTeam' : s.settings.street ? '街頭' : s.settings.mode === 'game' ? '快速對戰' : s.settings.mode;
+  const text = (sel: string) => $(sel).textContent?.trim() ?? '';
+  return {
+    比賽: mode,
+    比分: `${session.teams[0].abbr} ${s.score[0]}–${s.score[1]} ${session.teams[1].abbr}`,
+    時間: `${text('#scoreboard .period')} ${text('#scoreboard .clock')}`,
+  };
+}
+document.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('[data-bug]')) openBugReport(bugContext());
+});
+
 show('home');
 // The first player on the court may be yours: wait a moment for the saves.
 void Promise.race([careerLoad, new Promise((r) => setTimeout(r, 800))]).then(() => {

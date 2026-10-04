@@ -80,6 +80,7 @@
         <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
       </div>
       <div id="showTag" class="showtag"></div>
+      <div class="vertag"><span class="vertext"></span><button type="button" class="linkbtn" data-bug>回報問題</button></div>
     </div>
 
     <div id="quick" class="overlay screen hidden">
@@ -223,6 +224,7 @@
           <b>iPhone</b>　用 Safari 開啟 → 分享 → 「加入主畫面」，之後從主畫面圖示開啟就沒有網址列，橫放能多出不少空間。<br />
           <b>Android</b>　用 Chrome 開啟 → 右上 ⋮ → 「加到主畫面」或「安裝應用程式」。
         </p>
+        <p class="vertag inline">WebNBA <span class="vertext"></span><button type="button" class="linkbtn" data-bug>回報問題</button></p>
       </div>
     </div>
 
@@ -317,6 +319,7 @@
         <div class="buttons">
           <button id="resumeBtn" class="primary">繼續</button>
           <button id="quitBtn">回主選單</button>
+          <button id="boxBug" class="bugbtn" data-bug>回報問題</button>
         </div>
       </div>
     </div>
@@ -329,6 +332,21 @@
         <div class="buttons">
           <button id="timeoutResume" class="primary">繼續比賽（T）</button>
         </div>
+      </div>
+    </div>
+
+    <div id="bugReport" class="overlay hidden">
+      <div class="panel bugpanel">
+        <h2>回報問題</h2>
+        <div id="bugCats" class="chips"></div>
+        <textarea id="bugText" maxlength="1000" rows="5" placeholder="發生了什麼？在哪個畫面、做了什麼之後？"></textarea>
+        <div class="bugmeta"><span id="bugContext"></span><span id="bugCount"></span></div>
+        <p id="bugMsg" class="msg hidden"></p>
+        <div class="buttons">
+          <button type="button" id="bugSend" class="primary">送出</button>
+          <button type="button" id="bugClose">關閉</button>
+        </div>
+        <p class="fine">會一起送出上面這行資訊（不含個人資料）。有 GitHub 帳號也可以 <a id="bugGithub" target="_blank" rel="noopener">到 GitHub 回報</a>。</p>
       </div>
     </div>
 

@@ -63,3 +63,43 @@ create policy "own account: update" on public.account_data
 
 revoke all on public.account_data from anon;
 grant select, insert, update on public.account_data to authenticated;
+
+-- Bug reports from the in-game form. Added 2026-10-04.
+-- Anyone (signed in or not) may add one; nobody can read them through the
+-- page. Read them in the dashboard: Table Editor -> bug_reports.
+create table if not exists public.bug_reports (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  -- The account when signed in, else empty.
+  user_id uuid default auth.uid() references auth.users (id) on delete set null,
+  version text not null check (char_length(version) <= 20),
+  category text not null check (category in ('ui', 'controls', 'crash', 'balance', 'other')),
+  body text not null check (char_length(body) between 5 and 1000),
+  -- Screen, mode and score, browser and screen size.
+  context jsonb not null default '{}'::jsonb check (pg_column_size(context) < 4096)
+);
+
+alter table public.bug_reports enable row level security;
+
+drop policy if exists "bug reports: insert" on public.bug_reports;
+create policy "bug reports: insert" on public.bug_reports
+  for insert to anon, authenticated
+  with check (user_id is null or user_id = (select auth.uid()));
+
+revoke all on public.bug_reports from anon, authenticated;
+grant insert on public.bug_reports to anon, authenticated;
+
+-- A flood guard: at most 30 reports a minute from everyone together.
+create or replace function public.bug_reports_flood() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from public.bug_reports where created_at > now() - interval '1 minute') >= 30 then
+    raise exception 'too many bug reports, try again in a minute';
+  end if;
+  return new;
+end
+$$;
+
+drop trigger if exists bug_reports_flood on public.bug_reports;
+create trigger bug_reports_flood before insert on public.bug_reports
+  for each row execute function public.bug_reports_flood();

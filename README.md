@@ -6,6 +6,10 @@
 
 推上 `main` 會自動測試並部署到 GitHub Pages（`.github/workflows/pages.yml`）。
 
+目前版本 **v1.0.0**（版本號在 `client/package.json`，主畫面右下角與設定頁會顯示）。之後小修改 +0.0.1、新功能 +0.1.0。
+
+手機：用 Safari／Chrome 把網頁「加入主畫面」，從圖示開啟就是全螢幕（沒有網址列），比賽要橫向玩。
+
 ## 開發
 
 ```bash
@@ -47,7 +51,7 @@ npm run typecheck
 
 設定步驟（只要做一次）：
 
-1. Supabase 後台 → **SQL Editor** → New query，貼上 `supabase/schema.sql` 全部內容 → Run。這會建立 `career_saves`（生涯存檔）和 `account_data`（金幣等帳號資料）資料表，以及「每人只能讀寫自己的資料」規則。腳本可以重複執行；更新版本後（例如加入金幣時）再執行一次即可。
+1. Supabase 後台 → **SQL Editor** → New query，貼上 `supabase/schema.sql` 全部內容 → Run。這會建立 `career_saves`（生涯存檔）、`account_data`（金幣等帳號資料）和 `bug_reports`（遊戲內「回報問題」）資料表，以及「每人只能讀寫自己的資料」規則；回報任何人都能送出、沒有人能從網頁讀回，到 **Table Editor → bug_reports** 看。腳本可以重複執行；更新版本後（例如加入金幣時）再執行一次即可。
 2. **Authentication → URL Configuration**：Site URL 填 `https://lanbotw.github.io/WebNBA/`；Redirect URLs 加上 `https://lanbotw.github.io/WebNBA/` 和 `http://localhost:5173/`。
 3. **Authentication → Sign In / Providers**：Email 預設已開啟（登入連結）。Google 要先到 Google Cloud Console 建立 OAuth 用戶端（網頁應用程式），授權重新導向 URI 填 Supabase 那頁顯示的 Callback URL，再把 Client ID／Secret 貼回 Supabase 的 Google 設定。Client Secret 只貼在 Supabase 後台，不放進專案。
 4. 本機：`.env` 填 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`（Project Settings → API Keys 的 publishable key，格式見 `.env.example`）。
@@ -255,5 +259,6 @@ npm run headshots:update
 - [x] 第 7 階段：生涯模式（Supabase 存檔與登入、自創球員、賽季、成長、休賽季、獎項、新聞、名人堂）
 - [x] 第 8 階段：2K 式總評、球員資料庫、生涯經濟（商店、粉絲、凝聚力）、帳號金幣、街頭籃球
 - [x] 第 9 階段：MyTeam（卡片、卡包、收藏、牌組、挑戰之路、任務、牌組比賽、街頭 3 對 3）
+- [x] v1.0.0：五段 AI 難度、自訂隊伍／人員、戰術與凝聚力、生涯曲線、手機版面（精簡 HUD、避開瀏海、全螢幕）、版本號與遊戲內回報問題
 
 非官方粉絲作品，與 NBA 及其球隊無關。

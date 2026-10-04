@@ -4027,7 +4027,8 @@ button.small.go {
 /* --------------------------------------------------------------- wide menus */
 
 /* Menus without a player on the court behind them get a plain backdrop. */
-body.menu-solid .overlay.screen {
+body.menu-solid .overlay.screen,
+body.menu-solid #home {
   background: radial-gradient(ellipse at 25% 15%, #171c2e, #07080d 75%);
 }
 
@@ -4725,5 +4726,401 @@ ul.mtrules {
   #timeoutPanel.overlay {
     padding-top: max(8px, env(safe-area-inset-top));
     padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ----------------------------------------------------- version and bug reports */
+
+.vertag {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vertag.inline {
+  position: static;
+  justify-content: flex-end;
+  margin: 18px 0 0;
+}
+
+.linkbtn {
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* On the home screen the player's tag moves up to make room. */
+#home .showtag {
+  bottom: 40px;
+}
+
+.buttons .bugbtn {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.panel.bugpanel {
+  width: min(560px, 100%);
+}
+
+.bugpanel h2 {
+  margin-bottom: 12px;
+}
+
+.bugpanel textarea {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b0d15;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS zooms into smaller fields */
+  resize: vertical;
+}
+
+.bugpanel textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.bugmeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bugmeta span:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.bugpanel .fine a {
+  color: var(--accent);
+}
+
+@media (max-height: 500px) {
+  .panel.bugpanel {
+    padding: 14px 18px;
+  }
+
+  .bugpanel textarea {
+    height: 84px;
+  }
+
+  .bugpanel .buttons {
+    margin-top: 10px;
+  }
+}
+
+/* iOS zooms the page into any field under 16px when it is tapped. */
+body.touch input,
+body.touch select,
+body.touch textarea {
+  font-size: 16px;
+}
+
+/* ------------------------------------------------------------ phone menus */
+
+/* Home on phones: a compact grid that fits the screen without scrolling. */
+@media (max-width: 600px), (max-height: 500px) {
+  #home {
+    justify-content: safe center;
+    align-items: stretch;
+    padding-top: max(52px, calc(env(safe-area-inset-top) + 44px));
+    padding-bottom: max(34px, calc(env(safe-area-inset-bottom) + 26px));
+  }
+
+  .homebar {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+  }
+
+  .homemain h1 {
+    font-size: 40px;
+  }
+
+  .homemain .sub {
+    margin: 0 0 14px;
+    font-size: 13px;
+  }
+
+  .homenav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .homenav button {
+    padding: 11px 13px;
+    border-radius: 10px;
+  }
+
+  .homenav button b {
+    font-size: 16px;
+  }
+
+  .homenav button small {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .homenav button.primary,
+  .homenav .authbtn {
+    grid-column: 1 / -1;
+  }
+
+  .homenav .authbtn {
+    margin-top: 0;
+  }
+
+  .homemain .fine {
+    margin-top: 12px;
+    font-size: 11px;
+  }
+}
+
+/* Phones on their side: three across, the descriptions go. */
+@media (max-height: 500px) and (min-width: 601px) {
+  #home {
+    padding-top: max(14px, env(safe-area-inset-top));
+  }
+
+  .homemain {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    column-gap: 28px;
+  }
+
+  .homemain h1,
+  .homemain .sub {
+    grid-column: 1;
+  }
+
+  .homemain .homenav {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .homemain .fine {
+    grid-column: 1;
+  }
+
+  .homenav button {
+    padding: 9px 12px;
+  }
+
+  .homenav button small {
+    display: none;
+  }
+}
+
+/* A picker that folds away once it is filled in. */
+.mtfold summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.mtfold summary::-webkit-details-marker {
+  display: none;
+}
+
+.mtfold summary .mth {
+  margin-bottom: 4px;
+}
+
+.mtfold summary span {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.mtfold summary em {
+  margin-left: 10px;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.mtfold[open] summary em {
+  display: none;
+}
+
+/* Phones: tab bars wrap instead of hiding tabs off to the side. */
+@media (max-width: 600px) {
+  .tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .tabs button {
+    flex: 1 0 auto;
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+}
+
+/* Phones: two settings side by side instead of one per line. */
+@media (max-width: 600px) {
+  .row {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .row label {
+    flex-basis: 120px;
+    font-size: 12px;
+  }
+
+  select,
+  input[type='number'] {
+    padding: 7px 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .mtlevel,
+  .mtmission,
+  .mtplay {
+    gap: 10px;
+    padding: 9px 11px;
+  }
+
+  .lvinfo b {
+    font-size: 14px;
+  }
+
+  .lvinfo span {
+    font-size: 11px;
+  }
+}
+
+/* No player behind the career screens (phones): the panel takes the whole screen. */
+@media (max-width: 860px) {
+  body.menu-solid .career-panel {
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  body.menu-solid .career-panel .panel {
+    max-height: none;
+    height: 100%;
+    border: none;
+    border-radius: 0;
+    padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+/* Phones: gear two to a row. */
+@media (max-width: 600px) {
+  .gearlist {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .gearlist .gear {
+    gap: 6px;
+    padding: 8px 9px;
+  }
+
+  .gearlist .gear b {
+    font-size: 13px;
+  }
+
+  .gearlist .gear span,
+  .gearlist .gear small {
+    font-size: 11px;
+  }
+
+  .gearlist .gear button {
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+}
+
+/* Phones: menus use the whole width. */
+@media (max-width: 600px) {
+  .overlay.screen {
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .overlay.screen .panel {
+    padding: 16px 14px;
+    border-radius: 12px;
+  }
+
+  .chip {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+}
+
+/* Phones on their side: tighter menus so more fits between the edges. */
+@media (max-height: 500px) {
+  .overlay.screen {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .overlay.screen .panel {
+    padding: 12px 16px;
+    border-radius: 12px;
+  }
+
+  .screenhead {
+    margin-bottom: 10px;
+  }
+
+  .screenhead h2 {
+    font-size: 20px;
+  }
+
+  .screenhead .back {
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+
+  .tabs {
+    margin: 8px 0 4px;
+  }
+
+  .tabs button {
+    padding: 6px 9px;
+    font-size: 13px;
+  }
+
+  .panel h3 {
+    margin: 12px 0 8px;
+  }
+
+  .buttons {
+    margin-top: 12px;
   }
 }
