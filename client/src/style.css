@@ -3641,8 +3641,8 @@ button.small.on {
 
 .mtcard .note {
   position: absolute;
-  bottom: 3cqw;
-  right: 4cqw;
+  top: 25cqw;
+  right: 5cqw;
   font-size: 6.5cqw;
   font-style: normal;
   font-weight: 700;
@@ -4264,6 +4264,116 @@ body.menu-solid #home {
 .mtcard.sel {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* The bottom line: tier on the left, where the card is from on the right. */
+.mtc-tier {
+  display: flex;
+  justify-content: space-between;
+  gap: 2cqw;
+}
+
+.mtc-tier .lbl {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+
+/* Merged copies: +N with stars, under the overall. */
+.mtcard .plus {
+  position: absolute;
+  top: 25cqw;
+  left: 5cqw;
+  display: flex;
+  flex-direction: column;
+  font-size: 8cqw;
+  font-style: normal;
+  font-weight: 900;
+  color: #ffe27a;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  z-index: 3;
+}
+
+.mtcard .plus i {
+  font-size: 5cqw;
+  font-style: normal;
+  letter-spacing: -0.05em;
+}
+
+/* Copies owned (collection). */
+.mtcard .count {
+  position: absolute;
+  top: 25cqw;
+  right: 5cqw;
+  padding: 0.5cqw 2.5cqw;
+  border-radius: 3cqw;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 7cqw;
+  font-style: normal;
+  font-weight: 800;
+  z-index: 3;
+}
+
+/* Rentals: plain grey, no tier glow. */
+.mtcard.t-rental {
+  box-shadow: 0 0 0 2px #b7bcc4, 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.mtcard.t-rental .rent {
+  background: rgba(70, 76, 86, 0.92);
+}
+
+/* Special cards: their theme's two colours. */
+.mtcard.themed {
+  background: linear-gradient(135deg, var(--tier) 0%, var(--tier) 38%, var(--accent2) 50%, var(--tier) 62%, color-mix(in srgb, var(--tier) 55%, #000) 100%);
+  box-shadow: 0 0 0 2px var(--accent2), 0 0 18px color-mix(in srgb, var(--accent2) 60%, transparent);
+}
+
+/* A special card's own picture fills the photo box. */
+.mtc-photo.art .mtc-img {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  object-fit: cover;
+}
+
+/* Not owned yet. */
+.mtcard.locked {
+  filter: grayscale(1) brightness(0.7);
+}
+
+.mtcard.locked::before {
+  content: '🔒';
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16cqw;
+  z-index: 4;
+}
+
+.mtbar .prog {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mtbar .fwin b {
+  color: #ffd166;
+}
+
+.mtbar .fwin.taken b {
+  color: var(--muted);
+}
+
+.chip.rentchip.on {
+  border-color: #b7bcc4;
+}
+
+.mtpack.themed {
+  border-color: var(--accent2);
+  box-shadow: inset 0 0 0 1px var(--tier);
 }
 
 .mtnodetail {

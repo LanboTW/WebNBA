@@ -53,10 +53,29 @@ import {
   openPack,
   packOdds,
   packPool,
-  periodTop,
   refOf,
   sellCard,
   tier,
+  CARD_SOURCES,
+  COPY_MAX,
+  FIRST_WIN_COINS,
+  GAME_COINS,
+  PLUS_MAX,
+  cardWhere,
+  catalogCard,
+  copiesOf,
+  firstWinBonus,
+  limitedTheme,
+  localDay,
+  mergeCard,
+  mergeFodder,
+  ownCard,
+  reissueSeason,
+  seasonLabel,
+  sellValue,
+  specialTheme,
+  type CardDef,
+  type CardSource,
   type Difficulty,
   DIFFICULTIES,
   DIFFICULTY_LABEL,
@@ -103,20 +122,45 @@ const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as
 let tab: Tab = 'play';
 /** The deck slot being filled (0-12). */
 let slot: number | null = null;
-let filterTier: TierId | 'all' = 'all';
+let filterTier: TierId | 'all' | 'rental' = 'all';
 let filterPos: Position | 'all' = 'all';
+let filterSource: CardSource | 'all' = 'all';
 let detail: string | null = null;
-let confirmSell = false;
+/** The copy waiting for the sell confirmation. */
+let confirmSell: string | null = null;
 let message = '';
+/** Cards on screen that are not owned (the collection's locked ones): their portraits get drawn too. */
+let lockedShown: OwnedCard[] = [];
 
 const allCards = (): OwnedCard[] => {
   const s = myteam.save;
   return [...s.cards, ...s.rentals];
 };
 
-function tierChips(on: TierId | 'all', attr: string, withAll = true): string {
+function tierChips(on: TierId | 'all' | 'rental', attr: string, withAll = true, rental = false): string {
   const all = withAll ? `<button type="button" class="chip${on === 'all' ? ' on' : ''}" ${attr}="all">全部</button>` : '';
-  return all + TIERS.map((t) => `<button type="button" class="chip tierchip${on === t.id ? ' on' : ''}" style="--tier:${t.color}" ${attr}="${t.id}">${t.name}</button>`).join('');
+  return (
+    all +
+    TIERS.map((t) => `<button type="button" class="chip tierchip${on === t.id ? ' on' : ''}" style="--tier:${t.color}" ${attr}="${t.id}">${t.name}</button>`).join('') +
+    (rental ? `<button type="button" class="chip tierchip rentchip${on === 'rental' ? ' on' : ''}" ${attr}="rental">租借</button>` : '')
+  );
+}
+
+function sourceChips(): string {
+  return [['all', '全部'] as [string, string], ...CARD_SOURCES]
+    .map(([k, l]) => `<button type="button" class="chip${filterSource === k ? ' on' : ''}" data-fs="${k}">${l}</button>`)
+    .join('');
+}
+
+/** One copy per card (the most merged one): copies are picked as one. Rentals stay apart. */
+function bestCopies(cards: OwnedCard[]): OwnedCard[] {
+  const best = new Map<string, OwnedCard>();
+  for (const c of cards) {
+    const key = isRental(c) ? c.uid : c.id;
+    const b = best.get(key);
+    if (!b || (c.plus ?? 0) > (b.plus ?? 0)) best.set(key, c);
+  }
+  return [...best.values()];
 }
 
 function posChips(on: Position | 'all', attr: string): string {
@@ -128,7 +172,12 @@ function posChips(on: Position | 'all', attr: string): string {
 
 function filtered(cards: OwnedCard[]): OwnedCard[] {
   return cards
-    .filter((c) => (filterTier === 'all' || c.tier === filterTier) && (filterPos === 'all' || c.position === filterPos))
+    .filter(
+      (c) =>
+        (filterTier === 'all' || (filterTier === 'rental' ? isRental(c) : !isRental(c) && c.tier === filterTier)) &&
+        (filterPos === 'all' || c.position === filterPos) &&
+        (filterSource === 'all' || c.source === filterSource),
+    )
     .sort((a, b) => b.ovr - a.ovr || a.name.localeCompare(b.name));
 }
 
@@ -150,7 +199,15 @@ function deckTab(): string {
   };
   const inDeck = new Set(s.deck);
   const names = new Set(s.deck.map((r) => deckCard(s, r)?.name));
-  const picks = filtered(allCards().filter((c) => !inDeck.has(refOf(c))));
+  const picks = filtered(bestCopies(allCards().filter((c) => !inDeck.has(refOf(c)))));
+  const rentals = s.rentals.length
+    ? `<h3 class="mth">租借卡<small>${s.rentals.length} 張・打完場數就消失</small></h3><div class="chips">${s.rentals
+        .map(
+          (r) =>
+            `<button type="button" class="chip rentchip${inDeck.has(r.uid) ? ' on' : ''}" data-ref="${esc(r.uid)}">${r.position} ${esc(r.name)} ${r.ovr}・剩 ${r.games} 場</button>`,
+        )
+        .join('')}</div>`
+    : '';
   const sel = slot !== null && s.deck[slot] ? deckCard(s, s.deck[slot]) : null;
   return (
     `<div class="mtbar"><span>牌組評分 <b class="big">${deckRating(s)}</b></span><span>${s.deck.length}/${DECK_MAX} 張</span>` +
@@ -158,9 +215,11 @@ function deckTab(): string {
     cols(
       `<h3 class="mth">先發</h3><div class="mtslots five">${[0, 1, 2, 3, 4].map(cell).join('')}</div>` +
         `<h3 class="mth">板凳</h3><div class="mtslots">${Array.from({ length: DECK_MAX - 5 }, (_, i) => cell(i + 5)).join('')}</div>` +
-        (sel ? `<div class="mtbar"><span>已選：${esc(sel.name)}</span><button type="button" class="small" data-act="unslot">移出牌組</button></div>` : ''),
-      `<p class="fine left">${slot === null ? '先點一個位置，' : `把卡放進第 ${slot + 1} 格：`}再挑一張卡。同一名球員只能放一張；租借卡打完場數就會消失。</p>` +
-        `<div class="chips">${tierChips(filterTier, 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
+        (sel ? `<div class="mtbar"><span>已選：${esc(sel.name)}</span><button type="button" class="small" data-act="unslot">移出牌組</button></div>` : '') +
+        rentals,
+      `<p class="fine left">${slot === null ? '先點一個位置，' : `把卡放進第 ${slot + 1} 格：`}再挑一張卡。同一名球員只能放一張（不同版本也一樣）；租借卡打完場數就會消失。</p>` +
+        `<div class="chips">${tierChips(filterTier, 'data-ft', true, true)}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
+        `<div class="chips">${sourceChips()}</div>` +
         `<div class="mtgrid mtscroll">${
           picks.map((c) => cardHtml(c, { cls: `small pick${names.has(c.name) ? ' dim' : ''}`, ref: refOf(c) })).join('') ||
           '<p class="fine">沒有符合的卡。</p>'
@@ -169,44 +228,96 @@ function deckTab(): string {
   );
 }
 
+const ratingRows = (c: OwnedCard) => RATING_KEYS.map((k, i) => `<span>${RATING_LABEL[k]}<b>${c.ratings[i]}</b></span>`).join('');
+
+function sellBox(c: OwnedCard, label: string): string {
+  const value = sellValue(c);
+  return confirmSell === c.uid
+    ? `<div class="confirm">分解${c.plus ? ` +${c.plus} 的` : ''} ${esc(c.name)}，得到 ${value} 金幣？` +
+        `<button type="button" class="small danger" data-act="sell">確定分解</button><button type="button" class="small" data-act="nosell">取消</button></div>`
+    : `<button type="button" class="small" data-act="asksell" data-uid="${esc(c.uid)}">${label}（+${value} 金幣）</button>`;
+}
+
 function detailHtml(c: OwnedCard): string {
   const s = myteam.save;
-  const rows = RATING_KEYS.map((k, i) => `<span>${RATING_LABEL[k]}<b>${c.ratings[i]}</b></span>`).join('');
-  const sell = isRental(c)
-    ? '<p class="fine left">租借卡不能分解，打完場數就會消失。</p>'
-    : confirmSell
-      ? `<div class="confirm">分解 ${esc(c.name)}，得到 ${tier(c.tier).value} 金幣？` +
-        `<button type="button" class="small danger" data-act="sell">確定分解</button><button type="button" class="small" data-act="nosell">取消</button></div>`
-      : `<button type="button" class="small" data-act="asksell">分解（+${tier(c.tier).value} 金幣）</button>`;
+  const copies = copiesOf(s, c.id);
+  const plus = c.plus ?? 0;
+  const fodder = mergeFodder(s, c.uid);
+  const merge =
+    plus >= PLUS_MAX
+      ? `<p class="fine left">已強化到最高 +${PLUS_MAX}。</p>`
+      : fodder
+        ? `<button type="button" class="small go" data-act="merge">強化 +${plus} → +${plus + 1}（吃掉 1 張副本${fodder.plus ? `，它的 +${fodder.plus} 會消失` : ''}）</button>`
+        : `<p class="fine left">再抽到同一張卡就能拿來強化：每吃 1 張總評 +1，最多 +${PLUS_MAX}。</p>`;
+  const sell = fodder ? sellBox(fodder, '分解一張副本') : sellBox(c, '分解');
   return (
     `<div class="mtdetail">${cardHtml(c, { cls: 'big' })}<div class="mtinfo">` +
-    `<h3>${esc(c.name)}</h3><p class="fine left">${tier(c.tier).name}卡${c.base ? '' : '（強化版）'} · ${c.position} · ${c.heightM.toFixed(2)} m${
-      s.deck.includes(refOf(c)) ? ' · 在牌組中' : ''
-    }</p>` +
-    `<div class="mtratings">${rows}</div>${sell}<button type="button" class="small mtclose" data-act="close">關閉</button></div></div>`
+    `<h3>${esc(c.name)}</h3><p class="fine left">${tier(c.tier).name}卡 · ${esc(c.label)} · ${c.position} · ${c.heightM.toFixed(2)} m · 持有 ${copies.length}/${COPY_MAX} 張${
+      plus ? ` · 已強化 +${plus}` : ''
+    }${s.deck.includes(refOf(c)) ? ' · 在牌組中' : ''}</p>` +
+    `<div class="mtratings">${ratingRows(c)}</div>${merge}${sell}<button type="button" class="small mtclose" data-act="close">關閉</button></div></div>`
+  );
+}
+
+/** A card not owned yet: what it is and where it comes from. */
+function lockedHtml(def: CardDef): string {
+  const c = ownCard(def);
+  return (
+    `<div class="mtdetail">${cardHtml(c, { cls: 'big locked' })}<div class="mtinfo">` +
+    `<h3>${esc(c.name)}</h3><p class="fine left">還沒擁有 · ${tier(c.tier).name}卡 · ${esc(c.label)} · ${c.position} · ${c.heightM.toFixed(2)} m</p>` +
+    `<div class="mtratings">${ratingRows(c)}</div><p class="fine left">取得方式：${cardWhere(def).map(esc).join('、') || '目前沒有開放'}</p>` +
+    `<button type="button" class="small mtclose" data-act="close">關閉</button></div></div>`
   );
 }
 
 function cardsTab(): string {
-  const cards = allCards();
-  const d = detail ? cards.find((c) => refOf(c) === detail) : null;
-  const shown = filtered(cards);
-  const total = cardCatalog().length;
+  const s = myteam.save;
+  const showLocked = pref('unowned', '0') === '1';
+  const owned = new Set(s.cards.map((c) => c.id));
+  const counts = new Map<string, number>();
+  for (const c of s.cards) counts.set(c.id, (counts.get(c.id) ?? 0) + 1);
+  // Not-owned cards that still drop (past seasons only once owned).
+  const catalog = cardCatalog();
+  lockedShown = showLocked ? catalog.filter((d) => !owned.has(d.id) && !d.retired).map((d) => ownCard(d, `def:${d.id}`)) : [];
+  const shown = filtered([...bestCopies(s.cards), ...lockedShown]);
+  const progress = CARD_SOURCES.map(([k, l]) => {
+    const all = catalog.filter((d) => d.source === k && !d.retired).length;
+    const have = new Set(s.cards.filter((c) => c.source === k).map((c) => c.id)).size;
+    return `<span class="prog">${l} <b>${have}</b>/${all}</span>`;
+  }).join('');
+  let right = '<p class="fine mtnodetail">點一張卡，這裡會顯示大圖、全部能力值，重複的卡可以強化。</p>';
+  if (detail?.startsWith('def:')) {
+    const def = catalogCard(detail.slice(4));
+    if (def) right = lockedHtml(def);
+  } else if (detail) {
+    const d = s.cards.find((c) => c.uid === detail);
+    if (d) right = detailHtml(d);
+  }
   return (
-    `<div class="mtbar"><span>收藏 <b>${myteam.save.cards.length}</b> / ${total} 張</span><span>租借 ${myteam.save.rentals.length} 張</span><span>已開 ${myteam.save.packsOpened} 包</span></div>` +
+    `<div class="mtbar"><span>收藏 <b>${owned.size}</b> 種・${s.cards.length} 張</span>${progress}<span>已開 ${s.packsOpened} 包</span></div>` +
     cols(
-      `<div class="chips">${tierChips(filterTier, 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
-        `<div class="mtgrid mtscroll">${shown.map((c) => cardHtml(c, { cls: `small pick${refOf(c) === detail ? ' sel' : ''}`, ref: refOf(c) })).join('') || '<p class="fine">沒有符合的卡。</p>'}</div>`,
-      d ? detailHtml(d) : '<p class="fine mtnodetail">點一張卡，這裡會顯示大圖和全部能力值。</p>',
+      `<div class="chips">${sourceChips()}<button type="button" class="chip toggle${showLocked ? ' on' : ''}" data-act="unowned">${showLocked ? '☑' : '☐'} 顯示未擁有</button></div>` +
+        `<div class="chips">${tierChips(filterTier as TierId | 'all', 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
+        `<div class="mtgrid mtscroll">${
+          shown
+            .map((c) =>
+              cardHtml(c, {
+                cls: `small pick${c.uid.startsWith('def:') ? ' locked' : ''}${refOf(c) === detail ? ' sel' : ''}`,
+                ref: refOf(c),
+                count: counts.get(c.id),
+              }),
+            )
+            .join('') || '<p class="fine">沒有符合的卡。</p>'
+        }</div>`,
+      right,
       true,
     )
   );
 }
 
 function oddsBar(p: PackDef): string {
-  const period = myteam.save.period;
-  const odds = packOdds(p, period);
-  if (!odds.length) return '<p class="fine left">這一期還沒有這個卡包能開出的卡。</p>';
+  const odds = packOdds(p);
+  if (!odds.length) return '<p class="fine left">這個卡包目前沒有能開出的卡。</p>';
   const segs = odds.map((o) => `<i style="--tier:${tier(o.tier).color};flex:${o.chance}" title="${tier(o.tier).name} ${(o.chance * 100).toFixed(1)}%"></i>`).join('');
   const text = odds.map((o) => `${tier(o.tier).name} ${(o.chance * 100).toFixed(o.chance < 0.1 ? 1 : 0)}%`).join('・');
   return `<div class="oddsbar">${segs}</div><p class="odds">${text}</p>`;
@@ -215,24 +326,31 @@ function oddsBar(p: PackDef): string {
 function packDesc(p: PackDef): string {
   const bits = [`${p.count} 張`];
   if (p.positions?.length) bits.push(p.positions.join('/'));
-  if (p.tiers?.length) bits.push(`限 ${p.tiers.map((t) => tier(t).name).join('、')}`);
+  if (p.tiers?.length) bits.push(`${tier(p.tiers[0]).name}～${tier(p.tiers[p.tiers.length - 1]).name}`);
+  else bits.push('白～黑');
   if (p.players?.length) bits.push(`${p.players.length} 名指定球員`);
-  if (p.guaranteeTop) bits.push(`保底 1 張${tier(periodTop(myteam.save.period)).name}卡`);
-  if (p.rentalChance) bits.push(`租借機率 ${Math.round(p.rentalChance * 100)}%`);
+  if (p.guarantee) bits.push(`保底 1 張${tier(p.guarantee).name}卡以上`);
+  if (p.kind === 'limited') bits.push(`本週主題：${limitedTheme()?.name ?? '—'}（特殊卡機率較高）`);
+  if (p.kind === 'reissue') {
+    const season = reissueSeason();
+    if (season) bits.push(`${seasonLabel(season)} 球季的現役卡`);
+  }
   return bits.join(' · ');
 }
 
 function shopTab(): string {
-  const s = myteam.save;
-  const top = tier(periodTop(s.period));
+  const theme = limitedTheme();
+  const season = reissueSeason();
   return (
-    `<div class="mtbar"><span>第 <b>${s.period}</b> 期・最高 <b style="color:${top.color === '#1a1a1f' ? '#fff' : top.color}">${top.name}卡</b></span>` +
-    `<span class="fine">${nextPeriodText(s)}</span></div><div class="mtpacks">` +
-    OFFICIAL_PACKS
+    `<div class="mtbar">${theme ? `<span>本週限定：<b style="color:${theme.color}">${esc(theme.name)}</b></span>` : ''}${
+      season ? `<span>本週復刻：<b>${seasonLabel(season)} 球季</b></span>` : ''
+    }<span class="fine">卡包不會開出租借卡。同一張卡最多 ${COPY_MAX} 張，重複的可以在「收藏」強化。</span></div><div class="mtpacks">` +
+    OFFICIAL_PACKS.filter((p) => packPool(p).length > 0)
       .map((p) => {
-        const can = wallet.coins >= p.price && packPool(p, s.period).length > 0;
+        const can = wallet.coins >= p.price;
+        const t = p.kind === 'limited' ? specialTheme(theme?.id) : undefined;
         return (
-          `<div class="mtpack"><div class="mtpack-h"><b>${esc(p.name)}</b></div>` +
+          `<div class="mtpack${t ? ' themed' : ''}"${t ? ` style="--tier:${t.color};--accent2:${t.accent}"` : ''}><div class="mtpack-h"><b>${esc(p.name)}</b></div>` +
           `<p class="fine left">${packDesc(p)}</p>${oddsBar(p)}` +
           `<button type="button" class="primary buy" data-buy="${esc(p.id)}"${can ? '' : ' disabled'}>購買　🪙 ${coinsText(p.price)}</button></div>`
         );
@@ -295,7 +413,7 @@ function rewardText(r: Reward): string {
   const bits: string[] = [];
   if (r.coins) bits.push(`${r.coins} 金幣`);
   if (r.pack) bits.push(OFFICIAL_PACKS.find((p) => p.id === r.pack)?.name ?? '卡包');
-  if (r.rental) bits.push(`${tier(r.rental).name}卡租借（3 場）`);
+  if (r.rental) bits.push(`${tier(r.rental).name}級租借卡（3 場）`);
   if (r.card) bits.push(`${tier(r.card).name}卡一張`);
   return bits.join('＋');
 }
@@ -380,7 +498,7 @@ function ladderHtml(full: boolean): string {
         cls: `${done ? ' done' : ''}${l.boss ? ' boss' : ''}`,
         badge: logoHtml(team, 'lvlogo'),
         title: `${l.boss ? '魔王關' : `第 ${i + 1} 關`}・${esc(team.name)}`,
-        line: `對手評分 ${l.ovr}・${DIFF_LABEL[l.difficulty]}・${done ? '已過關（再贏 100 金幣）' : `首勝：${rewardText(l.reward)}`}`,
+        line: `對手評分 ${l.ovr}・${DIFF_LABEL[l.difficulty]}・${done ? `已過關（再贏 ${GAME_COINS.ladderReplay} 金幣）` : `首勝：${rewardText(l.reward)}`}`,
         btn: open ? `<button type="button" class="small${done ? '' : ' go'}" data-level="${l.id}"${full ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>` : '<span class="lock">🔒</span>',
       });
     })
@@ -407,7 +525,7 @@ function dynastyHtml(): string {
         cls: `${done ? ' done' : ''}${d.boss ? ' boss' : ''}`,
         badge: sizeBadge(3),
         title: `${d.boss ? '王者關' : `第 ${i + 1} 關`}・${esc(d.name)}`,
-        line: `${crew}・評分 ${d.ovr}・${DIFF_LABEL[d.difficulty]}・${done ? '已過關（再贏 100 金幣）' : `首勝：${rewardText(d.reward)}`}`,
+        line: `${crew}・評分 ${d.ovr}・${DIFF_LABEL[d.difficulty]}・${done ? `已過關（再贏 ${GAME_COINS.ladderReplay} 金幣）` : `首勝：${rewardText(d.reward)}`}`,
         btn: open ? `<button type="button" class="small${done ? '' : ' go'}" data-dynasty="${d.id}"${ready ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>` : '<span class="lock">🔒</span>',
       });
     })
@@ -423,7 +541,7 @@ function dynastyHtml(): string {
 }
 
 /** Cards a limited level can use: every owned card and rental, best first. */
-const limitedCards = (): OwnedCard[] => [...allCards()].sort((a, b) => b.ovr - a.ovr || a.name.localeCompare(b.name));
+const limitedCards = (): OwnedCard[] => bestCopies(allCards()).sort((a, b) => b.ovr - a.ovr || a.name.localeCompare(b.name));
 
 function limitedLineup(l: LimitedDef): { cards: OwnedCard[]; problem: string | null } {
   const all = limitedCards();
@@ -441,7 +559,7 @@ function limitedHtml(): string {
       badge: sizeBadge(l.size),
       title: `${i + 1}. ${esc(l.name)}`,
       line: `${ruleText(l.rule).join('・')}・對手 ${l.ovr}${l.team ? `（${esc(findTeam(l.team).name)}）` : ''}・${DIFF_LABEL[l.difficulty]}・${
-        done ? '已完成（再贏 100 金幣）' : rewardText(l.reward)
+        done ? `已完成（再贏 ${GAME_COINS.ladderReplay} 金幣）` : rewardText(l.reward)
       }`,
       btn: `<button type="button" class="small${l.id === limitedSel ? ' go' : ''}" data-limsel="${l.id}">${l.id === limitedSel ? '設定中' : '選擇'}</button>`,
     });
@@ -489,7 +607,7 @@ function eventHtml(full: boolean): string {
           .slice(0, lv.size)
           .map((p) => esc(p.name))
           .join('、')}`,
-        line: `評分 ${Math.min(99, base + lv.offset)}・${DIFF_LABEL[lv.difficulty]}・${done ? '本週已完成（再贏 100 金幣）' : `本週首勝：${rewardText(lv.reward)}`}`,
+        line: `評分 ${Math.min(99, base + lv.offset)}・${DIFF_LABEL[lv.difficulty]}・${done ? `本週已完成（再贏 ${GAME_COINS.ladderReplay} 金幣）` : `本週首勝：${rewardText(lv.reward)}`}`,
         btn: `<button type="button" class="small${done ? '' : ' go'}" data-event="${i}"${can ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>`,
       });
     })
@@ -510,7 +628,7 @@ function playTab(): string {
   const mode = playMode();
   const body = mode === 'dynasty' ? dynastyHtml() : mode === 'limited' ? limitedHtml() : mode === 'event' ? eventHtml(full) : ladderHtml(full);
   return (
-    `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span title="同一組先發連續比賽會越來越高">凝聚力 <b>${deckCohesion(s)}</b></span><span>${nextPeriodText(s)}</span></div>` +
+    `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span title="同一組先發連續比賽會越來越高">凝聚力 <b>${deckCohesion(s)}</b></span>${firstWinChip()}<span>${nextPeriodText(s)}</span></div>` +
     `<nav class="tabs mtmodes">${PLAY_MODES.map(([k, l]) => `<button type="button" data-mode="${k}" class="${k === mode ? 'on' : ''}">${l}</button>`).join('')}</nav>` +
     (full || mode === 'limited' ? '' : '<p class="msg">牌組至少要 5 張卡才能打 5 對 5，先到「牌組」分頁放卡。</p>') +
     body
@@ -547,7 +665,7 @@ function practiceTab(): string {
     )}</select></label></div>` +
     settingsBox(size === '3', size === '5') +
     `<p class="fine left">隨機比賽是練習：不扣租借卡、不算任務。金幣依比賽時間給，每 3 分鐘 ${PRACTICE_COINS.per3} 金幣，贏球 ×${PRACTICE_COINS.win}，再乘難度倍率；中途離開沒有金幣。</p>`;
-  return `<div class="mtbar"><span>牌組評分 <b>${deckRating(s)}</b></span><span>隨機比賽（練習）</span></div>` + cols(left, right);
+  return `<div class="mtbar"><span>牌組評分 <b>${deckRating(s)}</b></span><span>隨機比賽（練習）</span>${firstWinChip()}</div>` + cols(left, right);
 }
 
 function missionsTab(): string {
@@ -569,6 +687,14 @@ function missionsTab(): string {
   );
 }
 
+/** Whether today's first-win bonus is still there. */
+function firstWinChip(): string {
+  const taken = myteam.save.firstWin === localDay();
+  return `<span class="fwin${taken ? ' taken' : ''}" title="每天第一場 MyTeam 勝利（隨機比賽也算）多給 ${FIRST_WIN_COINS} 金幣，午夜重置">今日首勝 +${FIRST_WIN_COINS}：<b>${
+    taken ? '已領' : '可領'
+  }</b></span>`;
+}
+
 function missionsReady(): number {
   const s = myteam.save;
   return MISSIONS.filter((m) => !s.claimed.includes(m.id) && missionDone(s, m)).length;
@@ -579,7 +705,7 @@ let pending: { title: string; drops: DropResult[] } | null = null;
 
 function finishText(out: GameOutcome, won: boolean, forfeit: boolean): string {
   const bits = [forfeit ? '中途離開，算輸' : won ? '勝利' : '落敗'];
-  if (out.coins) bits.push(`+${out.coins} 金幣`);
+  if (out.coins) bits.push(`+${out.coins} 金幣${out.firstWin ? `（含今日首勝 ${out.firstWin}）` : ''}`);
   if (out.firstClear) bits.push('首次過關');
   if (out.drops.length) bits.push(`獲得 ${out.drops.length} 張卡`);
   if (out.gone.length) bits.push(`租借到期：${out.gone.join('、')}`);
@@ -637,8 +763,10 @@ function startGame(plan: GamePlan): void {
         // Practice: game time (a street game's real clock) pays, nothing else counts.
         const minutes = plan.size === 3 ? state.tick / 30 / 60 : (state.settings.quarterSeconds * 4) / 60;
         const coins = forfeit ? 0 : practiceCoins(minutes, a > b, plan.difficulty);
-        if (coins) void wallet.add(coins);
-        message = `隨機比賽：${forfeit ? '中途離開，沒有金幣' : `${a > b ? '勝利' : '落敗'}・+${coins} 金幣`}`;
+        const bonus = forfeit ? 0 : firstWinBonus(s, a > b);
+        if (bonus) myteam.commit();
+        if (coins + bonus) void wallet.add(coins + bonus);
+        message = `隨機比賽：${forfeit ? '中途離開，沒有金幣' : `${a > b ? '勝利' : '落敗'}・+${coins + bonus} 金幣${bonus ? `（含今日首勝 ${bonus}）` : ''}`}`;
         return message;
       }
       const rows = teamRows(state, 0);
@@ -739,6 +867,14 @@ export function renderMyTeam(): void {
     return;
   }
   const s = myteam.save;
+  if (s.refund) {
+    // The card update paid back retired boosted cards: once, into the wallet.
+    const coins = s.refund;
+    s.refund = 0;
+    myteam.commit();
+    void wallet.add(coins);
+    message = `卡片改版：各期強化卡已停止發行，你的強化卡換成了 ${coins} 金幣。現役卡改成依球季發行，另有冠軍、獎項、名人堂和特殊卡。`;
+  }
   $('#mtCoins').textContent = `🪙 ${coinsText(wallet.coins)}`;
   const ready = missionsReady();
   $('#mtTabs').innerHTML = TABS.map(
@@ -759,7 +895,7 @@ export function renderMyTeam(): void {
             : tab === 'practice'
               ? practiceTab()
               : shopTab());
-  hydrateCards(root, allCards());
+  hydrateCards(root, [...allCards(), ...(tab === 'cards' ? lockedShown : [])]);
 }
 
 // ----------------------------------------------------------------- packs
@@ -774,7 +910,7 @@ async function buy(id: string): Promise<void> {
     return;
   }
   message = '';
-  const drops = openPack(pack, s.period);
+  const drops = openPack(pack);
   const results = addDrops(s, drops);
   cleanDeck(s);
   // A first deck fills itself.
@@ -793,7 +929,7 @@ function reveal(title: string, results: DropResult[]): void {
   $('#poTitle').textContent = title;
   $('#poCards').innerHTML = results
     .map((r, i) => {
-      const note = isRental(r.card) ? '' : r.isNew ? '<b class="new">NEW</b>' : `重複・+${r.coins} 金幣`;
+      const note = isRental(r.card) ? '' : r.isNew ? '<b class="new">NEW</b>' : r.full ? `已滿 ${COPY_MAX} 張・+${r.coins} 金幣` : '重複・可強化';
       return (
         `<button type="button" class="flip t-${r.card.tier}${shiny(r.card) ? ' shiny' : ''}" data-i="${i}" style="--tier:${tier(r.card.tier).color};--delay:${i * 0.08}s">` +
         `<span class="back"><b>WebNBA</b><i>MyTeam</i></span><span class="front">${cardHtml(r.card, { note })}</span><span class="burst"></span></button>`
@@ -803,9 +939,11 @@ function reveal(title: string, results: DropResult[]): void {
   hydrateCards($('#poCards'), results.map((r) => r.card));
   const coins = results.reduce((s, r) => s + r.coins, 0);
   $('#poSummary').textContent = '';
-  $('#poSummary').dataset.text = `新卡 ${results.filter((r) => r.isNew && !isRental(r.card)).length} 張・租借 ${
-    results.filter((r) => isRental(r.card)).length
-  } 張${coins ? `・重複換得 ${coins} 金幣` : ''}`;
+  const rentals = results.filter((r) => isRental(r.card)).length;
+  const dups = results.filter((r) => !r.isNew && !r.full && !isRental(r.card)).length;
+  $('#poSummary').dataset.text = `新卡 ${results.filter((r) => r.isNew && !isRental(r.card)).length} 張${dups ? `・重複 ${dups} 張（可到收藏強化）` : ''}${
+    rentals ? `・租借 ${rentals} 張` : ''
+  }${coins ? `・超過 ${COPY_MAX} 張換得 ${coins} 金幣` : ''}`;
   $('#poAll').classList.remove('hidden');
   el.classList.remove('hidden', 'flash', 'shake', 'done');
 }
@@ -846,9 +984,11 @@ export function initMyTeam(h: MyTeamHost): void {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
     if (!b) return;
     tab = b.dataset.tab as Tab;
+    // The rental filter is the deck's alone.
+    if (filterTier === 'rental') filterTier = 'all';
     message = '';
     detail = null;
-    confirmSell = false;
+    confirmSell = null;
     renderMyTeam();
   });
   $('#mtBody').addEventListener('click', (e) => {
@@ -858,8 +998,19 @@ export function initMyTeam(h: MyTeamHost): void {
     const act = data('data-act');
     const ft = data('data-ft');
     const fp = data('data-fp');
-    if (ft) filterTier = ft as TierId | 'all';
+    const fs = data('data-fs');
+    if (ft) filterTier = ft as TierId | 'all' | 'rental';
     else if (fp) filterPos = fp as Position | 'all';
+    else if (fs) filterSource = fs as CardSource | 'all';
+    else if (act === 'unowned') setPref('unowned', pref('unowned', '0') === '1' ? '0' : '1');
+    else if (act === 'merge' && detail) {
+      if (mergeCard(s, detail)) {
+        const c = s.cards.find((x) => x.uid === detail);
+        message = c ? `強化完成：${c.name} +${c.plus}（總評 ${c.ovr}）` : '';
+        confirmSell = null;
+        myteam.commit();
+      }
+    }
     else if (data('data-slot') !== null) {
       const i = Number(data('data-slot'));
       slot = slot === i ? null : i;
@@ -931,7 +1082,7 @@ export function initMyTeam(h: MyTeamHost): void {
         }
       } else {
         detail = ref;
-        confirmSell = false;
+        confirmSell = null;
         // Stacked (narrow) layout: the detail sits above the grid.
         if (window.innerWidth < 1100) $('#myteam').scrollTo({ top: 0, behavior: 'smooth' });
       }
@@ -943,14 +1094,14 @@ export function initMyTeam(h: MyTeamHost): void {
       s.deck.splice(slot, 1);
       slot = null;
       myteam.commit();
-    } else if (act === 'asksell') confirmSell = true;
-    else if (act === 'nosell') confirmSell = false;
-    else if (act === 'sell' && detail) {
-      const coins = sellCard(s, detail);
+    } else if (act === 'asksell') confirmSell = data('data-uid');
+    else if (act === 'nosell') confirmSell = null;
+    else if (act === 'sell' && confirmSell) {
+      const coins = sellCard(s, confirmSell);
       if (coins) void wallet.add(coins);
       message = coins ? `分解完成，+${coins} 金幣` : '';
-      detail = null;
-      confirmSell = false;
+      if (confirmSell === detail) detail = null;
+      confirmSell = null;
       myteam.commit();
     } else if (act === 'close') detail = null;
     else return;

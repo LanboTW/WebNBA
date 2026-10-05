@@ -1,14 +1,30 @@
+import archiveJson from '../data/card-archive.json';
 import headshotsJson from '../data/headshots.json';
+import historyJson from '../data/history.json';
 import myteamJson from '../data/myteam.json';
-import { POSITIONS, toOverall } from './career';
-import { NBA_TEAMS, RATING_KEYS, TEAMS, findTeam, overallOf, playerRating, teamRating } from './roster';
+import specialJson from '../data/special-cards.json';
+import { POSITIONS, startingRatings, toOverall, type ArchetypeId } from './career';
+import {
+  NBA_TEAMS,
+  RATING_KEYS,
+  ROSTER_SEASON,
+  TEAMS,
+  findTeam,
+  overallOf,
+  parseRoster,
+  playerRating,
+  teamRating,
+  type RawRoster,
+} from './roster';
 import { DIFFICULTY_COINS, type Difficulty, type Look, type PlayerInfo, type Position, type Ratings, type TeamInfo } from './types';
 
 /**
  * MyTeam: collect player cards with coins, build a deck, play with it.
- * Cards are made from the current roster: every player's base card at his
- * own overall, plus boosted versions released period by period. Owned cards
- * are kept as snapshots, so a roster update never takes a card away.
+ * Cards: every current player at his own overall squeezed into 66-93 (one
+ * card per season: within a season it follows the roster, a new season brings
+ * new cards and the old ones go to the 復刻 pack), history cards (champions,
+ * awards, MVPs, the Hall of Fame) and hand-made special cards. A card can be
+ * owned up to five times at once; duplicates merge into +1 overall each.
  */
 
 export type TierId = 'white' | 'green' | 'blue' | 'purple' | 'gold' | 'pink' | 'orange' | 'black';
@@ -20,7 +36,7 @@ export interface Tier {
   max: number;
   /** Frame colour. */
   color: string;
-  /** Coins for a duplicate or a sold card. */
+  /** Coins for a sold card (or one past the five copies). */
   value: number;
 }
 
@@ -41,10 +57,20 @@ export function tierOf(ovr: number): TierId {
   return [...TIERS].reverse().find((t) => ovr >= t.min)?.id ?? 'white';
 }
 
+/** Rental cards wear grey, whatever their rating. */
+export const RENTAL_COLOR = '#8a9099';
+
+/** Ladder periods (挑戰之路). They no longer limit what packs give. */
 export const PERIODS = 6;
-/** The best tier each period releases (period 1 first). */
-export const PERIOD_TOP: TierId[] = ['blue', 'purple', 'gold', 'pink', 'orange', 'black'];
-export const periodTop = (period: number): TierId => PERIOD_TOP[Math.min(PERIODS, Math.max(1, period)) - 1];
+
+export type CardSource = 'current' | 'champion' | 'award' | 'hof' | 'special';
+export const CARD_SOURCES: [CardSource, string][] = [
+  ['current', '現役'],
+  ['champion', '冠軍'],
+  ['award', '獎項'],
+  ['hof', '名人堂'],
+  ['special', '特殊'],
+];
 
 /** A card in the catalog. */
 export interface CardDef {
@@ -56,40 +82,54 @@ export interface CardDef {
   heightM: number;
   tier: TierId;
   ovr: number;
-  /** The period that releases it. */
-  period: number;
-  /** The player's own card (not a boosted one). */
-  base: boolean;
+  source: CardSource;
+  /** On the card face: 26-27, 2016 MVP, 名人堂, 聖誕… */
+  label: string;
+  /** Current-player cards: their season (2026-27). */
+  season?: string;
+  /** A past season's card: only the 復刻 pack gives it. */
+  retired?: boolean;
+  /** Special cards: the theme (frame, limited-pack week) and the picture in client/public/cards/. */
+  theme?: string;
+  image?: string;
 }
 
-/** A card the player owns: the card plus its ratings, frozen when it was pulled. */
+/** A card the player owns: one copy, with its ratings (kept for cards that leave the catalog). */
 export interface OwnedCard extends CardDef {
-  /** RATING_KEYS order. */
+  /** This copy (decks point at it). */
+  uid: string;
+  /** Duplicates merged in: +1 overall each (ovr already has it). */
+  plus?: number;
+  /** RATING_KEYS order, at ovr. */
   ratings: number[];
 }
 
 /** A loaned card: plays `games` more games, then it is gone. */
 export interface RentalCard extends OwnedCard {
-  uid: string;
   games: number;
 }
+
+/** At most this many copies of one card at once; more turn into coins. */
+export const COPY_MAX = 5;
+/** Merging duplicates: up to +5. */
+export const PLUS_MAX = 5;
 
 export interface PackDef {
   id: string;
   name: string;
   price: number;
   count: number;
-  /** Only these tiers (else every tier the period has released). */
+  /** Only these tiers. */
   tiers?: TierId[];
   positions?: Position[];
   /** Only these players (by name). */
   players?: string[];
   /** Relative odds per tier; missing tiers use DEFAULT_WEIGHTS. */
   weights?: Partial<Record<TierId, number>>;
-  /** At least one card of the current period's best tier. */
-  guaranteeTop?: boolean;
-  /** Chance for each card to come as a high-rated rental instead. */
-  rentalChance?: number;
+  /** The first card is of this tier or better. */
+  guarantee?: TierId;
+  /** limited: this week's special cards join; reissue: one past season's cards only. */
+  kind?: 'limited' | 'reissue';
 }
 
 export const DEFAULT_WEIGHTS: Record<TierId, number> = {
@@ -99,8 +139,8 @@ export const DEFAULT_WEIGHTS: Record<TierId, number> = {
   purple: 10,
   gold: 5,
   pink: 2,
-  orange: 0.8,
-  black: 0.25,
+  orange: 0.6,
+  black: 0.2,
 };
 
 export const OFFICIAL_PACKS: PackDef[] = (myteamJson as unknown as { packs: PackDef[] }).packs;
@@ -125,86 +165,212 @@ const slug = (name: string) =>
     .replace(/^-|-$/g, '')
     .toLowerCase();
 
-/** Boosted cards each period releases, at its best tier and the one below. */
-const BOOSTED_TOP = 14;
-const BOOSTED_NEXT = 8;
+// ----------------------------------------------------------------- the data
+
+type LegendRow = [string, number, Position, number, ArchetypeId, number, Look['hair'], Look['beard']];
+interface History {
+  champions: [number, string, string[]][];
+  awards: Record<HistoryAward, ([number, string, string] | [number, string, string, number])[]>;
+  hof: [string, string, number][];
+  legends: LegendRow[];
+}
+const HISTORY = historyJson as unknown as History;
+
+export type HistoryAward = 'mvp' | 'fmvp' | 'dpoy' | 'roy' | 'smoy' | 'mip' | 'scoring';
+const AWARDS: Record<HistoryAward, { name: string; ovr: number }> = {
+  mvp: { name: 'MVP', ovr: 95 },
+  fmvp: { name: 'FMVP', ovr: 93 },
+  scoring: { name: '得分王', ovr: 92 },
+  dpoy: { name: '最佳防守', ovr: 91 },
+  mip: { name: '進步獎', ovr: 90 },
+  roy: { name: '新人王', ovr: 90 },
+  smoy: { name: '第六人', ovr: 90 },
+};
+/** A champion team's six, best first. */
+const CHAMPION_OVR = [93, 92, 91, 91, 90, 90];
+
+export interface SpecialTheme {
+  id: string;
+  name: string;
+  color: string;
+  accent: string;
+}
+interface SpecialRow {
+  id: string;
+  player: string;
+  ovr: number;
+  theme: string;
+  team?: string;
+  image?: string;
+  position?: Position;
+  heightM?: number;
+  number?: number;
+  style?: ArchetypeId;
+  look?: Partial<Look>;
+}
+const SPECIAL = specialJson as unknown as { themes: SpecialTheme[]; cards: SpecialRow[] };
+export const SPECIAL_THEMES: SpecialTheme[] = SPECIAL.themes;
+export const specialTheme = (id: string | undefined): SpecialTheme | undefined => SPECIAL_THEMES.find((t) => t.id === id);
+
+const ARCHIVE = (archiveJson as unknown as { seasons: RawRoster[] }).seasons;
+/** Past seasons whose cards the 復刻 pack sells, oldest first. */
+export const ARCHIVED_SEASONS: string[] = ARCHIVE.map((s) => s.season).filter((s) => s !== ROSTER_SEASON);
+
+/** 2026-27 -> 26-27. */
+export const seasonLabel = (season: string): string => season.replace(/^\d\d(\d\d)-(\d\d)$/, '$1-$2');
+const seasonTag = (season: string): string => seasonLabel(season).replace('-', '');
+
+const LOOK: Look = { skin: 4, hair: 'short', beard: 'none', headband: false, sleeve: 'none', kneepad: false, shoe: 'white', socks: 'low' };
+
+/** A player the history files describe (not on the roster): ratings from his style and height. */
+function legendPlayer(row: LegendRow): PlayerInfo {
+  const [name, number, position, cm, style, skin, hair, beard] = row;
+  const heightM = cm / 100;
+  return { name, number, heightM, position, ratings: startingRatings(position, style, heightM), look: { ...LOOK, skin, hair, beard } };
+}
+
+// ----------------------------------------------------------------- the catalog
 
 let catalog: CardDef[] | null = null;
-const realPlayers = new Map<string, { p: PlayerInfo; t: TeamInfo }>();
+let byId = new Map<string, CardDef>();
+/** Each card's player: whose ratings (reshaped to the card's overall) and look it has. */
+const cardBase = new Map<string, PlayerInfo>();
 
-/** Every card there is, made from the NBA roster (the same for everyone). */
+/** A season's current players, their real overall squeezed into 66-93 (the best one 93). */
+function seasonCards(teams: TeamInfo[], season: string, retired: boolean): CardDef[] {
+  const players = teams.flatMap((t) => t.players.map((p) => ({ p, t })));
+  const top = Math.max(67, ...players.map((x) => playerRating(x.p)));
+  return players.map(({ p, t }) => {
+    const real = playerRating(p);
+    const ovr = real <= 66 ? 66 : Math.min(93, Math.round(66 + ((real - 66) * 27) / (top - 66)));
+    const id = `s${seasonTag(season)}-${slug(p.name)}`;
+    cardBase.set(id, p);
+    return {
+      id,
+      name: p.name,
+      team: t.abbr,
+      position: p.position,
+      number: p.number,
+      heightM: p.heightM,
+      tier: tierOf(ovr),
+      ovr,
+      source: 'current' as const,
+      label: seasonLabel(season),
+      season,
+      ...(retired ? { retired: true } : {}),
+    };
+  });
+}
+
+/** Every card there is (the same for everyone). */
 export function cardCatalog(): CardDef[] {
   if (catalog) return catalog;
-  const players = NBA_TEAMS.flatMap((t) => t.players.map((p) => ({ p, t })));
-  for (const x of players) realPlayers.set(x.p.name, x);
-  const card = (x: { p: PlayerInfo; t: TeamInfo }, id: string, ovr: number, period: number, base: boolean): CardDef => ({
-    id,
-    name: x.p.name,
-    team: x.t.abbr,
-    position: x.p.position,
-    number: x.p.number,
-    heightM: x.p.heightM,
-    tier: tierOf(ovr),
-    ovr,
-    period,
-    base,
-  });
-  const out: CardDef[] = players.map((x) => {
-    const ovr = Math.max(66, Math.min(99, playerRating(x.p)));
-    const period = Math.max(1, PERIOD_TOP.findIndex((t) => tierIndex(t) >= tierIndex(tierOf(ovr))) + 1);
-    return card(x, `b-${slug(x.p.name)}`, ovr, period, true);
-  });
-  for (let period = 2; period <= PERIODS; period++) {
-    const used = new Set<string>();
-    const release = (t: Tier, n: number, tag: string) => {
-      const pool = players
-        .filter((x) => !used.has(x.p.name) && playerRating(x.p) < t.min && playerRating(x.p) >= t.min - 14)
-        .sort((a, b) => hash(`${tag}:${a.p.name}`) - hash(`${tag}:${b.p.name}`))
-        .slice(0, n);
-      for (const x of pool) {
-        used.add(x.p.name);
-        const ovr = t.min + (hash(`${tag}/ovr:${x.p.name}`) % (t.max - t.min + 1));
-        out.push(card(x, `${tag}-${slug(x.p.name)}`, ovr, period, false));
-      }
-    };
-    release(tier(periodTop(period)), BOOSTED_TOP, `p${period}`);
-    if (period >= 3) release(TIERS[tierIndex(periodTop(period)) - 1], BOOSTED_NEXT, `p${period}n`);
+  const out: CardDef[] = seasonCards(NBA_TEAMS, ROSTER_SEASON, false);
+  for (const raw of ARCHIVE) if (raw.season !== ROSTER_SEASON) out.push(...seasonCards(parseRoster(raw), raw.season, true));
+
+  const people = new Map<string, PlayerInfo>();
+  for (const row of HISTORY.legends) people.set(row[0], legendPlayer(row));
+  for (const t of NBA_TEAMS) for (const p of t.players) people.set(p.name, p);
+  const add = (id: string, name: string, team: string, ovr: number, source: CardSource, label: string, extra: Partial<CardDef> = {}) => {
+    const p = people.get(name);
+    if (!p) return;
+    cardBase.set(id, p);
+    out.push({ id, name, team, position: p.position, number: p.number, heightM: p.heightM, tier: tierOf(ovr), ovr, source, label, ...extra });
+  };
+  for (const [year, team, six] of HISTORY.champions) {
+    six.forEach((name, i) => add(`c${year}-${slug(name)}`, name, team, CHAMPION_OVR[i] ?? 90, 'champion', `${year} 冠軍`));
+  }
+  for (const key of Object.keys(AWARDS) as HistoryAward[]) {
+    for (const [year, name, team, ovr] of HISTORY.awards[key] ?? []) {
+      const o = ovr ?? AWARDS[key].ovr;
+      add(`a${year}-${key}-${slug(name)}`, name, team, o, 'award', `${year} ${key === 'mvp' && o >= 97 ? '巔峰MVP' : AWARDS[key].name}`);
+    }
+  }
+  for (const [name, team, ovr] of HISTORY.hof) add(`h-${slug(name)}`, name, team, ovr, 'hof', '名人堂');
+  for (const s of SPECIAL.cards) {
+    const theme = specialTheme(s.theme);
+    const known = people.get(s.player);
+    const position = s.position ?? known?.position ?? 'SF';
+    const heightM = s.heightM ?? known?.heightM ?? 2;
+    const base: PlayerInfo = known
+      ? { ...known, ...(s.look ? { look: { ...(known.look ?? LOOK), ...s.look } } : {}) }
+      : { name: s.player, number: s.number ?? 0, heightM, position, ratings: startingRatings(position, s.style ?? 'allround', heightM), look: { ...LOOK, ...s.look } };
+    const id = `x-${s.id}`;
+    cardBase.set(id, base);
+    out.push({
+      id,
+      name: s.player,
+      team: s.team ?? 'LAL',
+      position,
+      number: s.number ?? base.number,
+      heightM,
+      tier: tierOf(s.ovr),
+      ovr: s.ovr,
+      source: 'special',
+      label: theme?.name ?? '特殊',
+      theme: s.theme,
+      ...(s.image ? { image: s.image } : {}),
+    });
   }
   catalog = out;
+  byId = new Map(out.map((c) => [c.id, c]));
   return out;
 }
 
-const CAPS = Object.fromEntries(RATING_KEYS.map((k) => [k, 99])) as unknown as Ratings;
-
-/** The card's ratings: the player's own, shifted until his overall is the card's. */
-export function cardRatings(c: CardDef): Ratings {
+export function catalogCard(id: string): CardDef | undefined {
   cardCatalog();
-  const real = realPlayers.get(c.name)?.p;
-  if (!real) return Object.fromEntries(RATING_KEYS.map((k) => [k, c.ovr])) as unknown as Ratings;
-  const r = toOverall(real.ratings, CAPS, c.ovr, (x) => overallOf(c.position, x));
+  return byId.get(id);
+}
+
+const CAPS = Object.fromEntries(RATING_KEYS.map((k) => [k, 99])) as unknown as Ratings;
+const ratingsMemo = new Map<string, Ratings>();
+
+/** The card's ratings at an overall (its own, or with its +N): its player's, reshaped until they show that overall. */
+export function cardRatings(c: CardDef, ovr: number = c.ovr): Ratings {
+  cardCatalog();
+  const key = `${c.id}@${ovr}`;
+  const hit = ratingsMemo.get(key);
+  if (hit) return { ...hit };
+  const real = cardBase.get(c.id);
+  if (!real) return Object.fromEntries(RATING_KEYS.map((k) => [k, ovr])) as unknown as Ratings;
+  const r = toOverall(real.ratings, CAPS, ovr, (x) => overallOf(c.position, x));
   // Whole-number ratings can land a point off: step single ratings until it shows right.
   for (let i = 0; i < 60; i++) {
-    const off = c.ovr - playerRating({ position: c.position, ratings: r });
+    const off = ovr - playerRating({ position: c.position, ratings: r });
     if (!off) break;
     const k = RATING_KEYS[i % RATING_KEYS.length];
     r[k] = Math.max(25, Math.min(99, r[k] + Math.sign(off)));
   }
-  return r;
+  ratingsMemo.set(key, r);
+  return { ...r };
 }
 
-export function ownCard(c: CardDef): OwnedCard {
-  const r = cardRatings(c);
-  return { ...c, ratings: RATING_KEYS.map((k) => r[k]) };
+/** A copy of a catalog card (uid '' for a card shown but not owned). */
+export function ownCard(c: CardDef, uid = '', plus = 0): OwnedCard {
+  const ovr = Math.min(99, c.ovr + plus);
+  const r = cardRatings(c, ovr);
+  return { ...c, uid, ovr, ...(plus ? { plus } : {}), ratings: RATING_KEYS.map((k) => r[k]) };
+}
+
+/** Brings an owned copy up to date with the catalog (a roster update this season, a fixed history line). */
+export function syncCard<T extends OwnedCard>(c: T): T {
+  const def = catalogCard(c.id);
+  const { period: _p, base: _b, ...rest } = c as T & { period?: unknown; base?: unknown };
+  if (!def) {
+    // Gone from the game: kept as it was, never dropping again.
+    return { ...rest, source: rest.source ?? 'current', label: rest.label ?? '舊版', retired: true } as T;
+  }
+  return { ...rest, ...ownCard(def, c.uid, Math.min(PLUS_MAX, c.plus ?? 0)) } as T;
 }
 
 export function ratingsOf(c: OwnedCard): Ratings {
   return Object.fromEntries(RATING_KEYS.map((k, i) => [k, c.ratings[i] ?? 50])) as unknown as Ratings;
 }
 
-/** The card as a player in a game (his look from the roster when he is still on it). */
+/** The card as a player in a game (his look from the roster or the history files). */
 export function cardPlayer(c: OwnedCard): PlayerInfo {
   cardCatalog();
-  const look: Look | undefined = realPlayers.get(c.name)?.p.look;
+  const look: Look | undefined = cardBase.get(c.id)?.look ?? NBA_TEAMS.flatMap((t) => t.players).find((p) => p.name === c.name)?.look;
   return { name: c.name, number: c.number, heightM: c.heightM, position: c.position, ratings: ratingsOf(c), ...(look ? { look } : {}) };
 }
 
@@ -223,25 +389,43 @@ export const cardTeam = (c: CardDef): TeamInfo => findTeam(c.team);
 /** What one pull gave. */
 export interface Drop {
   card: CardDef;
-  /** Games, when it came as a rental. */
+  /** Games, when it came as a rental (rewards only: packs never give rentals). */
   rental?: number;
 }
 
-/** The cards a pack can give in this period. */
-export function packPool(pack: PackDef, period: number): CardDef[] {
+/** Weeks since 1970 starting on Mondays: what is on this week. */
+export const eventWeek = (now: number = Date.now()): number => Math.floor((Math.floor(now / 86_400_000) + 3) / 7);
+
+const rotate = <T>(list: T[], week: number): T | undefined => (list.length ? list[((week % list.length) + list.length) % list.length] : undefined);
+
+/** This week's limited-pack theme (one with cards). */
+export function limitedTheme(week: number = eventWeek()): SpecialTheme | undefined {
+  const used = new Set(SPECIAL.cards.map((c) => c.theme));
+  return rotate(SPECIAL_THEMES.filter((t) => used.has(t.id)), week);
+}
+
+/** This week's 復刻 season. */
+export const reissueSeason = (week: number = eventWeek()): string | undefined => rotate(ARCHIVED_SEASONS, week);
+
+/** The cards a pack can give this week. */
+export function packPool(pack: PackDef, week: number = eventWeek()): CardDef[] {
   const names = pack.players?.length ? new Set(pack.players) : null;
+  const theme = pack.kind === 'limited' ? limitedTheme(week)?.id : undefined;
+  const season = pack.kind === 'reissue' ? reissueSeason(week) : undefined;
+  if (pack.kind === 'reissue' && !season) return [];
+  if (pack.kind === 'limited' && !theme) return [];
   return cardCatalog().filter(
     (c) =>
-      c.period <= period &&
+      (pack.kind === 'reissue' ? c.retired && c.season === season : !c.retired && (c.source !== 'special' || c.theme === theme)) &&
       (!pack.tiers?.length || pack.tiers.includes(c.tier)) &&
       (!pack.positions?.length || pack.positions.includes(c.position)) &&
       (!names || names.has(c.name)),
   );
 }
 
-/** Each tier's chance of being pulled from this pack now (tiers it cannot give are left out). */
-export function packOdds(pack: PackDef, period: number): { tier: TierId; chance: number }[] {
-  const pool = packPool(pack, period);
+/** Each tier's chance of being pulled from this pack (tiers it cannot give are left out). */
+export function packOdds(pack: PackDef, week: number = eventWeek()): { tier: TierId; chance: number }[] {
+  const pool = packPool(pack, week);
   const tiers = TIERS.filter((t) => pool.some((c) => c.tier === t.id));
   const weight = (t: TierId) => Math.max(0, pack.weights?.[t] ?? DEFAULT_WEIGHTS[t]);
   const total = tiers.reduce((s, t) => s + weight(t.id), 0) || 1;
@@ -252,46 +436,53 @@ function pick<T>(list: T[], rand: () => number): T {
   return list[Math.min(list.length - 1, Math.floor(rand() * list.length))];
 }
 
-/** Opens a pack. Empty when it has nothing to give in this period. */
-export function openPack(pack: PackDef, period: number, rand: () => number = Math.random): Drop[] {
-  const pool = packPool(pack, period);
+function rollTier(odds: { tier: TierId; chance: number }[], rand: () => number): TierId {
+  const total = odds.reduce((s, o) => s + o.chance, 0);
+  let r = rand() * total;
+  for (const o of odds) {
+    if (r < o.chance) return o.tier;
+    r -= o.chance;
+  }
+  return odds[odds.length - 1].tier;
+}
+
+/** Opens a pack: no card twice in one pack. Empty when it has nothing to give this week. */
+export function openPack(pack: PackDef, rand: () => number = Math.random, week: number = eventWeek()): Drop[] {
+  const pool = packPool(pack, week);
   if (!pool.length) return [];
-  const odds = packOdds(pack, period);
-  const drops: Drop[] = [];
+  const odds = packOdds(pack, week);
   const taken = new Set<string>();
-  const fresh = (cards: CardDef[]) => {
-    const left = cards.filter((c) => !taken.has(c.id));
-    return left.length ? left : cards;
-  };
-  const top = pool.filter((c) => c.tier === periodTop(period));
-  // Rentals are the pool's best: its top two tiers.
-  const best = TIERS.filter((t) => pool.some((c) => c.tier === t.id)).slice(-2).map((t) => t.id);
-  const rentals = pool.filter((c) => best.includes(c.tier));
+  const drops: Drop[] = [];
   for (let i = 0; i < Math.max(1, Math.min(10, pack.count)); i++) {
-    let card: CardDef;
-    let rental: number | undefined;
-    if (i === 0 && pack.guaranteeTop && top.length) {
-      card = pick(fresh(top), rand);
-    } else if (rand() < (pack.rentalChance ?? 0)) {
-      card = pick(fresh(rentals), rand);
-      rental = 2 + Math.floor(rand() * 3);
-    } else {
-      let r = rand();
-      let t = odds[odds.length - 1].tier;
-      for (const o of odds) {
-        if (r < o.chance) {
-          t = o.tier;
-          break;
-        }
-        r -= o.chance;
-      }
-      card = pick(fresh(pool.filter((c) => c.tier === t)), rand);
-    }
+    const g = i === 0 && pack.guarantee ? odds.filter((o) => tierIndex(o.tier) >= tierIndex(pack.guarantee!)) : [];
+    const t = rollTier(g.length ? g : odds, rand);
+    const ofTier = pool.filter((c) => c.tier === t);
+    const left = ofTier.filter((c) => !taken.has(c.id));
+    let from = left.length ? left : ofTier;
+    // The limited pack: half its pulls of a tier with this week's special cards are one of them.
+    const featured = from.filter((c) => c.source === 'special');
+    if (featured.length && featured.length < from.length) from = rand() < 0.5 ? featured : from.filter((c) => c.source !== 'special');
+    const card = pick(from, rand);
     taken.add(card.id);
-    drops.push(rental ? { card, rental } : { card });
+    drops.push({ card });
   }
   // Best last, for the reveal.
   return drops.sort((a, b) => a.card.ovr - b.card.ovr);
+}
+
+/** Where a card comes from, in words (the collection's locked cards). */
+export function cardWhere(c: CardDef): string[] {
+  const out: string[] = [];
+  if (c.source === 'special') out.push(`限定卡包（${specialTheme(c.theme)?.name ?? '特殊'}主題週）`);
+  else if (c.retired) out.push('復刻卡包（輪到它的球季時）');
+  else
+    for (const p of OFFICIAL_PACKS) {
+      if (p.kind) continue;
+      if ((!p.tiers?.length || p.tiers.includes(c.tier)) && (!p.positions?.length || p.positions.includes(c.position))) out.push(p.name);
+    }
+  const rewards = [...LEVEL_REWARDS(), ...MISSIONS.map((m) => m.reward)];
+  if (!c.retired && c.source !== 'special' && rewards.some((r) => r.card === c.tier)) out.push(`${tier(c.tier).name}卡獎勵（關卡、任務）`);
+  return out;
 }
 
 // ----------------------------------------------------------------- the save
@@ -300,14 +491,15 @@ export const DECK_MAX = 13;
 export const DECK_MIN = 5;
 
 export interface MyTeamSave {
-  v: 1;
-  /** Highest period unlocked (1-6). */
+  v: 2;
+  /** Highest ladder period unlocked (1-6). */
   period: number;
+  /** Owned copies (a card up to five times). */
   cards: OwnedCard[];
   rentals: RentalCard[];
-  /** Card ids and rental uids; the first five start. */
+  /** Copy uids; the first five start. */
   deck: string[];
-  /** Next rental number. */
+  /** Next copy or rental number. */
   next: number;
   packsOpened: number;
   /** Ladder levels beaten (ids). */
@@ -320,38 +512,76 @@ export interface MyTeamSave {
   events: string[];
   /** Games in a row with the same starting five (its cohesion grows with them). */
   chem?: { key: string; games: number };
+  /** The local day (YYYY-MM-DD) the first win's bonus was paid. */
+  firstWin?: string;
+  /** Coins the card update gave back (retired boosted cards), waiting for the wallet. */
+  refund?: number;
 }
 
 export function emptyMyTeam(): MyTeamSave {
-  return { v: 1, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {}, events: [] };
+  return { v: 2, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {}, events: [] };
+}
+
+/**
+ * Version 1 saves: one copy per card id, the deck by card id, period-boosted
+ * cards. Base cards become this season's cards; boosted ones are paid back at
+ * their tier's value (save.refund, for the wallet).
+ */
+function fromV1(s: MyTeamSave): void {
+  const tag = seasonTag(ROSTER_SEASON);
+  const uids = new Map<string, string>();
+  let refund = 0;
+  const cards: OwnedCard[] = [];
+  for (const c of s.cards as (OwnedCard & { id: string })[]) {
+    if (/^p\d/.test(c.id)) {
+      refund += tier(c.tier).value;
+      continue;
+    }
+    const id = c.id.startsWith('b-') ? `s${tag}-${c.id.slice(2)}` : c.id;
+    const uid = `c${s.next++}`;
+    uids.set(c.id, uid);
+    cards.push({ ...c, id, uid });
+  }
+  s.cards = cards;
+  s.rentals = s.rentals.map((r) => (r.id.startsWith('b-') ? { ...r, id: `s${tag}-${r.id.slice(2)}` } : r));
+  s.deck = s.deck.map((ref) => uids.get(ref) ?? ref);
+  s.refund = (s.refund ?? 0) + refund;
 }
 
 /** Accepts anything that looks like a save, filling what is missing. */
 export function upgradeMyTeam(raw: unknown): MyTeamSave | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { customPacks: _gone, ...s } = raw as Partial<MyTeamSave> & { customPacks?: unknown };
-  if (!Array.isArray(s.cards)) return null;
-  return {
+  const { customPacks: _gone, ...rest } = raw as Partial<MyTeamSave> & { customPacks?: unknown };
+  if (!Array.isArray(rest.cards)) return null;
+  const s: MyTeamSave = {
     ...emptyMyTeam(),
-    ...s,
-    v: 1,
-    period: Math.min(PERIODS, Math.max(1, Number(s.period) || 1)),
-    rentals: Array.isArray(s.rentals) ? s.rentals.filter((r) => r.games > 0) : [],
-    deck: Array.isArray(s.deck) ? s.deck : [],
-    cleared: Array.isArray(s.cleared) ? s.cleared : [],
-    claimed: Array.isArray(s.claimed) ? s.claimed : [],
-    stats: s.stats && typeof s.stats === 'object' ? s.stats : {},
-    events: Array.isArray(s.events) ? s.events : [],
+    ...rest,
+    v: 2,
+    period: Math.min(PERIODS, Math.max(1, Number(rest.period) || 1)),
+    next: Math.max(1, Number(rest.next) || 1),
+    rentals: Array.isArray(rest.rentals) ? rest.rentals.filter((r) => r.games > 0) : [],
+    deck: Array.isArray(rest.deck) ? rest.deck : [],
+    cleared: Array.isArray(rest.cleared) ? rest.cleared : [],
+    claimed: Array.isArray(rest.claimed) ? rest.claimed : [],
+    stats: rest.stats && typeof rest.stats === 'object' ? rest.stats : {},
+    events: Array.isArray(rest.events) ? rest.events : [],
   };
+  if (rest.v !== 2) fromV1(s);
+  s.cards = s.cards.map(syncCard);
+  s.rentals = s.rentals.map(syncCard);
+  return s;
 }
 
-/** A deck slot's card: an owned card by id or a rental by uid. */
+/** A deck slot's card: an owned copy or a rental, by uid. */
 export function deckCard(save: MyTeamSave, ref: string): OwnedCard | RentalCard | null {
-  return save.rentals.find((r) => r.uid === ref) ?? save.cards.find((c) => c.id === ref) ?? null;
+  return save.rentals.find((r) => r.uid === ref) ?? save.cards.find((c) => c.uid === ref) ?? null;
 }
 
-export const isRental = (c: OwnedCard): c is RentalCard => 'uid' in c;
-export const refOf = (c: OwnedCard): string => (isRental(c) ? c.uid : c.id);
+export const isRental = (c: OwnedCard): c is RentalCard => 'games' in c;
+export const refOf = (c: OwnedCard): string => c.uid;
+
+/** How many copies of a card are owned. */
+export const copiesOf = (save: MyTeamSave, id: string): OwnedCard[] => save.cards.filter((c) => c.id === id);
 
 /** Starters: the best card at each position; then the best of the rest. */
 export function autoDeck(save: MyTeamSave): string[] {
@@ -387,56 +617,88 @@ export function cleanDeck(save: MyTeamSave): void {
   save.deck = save.deck.slice(0, DECK_MAX);
 }
 
-/** A new collection: two plain cards per position and five loaned stars (three games each). */
+const uidFor = (save: MyTeamSave, rental = false) => `${rental ? 'r' : 'c'}${save.next++}`;
+
+/** Cards packs and rewards can give (not past seasons, not special cards). */
+const regularCards = (): CardDef[] => cardCatalog().filter((c) => !c.retired && c.source !== 'special');
+
+/** A new collection: two plain current cards per position and five loaned stars (three games each). */
 export function newMyTeam(rand: () => number = Math.random): MyTeamSave {
   const save = emptyMyTeam();
-  const cards = cardCatalog();
+  const cards = regularCards();
   for (const pos of POSITIONS) {
-    const plain = cards.filter((c) => c.base && c.position === pos && c.ovr <= 75);
+    const plain = cards.filter((c) => c.source === 'current' && c.position === pos && c.ovr <= 75);
     for (let i = 0; i < 2; i++) {
       const left = plain.filter((c) => !save.cards.some((o) => o.id === c.id));
-      if (left.length) save.cards.push(ownCard(pick(left, rand)));
+      if (left.length) save.cards.push(ownCard(pick(left, rand), uidFor(save)));
     }
   }
   for (const pos of POSITIONS) {
     const stars = cards.filter((c) => c.position === pos && (c.tier === 'gold' || c.tier === 'pink') && !save.rentals.some((r) => r.name === c.name));
-    if (stars.length) save.rentals.push({ ...ownCard(pick(stars, rand)), uid: `r${save.next++}`, games: 3 });
+    if (stars.length) save.rentals.push({ ...ownCard(pick(stars, rand), uidFor(save, true)), games: 3 });
   }
   save.deck = autoDeck(save);
   return save;
 }
 
-/** What adding one drop did: a new card, a duplicate turned into coins, or a rental. */
+/** What adding one drop did: a new card, another copy, a sixth copy turned into coins, or a rental. */
 export interface DropResult {
   card: OwnedCard | RentalCard;
   coins: number;
+  /** The first copy. */
   isNew: boolean;
+  /** Already five copies: paid out instead. */
+  full?: boolean;
 }
 
-/** Adds a pack's cards to the collection; duplicates become coins (returned, for the wallet). */
+/** Adds a pack's cards to the collection (a sixth copy becomes coins: returned, for the wallet). */
 export function addDrops(save: MyTeamSave, drops: Drop[], fromPack = true): DropResult[] {
   if (fromPack) save.packsOpened++;
   return drops.map((d) => {
     if (d.rental) {
-      const r: RentalCard = { ...ownCard(d.card), uid: `r${save.next++}`, games: d.rental };
+      const r: RentalCard = { ...ownCard(d.card, uidFor(save, true)), games: d.rental };
       save.rentals.push(r);
       return { card: r, coins: 0, isNew: true };
     }
-    const have = save.cards.find((c) => c.id === d.card.id);
-    if (have) return { card: have, coins: tier(have.tier).value, isNew: false };
-    const c = ownCard(d.card);
+    const have = copiesOf(save, d.card.id).length;
+    if (have >= COPY_MAX) return { card: ownCard(d.card), coins: tier(d.card.tier).value, isNew: false, full: true };
+    const c = ownCard(d.card, uidFor(save));
     save.cards.push(c);
-    return { card: c, coins: 0, isNew: true };
+    return { card: c, coins: 0, isNew: have === 0 };
   });
 }
 
-/** Sells an owned card (never a rental) for coins; it leaves the deck too. */
-export function sellCard(save: MyTeamSave, id: string): number {
-  const i = save.cards.findIndex((c) => c.id === id);
+/** What a copy sells for: its tier's value for it and every duplicate merged into it. */
+export const sellValue = (c: OwnedCard): number => tier(c.tier).value * (1 + (c.plus ?? 0));
+
+/** Sells an owned copy (never a rental) for coins; it leaves the deck too. */
+export function sellCard(save: MyTeamSave, uid: string): number {
+  const i = save.cards.findIndex((c) => c.uid === uid);
   if (i < 0) return 0;
   const [c] = save.cards.splice(i, 1);
-  save.deck = save.deck.filter((r) => r !== id);
-  return tier(c.tier).value;
+  save.deck = save.deck.filter((r) => r !== uid);
+  return sellValue(c);
+}
+
+/** The copy a merge would use up: the weakest other copy, one outside the deck if it can. */
+export function mergeFodder(save: MyTeamSave, uid: string): OwnedCard | null {
+  const target = save.cards.find((c) => c.uid === uid);
+  if (!target) return null;
+  const others = copiesOf(save, target.id).filter((c) => c.uid !== uid);
+  others.sort((a, b) => Number(save.deck.includes(a.uid)) - Number(save.deck.includes(b.uid)) || (a.plus ?? 0) - (b.plus ?? 0));
+  return others[0] ?? null;
+}
+
+/** Merges one duplicate into a copy: +1 overall, up to +5. False when it cannot. */
+export function mergeCard(save: MyTeamSave, uid: string): boolean {
+  const i = save.cards.findIndex((c) => c.uid === uid);
+  const fodder = mergeFodder(save, uid);
+  if (i < 0 || !fodder || (save.cards[i].plus ?? 0) >= PLUS_MAX) return false;
+  save.cards = save.cards.filter((c) => c.uid !== fodder.uid);
+  save.deck = save.deck.filter((r) => r !== fodder.uid);
+  const at = save.cards.findIndex((c) => c.uid === uid);
+  save.cards[at] = syncCard({ ...save.cards[at], plus: (save.cards[at].plus ?? 0) + 1 });
+  return true;
 }
 
 /** The deck as a team: starters first, in position order. */
@@ -470,6 +732,21 @@ export function deckCohesion(save: MyTeamSave): number {
 export function noteDeckGame(save: MyTeamSave): void {
   const key = starterKey(save);
   save.chem = { key, games: save.chem?.key === key ? save.chem.games + 1 : 1 };
+}
+
+/** The first MyTeam win of each local day pays this on top. */
+export const FIRST_WIN_COINS = 300;
+
+export function localDay(now: number = Date.now()): string {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** The day's first win: pays (once a day) and remembers. */
+export function firstWinBonus(save: MyTeamSave, won: boolean, day: string = localDay()): number {
+  if (!won || save.firstWin === day) return 0;
+  save.firstWin = day;
+  return FIRST_WIN_COINS;
 }
 
 // ----------------------------------------------------------------- playing
@@ -541,7 +818,7 @@ export const MISSIONS: MissionDef[] = CONTENT.missions;
 /** Missions claimed that open each next period (3 open period 2, 6 period 3, ...). */
 export const MISSIONS_PER_PERIOD = 3;
 /** Coins for games that are not a first ladder win. */
-export const GAME_COINS = { win: 150, loss: 50, ladderReplay: 100 };
+export const GAME_COINS = { win: 225, loss: 75, ladderReplay: 150 };
 
 export const periodLevels = (period: number): LevelDef[] => LEVELS.filter((l) => l.period === period);
 
@@ -560,7 +837,7 @@ export function periodCleared(save: MyTeamSave, period: number): boolean {
 
 /** What a mission counts right now. */
 export function statValue(save: MyTeamSave, key: MissionStat): number {
-  if (key === 'cards') return save.cards.length;
+  if (key === 'cards') return new Set(save.cards.map((c) => c.id)).size;
   if (key === 'packs') return save.packsOpened;
   if (key === 'cleared') return LEVELS.filter((l) => save.cleared.includes(l.id)).length;
   if (key === 'limited') return LIMITED.filter((l) => save.cleared.includes(l.id)).length;
@@ -631,8 +908,8 @@ export function grantReward(save: MyTeamSave, reward: Reward, rand: () => number
   let coins = reward.coins ?? 0;
   const drops: DropResult[] = [];
   const pack = reward.pack ? OFFICIAL_PACKS.find((p) => p.id === reward.pack) : undefined;
-  if (pack) drops.push(...addDrops(save, openPack(pack, save.period, rand)));
-  const ofTier = (t: TierId) => cardCatalog().filter((c) => c.tier === t);
+  if (pack) drops.push(...addDrops(save, openPack(pack, rand)));
+  const ofTier = (t: TierId) => regularCards().filter((c) => c.tier === t);
   if (reward.rental && ofTier(reward.rental).length) drops.push(...addDrops(save, [{ card: pick(ofTier(reward.rental), rand), rental: 3 }], false));
   if (reward.card && ofTier(reward.card).length) drops.push(...addDrops(save, [{ card: pick(ofTier(reward.card), rand) }], false));
   coins += drops.reduce((s, d) => s + d.coins, 0);
@@ -670,10 +947,12 @@ export interface GameOutcome {
   gone: string[];
   /** The period that just opened. */
   unlocked: number | null;
+  /** The day's first win bonus (in coins already). */
+  firstWin: number;
 }
 
 /** Books a finished MyTeam game: counters, rentals, coins and ladder rewards. */
-export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number = Math.random): GameOutcome {
+export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number = Math.random, day: string = localDay()): GameOutcome {
   const won = g.won && !g.forfeit;
   const add = (k: MissionStat, n: number) => (save.stats[k] = (save.stats[k] ?? 0) + n);
   add('games', 1);
@@ -721,7 +1000,8 @@ export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number =
     } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
   } else coins = won ? GAME_COINS.win : GAME_COINS.loss;
   if (!firstClear) coins = Math.round(coins * DIFFICULTY_COINS[g.difficulty ?? 'normal']);
-  return { coins, drops, firstClear, gone, unlocked: updatePeriod(save) };
+  const firstWin = g.forfeit ? 0 : firstWinBonus(save, won, day);
+  return { coins: coins + firstWin, drops, firstClear, gone, unlocked: updatePeriod(save), firstWin };
 }
 
 /** Takes a finished mission's reward. Null when it is not done or already taken. */
@@ -761,6 +1041,7 @@ export interface LineupRule {
   minHeight?: number;
   noRentals?: boolean;
   tiers?: TierId[];
+  /** Current-player cards only. */
   baseOnly?: boolean;
 }
 
@@ -808,6 +1089,11 @@ export const DYNASTY: DynastyDef[] = MODES.dynasty;
 export const LIMITED: LimitedDef[] = MODES.limited;
 export const EVENT_THEMES: EventTheme[] = MODES.events;
 
+/** Every level reward there is (which card tiers they hand out). */
+function LEVEL_REWARDS(): Reward[] {
+  return [...LEVELS, ...DYNASTY, ...LIMITED, ...EVENT_THEMES.flatMap((t) => t.levels)].map((l) => l.reward);
+}
+
 /** A repeatable random stream from a seed (opponents stay the same each visit). */
 function seeded(seed: number): () => number {
   let a = seed >>> 0;
@@ -850,7 +1136,7 @@ export function cardAllowed(rule: LineupRule, card: OwnedCard, picked: OwnedCard
   if (rule.maxOvr !== undefined && card.ovr > rule.maxOvr) return false;
   if (rule.noRentals && isRental(card)) return false;
   if (rule.tiers && !rule.tiers.includes(card.tier)) return false;
-  if (rule.baseOnly && !card.base) return false;
+  if (rule.baseOnly && card.source !== 'current') return false;
   if (rule.sameTeam && picked.length && picked[0].team !== card.team) return false;
   return true;
 }
@@ -876,12 +1162,10 @@ export function ruleText(rule: LineupRule): string[] {
   if (rule.minHeight !== undefined) out.push(`平均身高 ≥ ${Math.round(rule.minHeight * 100)} 公分`);
   if (rule.noRentals) out.push('不能用租借卡');
   if (rule.tiers) out.push(`只能用${rule.tiers.map((t) => tier(t).name).join('、')}卡`);
-  if (rule.baseOnly) out.push('只能用基本卡（不能用強化卡）');
+  if (rule.baseOnly) out.push('只能用現役卡');
   return out;
 }
 
-/** Weeks since 1970 starting on Mondays: the event that is on. */
-export const eventWeek = (now: number = Date.now()): number => Math.floor((Math.floor(now / 86_400_000) + 3) / 7);
 export const eventTheme = (week: number): EventTheme => EVENT_THEMES[((week % EVENT_THEMES.length) + EVENT_THEMES.length) % EVENT_THEMES.length];
 /** Event levels are rated from your period (its ladder's second level). */
 export const eventBase = (save: MyTeamSave): number => periodLevels(save.period)[1]?.ovr ?? 75;
@@ -912,8 +1196,8 @@ export function eventTeam(theme: EventTheme, index: number, base: number): TeamI
   return { abbr: '活動', name: theme.name, primary: '#d4a017', secondary: '#14161f', players };
 }
 
-/** Practice games (隨機比賽) pay by game time: 20 coins every 3 minutes, a win 1.5x, times the level. */
-export const PRACTICE_COINS = { per3: 20, win: 1.5 };
+/** Practice games (隨機比賽) pay by game time: 30 coins every 3 minutes, a win 1.5x, times the level. */
+export const PRACTICE_COINS = { per3: 30, win: 1.5 };
 export function practiceCoins(minutes: number, won: boolean, difficulty: Difficulty): number {
   return Math.round((minutes / 3) * PRACTICE_COINS.per3 * (won ? PRACTICE_COINS.win : 1) * DIFFICULTY_COINS[difficulty]);
 }

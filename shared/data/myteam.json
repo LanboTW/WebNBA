@@ -1,53 +1,13 @@
 {
-  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guaranteeTop = at least one card of the current period's top tier, rentalChance per card. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins, dynasty, limited, events). Dynasty (街頭王朝): 3v3 levels like the ladder, name = the crew. Limited (限定關卡): rule {positions, maxOvr, sameTeam, maxHeight / minHeight (starters average, m), noRentals, tiers, baseOnly}, size 3 or 5 (5 needs a team). Events (活動關卡): weekly themes in turn; each level has size, offset (added to your period base rating), difficulty, reward and pick {sort: rating key or height, positions, teams, conference, group}.",
+  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guarantee = the first card is of this tier or better, kind = limited (this week's special theme joins) or reissue (one past season's cards); packs never give rentals. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins, dynasty, limited, events). Dynasty (街頭王朝): 3v3 levels like the ladder, name = the crew. Limited (限定關卡): rule {positions, maxOvr, sameTeam, maxHeight / minHeight (starters average, m), noRentals, tiers, baseOnly}, size 3 or 5 (5 needs a team). Events (活動關卡): weekly themes in turn; each level has size, offset (added to your period base rating), difficulty, reward and pick {sort: rating key or height, positions, teams, conference, group}.",
   "packs": [
-    {
-      "id": "standard",
-      "name": "標準卡包",
-      "price": 500,
-      "count": 3,
-      "rentalChance": 0.04
-    },
-    {
-      "id": "premium",
-      "name": "高級卡包",
-      "price": 2000,
-      "count": 3,
-      "guaranteeTop": true,
-      "weights": {
-        "white": 4,
-        "green": 18,
-        "blue": 34,
-        "purple": 26,
-        "gold": 11,
-        "pink": 5,
-        "orange": 1.6,
-        "black": 0.5
-      },
-      "rentalChance": 0.08
-    },
-    {
-      "id": "guards",
-      "name": "後場卡包",
-      "price": 700,
-      "count": 3,
-      "positions": [
-        "PG",
-        "SG"
-      ],
-      "rentalChance": 0.04
-    },
-    {
-      "id": "bigs",
-      "name": "禁區卡包",
-      "price": 700,
-      "count": 3,
-      "positions": [
-        "PF",
-        "C"
-      ],
-      "rentalChance": 0.04
-    }
+    {"id":"standard","name":"一般卡包","price":500,"count":3},
+    {"id":"premium","name":"高級卡包","price":2500,"count":3,"tiers":["gold","pink","orange","black"],"guarantee":"pink","weights":{"gold":60,"pink":30,"orange":8,"black":2}},
+    {"id":"elite","name":"頂級卡包","price":6000,"count":3,"tiers":["pink","orange","black"],"guarantee":"orange","weights":{"pink":70,"orange":22,"black":8}},
+    {"id":"limited","name":"限定卡包","price":2500,"count":3,"kind":"limited","tiers":["gold","pink","orange","black"],"guarantee":"pink","weights":{"gold":56,"pink":30,"orange":9,"black":5}},
+    {"id":"reissue","name":"復刻卡包","price":500,"count":3,"kind":"reissue","guarantee":"gold"},
+    {"id":"guards","name":"後場卡包","price":700,"count":3,"positions":["PG","SG"]},
+    {"id":"bigs","name":"禁區卡包","price":700,"count":3,"positions":["PF","C"]}
   ],
   "levels": [
     {

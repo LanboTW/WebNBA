@@ -1,0 +1,4 @@
+{
+  "$comment": "Rosters of past seasons, kept by npm run roster:update when the season changes. Their current-player cards stop dropping from normal packs and go to the 復刻 pack.",
+  "seasons": []
+}

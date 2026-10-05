@@ -35,6 +35,8 @@ import { fail, loadLocalEnv, log, redact, secret } from './secrets';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const ROSTER = 'shared/data/roster.json';
 const OVERRIDES = 'shared/data/overrides.json';
+/** Past seasons' rosters: their MyTeam cards move to the 復刻 pack. */
+const ARCHIVE = 'shared/data/card-archive.json';
 const argv = process.argv.slice(2).filter((a) => a !== '--');
 const args = new Set(argv);
 const source = argv.find((a) => a.startsWith('--source='))?.slice(9) ?? (argv.includes('--source') ? argv[argv.indexOf('--source') + 1] : 'espn');
@@ -92,11 +94,20 @@ async function main(): Promise<void> {
     }
   }
 
+  // A new season: last season's roster is kept, and its MyTeam cards become 復刻 cards.
+  const archiveBefore = existsSync(path(ARCHIVE)) ? readFileSync(path(ARCHIVE), 'utf8') : null;
+  if (roster.season !== current.season) {
+    const archive = archiveBefore ? (JSON.parse(archiveBefore) as { $comment?: string; seasons: RawRoster[] }) : { seasons: [] };
+    if (!archive.seasons.some((s) => s.season === current.season)) archive.seasons.push({ season: current.season, ratingKeys: current.ratingKeys, teams: current.teams });
+    writeFileSync(path(ARCHIVE), `${JSON.stringify(archive, null, 1)}\n`);
+    log(`${current.season} 球季的名單已存進 ${ARCHIVE}（MyTeam 復刻卡）`);
+  }
   writeFileSync(path(ROSTER), formatRoster(roster));
   log(`已寫入 ${ROSTER}，執行測試…`);
   const test = spawnSync('npx', ['vitest', 'run'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
   if (test.status !== 0) {
     writeFileSync(path(ROSTER), before);
+    if (archiveBefore !== null) writeFileSync(path(ARCHIVE), archiveBefore);
     fail('測試失敗，已還原名單。');
   }
   log('測試通過。確認沒問題後 commit 並 push，GitHub Pages 和 Render 伺服器會自動重新部署。');

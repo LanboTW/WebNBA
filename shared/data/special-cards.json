@@ -1,0 +1,11 @@
+{
+  "$comment": "MyTeam special cards (特殊卡). Put the picture in client/public/cards/ and name it in image (any size: the card crops it); without one the card uses the player's photo or drawn portrait. player = a current or history player to build on; someone new also needs position, heightM, number and style (shooter|slasher|playmaker|rim|allround), and may set look. ovr picks the tier (97-99 black). theme = one of themes: the frame, and the week the limited pack sells it.",
+  "themes": [
+    { "id": "xmas", "name": "聖誕", "color": "#c8102e", "accent": "#1f8a4c" },
+    { "id": "lny", "name": "新年", "color": "#d4161c", "accent": "#f5c518" }
+  ],
+  "cards": [
+    { "id": "xmas-lebron", "player": "LeBron James", "team": "LAL", "ovr": 98, "theme": "xmas" },
+    { "id": "lny-yao", "player": "Yao Ming", "team": "HOU", "ovr": 97, "theme": "lny" }
+  ]
+}
