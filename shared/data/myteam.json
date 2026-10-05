@@ -1,5 +1,5 @@
 {
-  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guarantee = the first card is of this tier or better, kind = limited (this week's special theme joins) or reissue (one past season's cards); packs never give rentals. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins, dynasty, limited, events). Dynasty (街頭王朝): 3v3 levels like the ladder, name = the crew. Limited (限定關卡): rule {positions, maxOvr, sameTeam, maxHeight / minHeight (starters average, m), noRentals, tiers, baseOnly}, size 3 or 5 (5 needs a team). Events (活動關卡): weekly themes in turn; each level has size, offset (added to your period base rating), difficulty, reward and pick {sort: rating key or height, positions, teams, conference, group}.",
+  "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guarantee = the first card is of this tier or better, kind = limited (this week's special theme joins) or reissue (one past season's cards); packs never give rentals. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins, dynasty, limited, events). Dynasty (街頭王朝): 3v3 levels like the ladder, name = the crew. Limited (特殊關卡 挑戰（一）/（二）, group c1 or c2): rule {positions, maxOvr, sameTeam, maxHeight / minHeight (starters average, m), noRentals, tiers, baseOnly, sources (card sources), minYear / maxYear (the card's year: champion and award years, a current card's season end; others never fit), sameYear, award (that award's cards), minCurrent / minHistory (lineup counts)}, size 3 or 5 (5 needs a team). Legacy (特殊關卡 歷年總冠軍 / 名人堂 / 奧運美國隊): difficulty and reward of each kind's levels, built from history.json; the first win also gives one of that team's cards. Holidays (活動關卡 節日): from / to as MM-DD every year, optional theme (its special cards are the limited pack's while it runs), five levels played in order, each paying once a year; reward cards = one of these card ids. Events (活動關卡): weekly themes in turn; each level has size, offset (added to your period base rating), difficulty, reward and pick {sort: rating key or height, positions, teams, conference, group}.",
   "packs": [
     {"id":"standard","name":"一般卡包","price":500,"count":3},
     {"id":"premium","name":"高級卡包","price":2500,"count":3,"tiers":["gold","pink","orange","black"],"guarantee":"pink","weights":{"gold":60,"pink":30,"orange":8,"black":2}},
@@ -428,21 +428,21 @@
     },
     {
       "id": "lt5",
-      "text": "完成 5 個限定關卡",
+      "text": "完成 5 個特殊關卡",
       "stat": "limited",
       "target": 5,
       "reward": { "coins": 300 }
     },
     {
       "id": "lt10",
-      "text": "完成 10 個限定關卡",
+      "text": "完成 10 個特殊關卡",
       "stat": "limited",
       "target": 10,
       "reward": { "coins": 600 }
     },
     {
       "id": "lt20",
-      "text": "完成全部 20 個限定關卡",
+      "text": "完成 20 個特殊關卡",
       "stat": "limited",
       "target": 20,
       "reward": { "coins": 1200, "pack": "premium" }
@@ -932,6 +932,609 @@
       "ovr": 94,
       "difficulty": "expert",
       "reward": { "coins": 1000, "pack": "premium" }
+    },
+    {
+      "id": "y01",
+      "group": "c2",
+      "name": "冠軍血統",
+      "rule": { "sources": ["champion"] },
+      "size": 3,
+      "ovr": 84,
+      "difficulty": "hard",
+      "reward": { "coins": 500 }
+    },
+    {
+      "id": "y02",
+      "group": "c2",
+      "name": "新舊交替",
+      "rule": { "minCurrent": 1, "minHistory": 1 },
+      "size": 3,
+      "ovr": 84,
+      "difficulty": "normal",
+      "reward": { "coins": 500 }
+    },
+    {
+      "id": "y03",
+      "group": "c2",
+      "name": "獎項得主",
+      "rule": { "sources": ["award"] },
+      "size": 3,
+      "ovr": 85,
+      "difficulty": "hard",
+      "reward": { "coins": 500 }
+    },
+    {
+      "id": "y04",
+      "group": "c2",
+      "name": "千禧世代",
+      "rule": { "maxYear": 2009 },
+      "size": 3,
+      "ovr": 86,
+      "difficulty": "hard",
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "y05",
+      "group": "c2",
+      "name": "同年冠軍",
+      "rule": { "sources": ["champion"], "sameYear": true },
+      "size": 3,
+      "ovr": 86,
+      "difficulty": "hard",
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "y06",
+      "group": "c2",
+      "name": "名人堂三巨頭",
+      "rule": { "sources": ["hof"] },
+      "size": 3,
+      "ovr": 88,
+      "difficulty": "hard",
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "y07",
+      "group": "c2",
+      "name": "2010 年代",
+      "rule": { "minYear": 2010, "maxYear": 2019 },
+      "size": 3,
+      "ovr": 87,
+      "difficulty": "hard",
+      "reward": { "coins": 600 }
+    },
+    {
+      "id": "y08",
+      "group": "c2",
+      "name": "MVP 俱樂部",
+      "rule": { "award": "mvp" },
+      "size": 3,
+      "ovr": 90,
+      "difficulty": "hard",
+      "reward": { "coins": 700, "pack": "standard" }
+    },
+    {
+      "id": "y09",
+      "group": "c2",
+      "name": "歷史與現在",
+      "rule": { "minCurrent": 2, "minHistory": 2 },
+      "size": 5,
+      "team": "LAL",
+      "ovr": 88,
+      "difficulty": "hard",
+      "reward": { "coins": 700 }
+    },
+    {
+      "id": "y10",
+      "group": "c2",
+      "name": "冠軍之師",
+      "rule": { "sources": ["champion"] },
+      "size": 5,
+      "team": "BOS",
+      "ovr": 89,
+      "difficulty": "hard",
+      "reward": { "coins": 700 }
+    },
+    {
+      "id": "y11",
+      "group": "c2",
+      "name": "傳奇後場",
+      "rule": { "sources": ["hof"], "positions": ["PG", "SG"] },
+      "size": 3,
+      "ovr": 91,
+      "difficulty": "expert",
+      "reward": { "coins": 800 }
+    },
+    {
+      "id": "y12",
+      "group": "c2",
+      "name": "禁區傳奇",
+      "rule": { "sources": ["hof"], "positions": ["PF", "C"] },
+      "size": 3,
+      "ovr": 92,
+      "difficulty": "expert",
+      "reward": { "coins": 800 }
+    },
+    {
+      "id": "y13",
+      "group": "c2",
+      "name": "只有歷史",
+      "rule": { "sources": ["champion", "award", "hof"] },
+      "size": 5,
+      "team": "DEN",
+      "ovr": 92,
+      "difficulty": "expert",
+      "reward": { "coins": 900 }
+    },
+    {
+      "id": "y14",
+      "group": "c2",
+      "name": "全明星陣容",
+      "rule": { "tiers": ["pink", "orange", "black"], "noRentals": true },
+      "size": 5,
+      "team": "OKC",
+      "ovr": 95,
+      "difficulty": "expert",
+      "reward": { "coins": 1000, "pack": "premium" }
+    },
+    {
+      "id": "y15",
+      "group": "c2",
+      "name": "終極傳奇",
+      "rule": { "sources": ["hof", "award"], "noRentals": true },
+      "size": 5,
+      "team": "OKC",
+      "ovr": 96,
+      "difficulty": "expert",
+      "reward": { "coins": 1500, "pack": "elite" }
+    }
+  ],
+  "legacy": {
+    "champions": { "difficulty": "hard", "reward": { "coins": 800, "pack": "premium" } },
+    "hof": { "difficulty": "expert", "reward": { "coins": 1000, "pack": "premium" } },
+    "olympic": { "difficulty": "expert", "reward": { "coins": 1200, "pack": "elite" } }
+  },
+  "holidays": [
+    {
+      "id": "halloween",
+      "name": "萬聖節",
+      "desc": "黑夜裡的抄截鬼和火鍋怪",
+      "from": "10-20",
+      "to": "11-02",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 300
+          },
+          "pick": {
+            "sort": "steal"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 1,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 400
+          },
+          "pick": {
+            "sort": "block"
+          }
+        },
+        {
+          "size": 3,
+          "offset": 2,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 300,
+            "pack": "standard"
+          },
+          "pick": {
+            "sort": "defense"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 500
+          },
+          "pick": {
+            "sort": "steal"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 6,
+          "difficulty": "expert",
+          "reward": {
+            "coins": 800,
+            "pack": "elite"
+          },
+          "pick": {
+            "sort": "block"
+          }
+        }
+      ]
+    },
+    {
+      "id": "xmas",
+      "name": "聖誕時間",
+      "desc": "聖誕大戰常客：湖人、勇士、塞爾提克、尼克、76人",
+      "from": "12-01",
+      "to": "12-31",
+      "theme": "xmas",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 300
+          },
+          "pick": {
+            "teams": [
+              "LAL",
+              "GSW",
+              "BOS",
+              "NYK",
+              "PHI"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 1,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 400
+          },
+          "pick": {
+            "teams": [
+              "LAL",
+              "GSW",
+              "BOS",
+              "NYK",
+              "PHI"
+            ]
+          }
+        },
+        {
+          "size": 3,
+          "offset": 2,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 300,
+            "pack": "standard"
+          },
+          "pick": {
+            "teams": [
+              "LAL",
+              "GSW",
+              "BOS",
+              "NYK",
+              "PHI"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 500
+          },
+          "pick": {
+            "teams": [
+              "LAL",
+              "GSW",
+              "BOS",
+              "NYK",
+              "PHI"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 6,
+          "difficulty": "expert",
+          "reward": {
+            "coins": 800,
+            "cards": [
+              "x-xmas-lebron"
+            ]
+          },
+          "pick": {
+            "teams": [
+              "LAL",
+              "GSW",
+              "BOS",
+              "NYK",
+              "PHI"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "lny",
+      "name": "新年",
+      "desc": "新春開打：台灣之光、火箭和全聯盟明星",
+      "from": "01-15",
+      "to": "02-20",
+      "theme": "lny",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 300
+          },
+          "pick": {
+            "group": "台灣"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 1,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 400
+          },
+          "pick": {
+            "teams": [
+              "HOU"
+            ]
+          }
+        },
+        {
+          "size": 3,
+          "offset": 2,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 300,
+            "pack": "standard"
+          },
+          "pick": {
+            "sort": "three"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 500
+          },
+          "pick": {}
+        },
+        {
+          "size": 5,
+          "offset": 6,
+          "difficulty": "expert",
+          "reward": {
+            "coins": 800,
+            "cards": [
+              "x-lny-yao"
+            ]
+          },
+          "pick": {}
+        }
+      ]
+    },
+    {
+      "id": "allstar",
+      "name": "全明星",
+      "desc": "東西區明星、三分大賽、灌籃大賽輪番上陣",
+      "from": "02-10",
+      "to": "02-28",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 300
+          },
+          "pick": {
+            "conference": "East"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 1,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 400
+          },
+          "pick": {
+            "conference": "West"
+          }
+        },
+        {
+          "size": 3,
+          "offset": 2,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 300,
+            "pack": "standard"
+          },
+          "pick": {
+            "sort": "three"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 500
+          },
+          "pick": {
+            "sort": "jump"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 6,
+          "difficulty": "expert",
+          "reward": {
+            "coins": 800,
+            "pack": "elite"
+          },
+          "pick": {}
+        }
+      ]
+    },
+    {
+      "id": "playoffs",
+      "name": "季後賽",
+      "desc": "防守、籃板、關鍵球，季後賽強度",
+      "from": "04-15",
+      "to": "05-31",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 300
+          },
+          "pick": {
+            "sort": "defense"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 1,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 400
+          },
+          "pick": {
+            "sort": "rebound"
+          }
+        },
+        {
+          "size": 3,
+          "offset": 2,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 300,
+            "pack": "standard"
+          },
+          "pick": {
+            "sort": "mid"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 500
+          },
+          "pick": {
+            "sort": "defense"
+          }
+        },
+        {
+          "size": 5,
+          "offset": 6,
+          "difficulty": "expert",
+          "reward": {
+            "coins": 800,
+            "pack": "elite"
+          },
+          "pick": {}
+        }
+      ]
+    },
+    {
+      "id": "finals",
+      "name": "總冠軍賽",
+      "desc": "上一季總冠軍賽的雷霆和溜馬",
+      "from": "06-01",
+      "to": "06-25",
+      "levels": [
+        {
+          "size": 3,
+          "offset": 0,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 300
+          },
+          "pick": {
+            "teams": [
+              "OKC",
+              "IND"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 1,
+          "difficulty": "normal",
+          "reward": {
+            "coins": 400
+          },
+          "pick": {
+            "teams": [
+              "OKC",
+              "IND"
+            ]
+          }
+        },
+        {
+          "size": 3,
+          "offset": 2,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 300,
+            "pack": "standard"
+          },
+          "pick": {
+            "teams": [
+              "OKC",
+              "IND"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 3,
+          "difficulty": "hard",
+          "reward": {
+            "coins": 500
+          },
+          "pick": {
+            "teams": [
+              "OKC",
+              "IND"
+            ]
+          }
+        },
+        {
+          "size": 5,
+          "offset": 6,
+          "difficulty": "expert",
+          "reward": {
+            "coins": 800,
+            "pack": "elite"
+          },
+          "pick": {
+            "teams": [
+              "OKC",
+              "IND"
+            ]
+          }
+        }
+      ]
     }
   ],
   "events": [

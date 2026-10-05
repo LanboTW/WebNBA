@@ -92,6 +92,8 @@ export interface CardDef {
   /** Special cards: the theme (frame, limited-pack week) and the picture in client/public/cards/. */
   theme?: string;
   image?: string;
+  /** Never in a pack: special levels give it. */
+  levelOnly?: boolean;
 }
 
 /** A card the player owns: one copy, with its ratings (kept for cards that leave the catalog). */
@@ -173,6 +175,11 @@ interface History {
   awards: Record<HistoryAward, ([number, string, string] | [number, string, string, number])[]>;
   hof: [string, string, number][];
   legends: LegendRow[];
+  /** Each champion team's two next men (opponents only). */
+  championBench: Record<string, string[]>;
+  hofTeams: { id: string; name: string; team: string; players: string[] }[];
+  /** Team USA: a bare name plays at his best card; [name, ovr] for someone with none. */
+  olympics: { year: number; card: string; players: (string | [string, number])[] }[];
 }
 const HISTORY = historyJson as unknown as History;
 
@@ -194,6 +201,8 @@ export interface SpecialTheme {
   name: string;
   color: string;
   accent: string;
+  /** Its cards come from special levels only, never a pack. */
+  levelOnly?: boolean;
 }
 interface SpecialRow {
   id: string;
@@ -207,6 +216,8 @@ interface SpecialRow {
   number?: number;
   style?: ArchetypeId;
   look?: Partial<Look>;
+  /** The card's line (default: the theme's name). */
+  label?: string;
 }
 const SPECIAL = specialJson as unknown as { themes: SpecialTheme[]; cards: SpecialRow[] };
 export const SPECIAL_THEMES: SpecialTheme[] = SPECIAL.themes;
@@ -227,6 +238,17 @@ function legendPlayer(row: LegendRow): PlayerInfo {
   const [name, number, position, cm, style, skin, hair, beard] = row;
   const heightM = cm / 100;
   return { name, number, heightM, position, ratings: startingRatings(position, style, heightM), look: { ...LOOK, skin, hair, beard } };
+}
+
+/** Everyone a card or an opponent can be: history players, then today's roster over them. */
+let peopleMemo: Map<string, PlayerInfo> | null = null;
+function people(): Map<string, PlayerInfo> {
+  if (peopleMemo) return peopleMemo;
+  const out = new Map<string, PlayerInfo>();
+  for (const row of HISTORY.legends) out.set(row[0], legendPlayer(row));
+  for (const t of NBA_TEAMS) for (const p of t.players) out.set(p.name, p);
+  peopleMemo = out;
+  return out;
 }
 
 // ----------------------------------------------------------------- the catalog
@@ -268,11 +290,8 @@ export function cardCatalog(): CardDef[] {
   const out: CardDef[] = seasonCards(NBA_TEAMS, ROSTER_SEASON, false);
   for (const raw of ARCHIVE) if (raw.season !== ROSTER_SEASON) out.push(...seasonCards(parseRoster(raw), raw.season, true));
 
-  const people = new Map<string, PlayerInfo>();
-  for (const row of HISTORY.legends) people.set(row[0], legendPlayer(row));
-  for (const t of NBA_TEAMS) for (const p of t.players) people.set(p.name, p);
   const add = (id: string, name: string, team: string, ovr: number, source: CardSource, label: string, extra: Partial<CardDef> = {}) => {
-    const p = people.get(name);
+    const p = people().get(name);
     if (!p) return;
     cardBase.set(id, p);
     out.push({ id, name, team, position: p.position, number: p.number, heightM: p.heightM, tier: tierOf(ovr), ovr, source, label, ...extra });
@@ -289,7 +308,7 @@ export function cardCatalog(): CardDef[] {
   for (const [name, team, ovr] of HISTORY.hof) add(`h-${slug(name)}`, name, team, ovr, 'hof', '名人堂');
   for (const s of SPECIAL.cards) {
     const theme = specialTheme(s.theme);
-    const known = people.get(s.player);
+    const known = people().get(s.player);
     const position = s.position ?? known?.position ?? 'SF';
     const heightM = s.heightM ?? known?.heightM ?? 2;
     const base: PlayerInfo = known
@@ -307,9 +326,10 @@ export function cardCatalog(): CardDef[] {
       tier: tierOf(s.ovr),
       ovr: s.ovr,
       source: 'special',
-      label: theme?.name ?? '特殊',
+      label: s.label ?? theme?.name ?? '特殊',
       theme: s.theme,
       ...(s.image ? { image: s.image } : {}),
+      ...(theme?.levelOnly ? { levelOnly: true } : {}),
     });
   }
   catalog = out;
@@ -333,16 +353,21 @@ export function cardRatings(c: CardDef, ovr: number = c.ovr): Ratings {
   if (hit) return { ...hit };
   const real = cardBase.get(c.id);
   if (!real) return Object.fromEntries(RATING_KEYS.map((k) => [k, ovr])) as unknown as Ratings;
-  const r = toOverall(real.ratings, CAPS, ovr, (x) => overallOf(c.position, x));
-  // Whole-number ratings can land a point off: step single ratings until it shows right.
+  const r = exactly(real.ratings, c.position, ovr);
+  ratingsMemo.set(key, r);
+  return { ...r };
+}
+
+/** Ratings reshaped to show an overall (whole-number ratings land a point off: step single ratings until it shows right). */
+function exactly(ratings: Ratings, position: Position, ovr: number): Ratings {
+  const r = toOverall(ratings, CAPS, ovr, (x) => overallOf(position, x));
   for (let i = 0; i < 60; i++) {
-    const off = ovr - playerRating({ position: c.position, ratings: r });
+    const off = ovr - playerRating({ position, ratings: r });
     if (!off) break;
     const k = RATING_KEYS[i % RATING_KEYS.length];
     r[k] = Math.max(25, Math.min(99, r[k] + Math.sign(off)));
   }
-  ratingsMemo.set(key, r);
-  return { ...r };
+  return r;
 }
 
 /** A copy of a catalog card (uid '' for a card shown but not owned). */
@@ -398,10 +423,15 @@ export const eventWeek = (now: number = Date.now()): number => Math.floor((Math.
 
 const rotate = <T>(list: T[], week: number): T | undefined => (list.length ? list[((week % list.length) + list.length) % list.length] : undefined);
 
-/** This week's limited-pack theme (one with cards). */
-export function limitedTheme(week: number = eventWeek()): SpecialTheme | undefined {
-  const used = new Set(SPECIAL.cards.map((c) => c.theme));
-  return rotate(SPECIAL_THEMES.filter((t) => used.has(t.id)), week);
+/** The limited pack's theme: a running holiday's (活動關卡), else this week's in turn (one with cards to sell). */
+export function limitedTheme(week: number = eventWeek(), now: number = Date.now()): SpecialTheme | undefined {
+  const sells = (id: string | undefined) => !!id && !specialTheme(id)?.levelOnly && SPECIAL.cards.some((c) => c.theme === id);
+  const holiday = activeHolidays(now).find((h) => sells(h.theme));
+  if (holiday) return specialTheme(holiday.theme);
+  return rotate(
+    SPECIAL_THEMES.filter((t) => sells(t.id)),
+    week,
+  );
 }
 
 /** This week's 復刻 season. */
@@ -416,7 +446,7 @@ export function packPool(pack: PackDef, week: number = eventWeek()): CardDef[] {
   if (pack.kind === 'limited' && !theme) return [];
   return cardCatalog().filter(
     (c) =>
-      (pack.kind === 'reissue' ? c.retired && c.season === season : !c.retired && (c.source !== 'special' || c.theme === theme)) &&
+      (pack.kind === 'reissue' ? c.retired && c.season === season : !c.retired && !c.levelOnly && (c.source !== 'special' || c.theme === theme)) &&
       (!pack.tiers?.length || pack.tiers.includes(c.tier)) &&
       (!pack.positions?.length || pack.positions.includes(c.position)) &&
       (!names || names.has(c.name)),
@@ -473,15 +503,20 @@ export function openPack(pack: PackDef, rand: () => number = Math.random, week: 
 /** Where a card comes from, in words (the collection's locked cards). */
 export function cardWhere(c: CardDef): string[] {
   const out: string[] = [];
-  if (c.source === 'special') out.push(`限定卡包（${specialTheme(c.theme)?.name ?? '特殊'}主題週）`);
-  else if (c.retired) out.push('復刻卡包（輪到它的球季時）');
+  if (c.source === 'special') {
+    if (!c.levelOnly) {
+      const holiday = HOLIDAYS.find((h) => h.theme === c.theme);
+      out.push(`限定卡包（${specialTheme(c.theme)?.name ?? '特殊'}主題${holiday ? `，${holiday.name}期間` : '週'}）`);
+    }
+  } else if (c.retired) out.push('復刻卡包（輪到它的球季時）');
   else
     for (const p of OFFICIAL_PACKS) {
       if (p.kind) continue;
       if ((!p.tiers?.length || p.tiers.includes(c.tier)) && (!p.positions?.length || p.positions.includes(c.position))) out.push(p.name);
     }
-  const rewards = [...LEVEL_REWARDS(), ...MISSIONS.map((m) => m.reward)];
-  if (!c.retired && c.source !== 'special' && rewards.some((r) => r.card === c.tier)) out.push(`${tier(c.tier).name}卡獎勵（關卡、任務）`);
+  const sources = [...rewardSources(), ...MISSIONS.map((m) => ({ reward: m.reward, where: '' }))];
+  if (!c.retired && c.source !== 'special' && sources.some((r) => r.reward.card === c.tier)) out.push(`${tier(c.tier).name}卡獎勵（關卡、任務）`);
+  for (const s of sources) if (s.where && s.reward.cards?.includes(c.id)) out.push(s.reward.cards.length > 1 ? `${s.where}首勝（隨機一張）` : `${s.where}首勝`);
   return out;
 }
 
@@ -510,6 +545,8 @@ export interface MyTeamSave {
   stats: Partial<Record<MissionStat, number>>;
   /** Event levels won this week (week:index). */
   events: string[];
+  /** Holiday event levels won (id:year:index). */
+  holidays: string[];
   /** Games in a row with the same starting five (its cohesion grows with them). */
   chem?: { key: string; games: number };
   /** The local day (YYYY-MM-DD) the first win's bonus was paid. */
@@ -519,7 +556,7 @@ export interface MyTeamSave {
 }
 
 export function emptyMyTeam(): MyTeamSave {
-  return { v: 2, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {}, events: [] };
+  return { v: 2, period: 1, cards: [], rentals: [], deck: [], next: 1, packsOpened: 0, cleared: [], claimed: [], stats: {}, events: [], holidays: [] };
 }
 
 /**
@@ -565,6 +602,7 @@ export function upgradeMyTeam(raw: unknown): MyTeamSave | null {
     claimed: Array.isArray(rest.claimed) ? rest.claimed : [],
     stats: rest.stats && typeof rest.stats === 'object' ? rest.stats : {},
     events: Array.isArray(rest.events) ? rest.events : [],
+    holidays: Array.isArray(rest.holidays) ? rest.holidays : [],
   };
   if (rest.v !== 2) fromV1(s);
   s.cards = s.cards.map(syncCard);
@@ -775,7 +813,7 @@ export type MissionStat =
   | 'bigWins'
   /** Street dynasty periods fully beaten. */
   | 'dynasty'
-  /** Limited levels beaten. */
+  /** Special levels (特殊關卡) beaten. */
   | 'limited'
   /** Event levels won (each counts once a week). */
   | 'events';
@@ -789,6 +827,8 @@ export interface Reward {
   rental?: TierId;
   /** A card of this tier to keep. */
   card?: TierId;
+  /** One of these cards (by id), at random. */
+  cards?: string[];
 }
 
 export interface LevelDef {
@@ -840,7 +880,7 @@ export function statValue(save: MyTeamSave, key: MissionStat): number {
   if (key === 'cards') return new Set(save.cards.map((c) => c.id)).size;
   if (key === 'packs') return save.packsOpened;
   if (key === 'cleared') return LEVELS.filter((l) => save.cleared.includes(l.id)).length;
-  if (key === 'limited') return LIMITED.filter((l) => save.cleared.includes(l.id)).length;
+  if (key === 'limited') return [...LIMITED, ...legacyLevels()].filter((l) => save.cleared.includes(l.id)).length;
   if (key === 'dynasty') return Array.from({ length: PERIODS }, (_, i) => i + 1).filter((p) => dynastyCleared(save, p)).length;
   if (key === 'deckRating') {
     // Your own cards' best five: rentals do not count.
@@ -912,6 +952,8 @@ export function grantReward(save: MyTeamSave, reward: Reward, rand: () => number
   const ofTier = (t: TierId) => regularCards().filter((c) => c.tier === t);
   if (reward.rental && ofTier(reward.rental).length) drops.push(...addDrops(save, [{ card: pick(ofTier(reward.rental), rand), rental: 3 }], false));
   if (reward.card && ofTier(reward.card).length) drops.push(...addDrops(save, [{ card: pick(ofTier(reward.card), rand) }], false));
+  const named = (reward.cards ?? []).map(catalogCard).filter((c): c is CardDef => !!c);
+  if (named.length) drops.push(...addDrops(save, [{ card: pick(named, rand) }], false));
   coins += drops.reduce((s, d) => s + d.coins, 0);
   return { coins, drops };
 }
@@ -927,6 +969,8 @@ export interface GameResult {
   level?: string;
   /** An event level: its week and place in the week. */
   event?: { week: number; index: number };
+  /** A holiday event level: which, the year it runs, its place. */
+  holiday?: { id: string; year: number; index: number };
   /** A 3v3 game (counts as a street win). */
   street?: boolean;
   /** Deck refs that played (rentals among them lose a game). */
@@ -979,14 +1023,24 @@ export function recordGame(save: MyTeamSave, g: GameResult, rand: () => number =
   let coins = 0;
   let drops: DropResult[] = [];
   let firstClear = false;
-  const level = g.level ? [...LEVELS, ...DYNASTY, ...LIMITED].find((l) => l.id === g.level) : undefined;
+  const level = g.level ? [...LEVELS, ...DYNASTY, ...LIMITED, ...legacyLevels()].find((l) => l.id === g.level) : undefined;
   const theme = g.event ? eventTheme(g.event.week) : undefined;
+  const holiday = g.holiday ? HOLIDAYS.find((h) => h.id === g.holiday!.id) : undefined;
   if (g.forfeit) coins = 0;
   else if (level) {
     if (won && !save.cleared.includes(level.id)) {
       firstClear = true;
       save.cleared.push(level.id);
       ({ coins, drops } = grantReward(save, level.reward, rand));
+    } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
+  } else if (g.holiday && holiday?.levels[g.holiday.index]) {
+    // Each holiday level pays once a year.
+    const key = holidayKey(holiday.id, g.holiday.year, g.holiday.index);
+    if (won && !save.holidays.includes(key)) {
+      firstClear = true;
+      save.holidays.push(key);
+      add('events', 1);
+      ({ coins, drops } = grantReward(save, holiday.levels[g.holiday.index].reward, rand));
     } else coins = won ? GAME_COINS.ladderReplay : GAME_COINS.loss;
   } else if (g.event && theme?.levels[g.event.index]) {
     // Only this week's wins are kept; each level pays once a week.
@@ -1043,11 +1097,35 @@ export interface LineupRule {
   tiers?: TierId[];
   /** Current-player cards only. */
   baseOnly?: boolean;
+  /** Only cards from these sources. */
+  sources?: CardSource[];
+  /** The card's year (see cardYear) within these; cards with no year never fit. */
+  minYear?: number;
+  maxYear?: number;
+  /** Every card from the same year. */
+  sameYear?: boolean;
+  /** Only this award's cards. */
+  award?: HistoryAward;
+  /** At least this many current-player / history (champion, award, Hall of Fame) cards. */
+  minCurrent?: number;
+  minHistory?: number;
 }
 
-/** Limited levels (限定關卡): a lineup rule, 3v3 or 5v5 (against `team`), one reward each. */
+/** 特殊關卡's groups: the two rule sets, then the history teams. */
+export type SpecialGroup = 'c1' | 'c2' | 'champions' | 'hof' | 'olympic';
+export const SPECIAL_GROUPS: [SpecialGroup, string][] = [
+  ['c1', '挑戰（一）'],
+  ['c2', '挑戰（二）'],
+  ['champions', '歷年總冠軍'],
+  ['hof', '名人堂'],
+  ['olympic', '奧運美國隊'],
+];
+
+/** Rule levels (特殊關卡 挑戰): a lineup rule, 3v3 or 5v5 (against `team`), one reward each. */
 export interface LimitedDef {
   id: string;
+  /** c1 (the first twenty) unless set. */
+  group?: 'c1' | 'c2';
   name: string;
   rule: LineupRule;
   size: 3 | 5;
@@ -1084,15 +1162,184 @@ export interface EventTheme {
   levels: EventLevelDef[];
 }
 
-const MODES = myteamJson as unknown as { dynasty: DynastyDef[]; limited: LimitedDef[]; events: EventTheme[] };
+/** A holiday event (活動關卡): the same days every year, five levels in order, each paying once a year. */
+export interface HolidayDef {
+  id: string;
+  name: string;
+  desc: string;
+  /** MM-DD, both days in. */
+  from: string;
+  to: string;
+  /** A special-card theme: the limited pack sells it while the holiday runs. */
+  theme?: string;
+  levels: EventLevelDef[];
+}
+
+interface LegacyKind {
+  difficulty: Difficulty;
+  reward: Reward;
+}
+
+const MODES = myteamJson as unknown as {
+  dynasty: DynastyDef[];
+  limited: LimitedDef[];
+  events: EventTheme[];
+  holidays: HolidayDef[];
+  legacy: Record<'champions' | 'hof' | 'olympic', LegacyKind>;
+};
 export const DYNASTY: DynastyDef[] = MODES.dynasty;
 export const LIMITED: LimitedDef[] = MODES.limited;
 export const EVENT_THEMES: EventTheme[] = MODES.events;
+export const HOLIDAYS: HolidayDef[] = MODES.holidays ?? [];
 
-/** Every level reward there is (which card tiers they hand out). */
-function LEVEL_REWARDS(): Reward[] {
-  return [...LEVELS, ...DYNASTY, ...LIMITED, ...EVENT_THEMES.flatMap((t) => t.levels)].map((l) => l.reward);
+export const limitedGroup = (l: LimitedDef): 'c1' | 'c2' => l.group ?? 'c1';
+
+/** Every level and boss reward there is, with where it is won (for rewards that name cards). */
+function rewardSources(): { reward: Reward; where: string }[] {
+  const group = (g: SpecialGroup) => SPECIAL_GROUPS.find(([k]) => k === g)?.[1] ?? '';
+  return [
+    ...[...LEVELS, ...DYNASTY, ...LIMITED, ...EVENT_THEMES.flatMap((t) => t.levels)].map((l) => ({ reward: l.reward, where: '' })),
+    ...legacyLevels().map((l) => ({ reward: l.reward, where: `特殊關卡・${group(l.group)}・${l.name}` })),
+    ...HOLIDAYS.flatMap((h) => h.levels.map((l, i) => ({ reward: l.reward, where: `活動關卡・${h.name}第 ${i + 1} 關` }))),
+  ];
 }
+
+// ----------------------------------------------------------------- history levels
+
+/** A history level (特殊關卡 歷年總冠軍 / 名人堂 / 奧運美國隊): a real team of the past, played with your deck. */
+export interface LegacyDef {
+  id: string;
+  group: 'champions' | 'hof' | 'olympic';
+  name: string;
+  /** Logo and colours: an NBA team, or Team USA. */
+  team?: string;
+  colors?: [string, string];
+  difficulty: Difficulty;
+  reward: Reward;
+  /** Starters first: each at his card's overall (card: the card he plays as). */
+  players: { name: string; ovr: number; card?: string }[];
+}
+
+/** A player's best card overall (special cards aside). */
+function bestCardOvr(name: string): number | undefined {
+  const own = cardCatalog().filter((c) => c.name === name && c.source !== 'special');
+  return own.length ? Math.max(...own.map((c) => c.ovr)) : undefined;
+}
+
+const avg = (list: number[]) => Math.round(list.reduce((a, b) => a + b, 0) / Math.max(1, list.length));
+
+let legacyMemo: LegacyDef[] | null = null;
+export function legacyLevels(): LegacyDef[] {
+  if (legacyMemo) return legacyMemo;
+  const kinds = MODES.legacy;
+  const out: LegacyDef[] = [];
+  for (const [year, team, six] of HISTORY.champions) {
+    const players: LegacyDef['players'] = six.map((name, i) => ({ name, ovr: CHAMPION_OVR[i] ?? 90, card: `c${year}-${slug(name)}` }));
+    const bench = avg(players.map((p) => p.ovr));
+    for (const name of HISTORY.championBench?.[year] ?? []) players.push({ name, ovr: bench });
+    out.push({
+      id: `ch${year}`,
+      group: 'champions',
+      name: `${year} ${findTeam(team).name}`,
+      team,
+      difficulty: kinds.champions.difficulty,
+      reward: { ...kinds.champions.reward, cards: six.map((n) => `c${year}-${slug(n)}`) },
+      players,
+    });
+  }
+  const hofOvr = new Map(HISTORY.hof.map(([name, , ovr]) => [name, ovr]));
+  for (const g of HISTORY.hofTeams ?? []) {
+    const five = g.players.map((name) => ({ name, ovr: hofOvr.get(name) ?? 90, card: `h-${slug(name)}` }));
+    const bench = avg(five.map((p) => p.ovr));
+    // Three more Hall of Famers from other teams: a guard, a wing, a big (the same ones every time).
+    const others = HISTORY.hof.map(([name]) => name).filter((name) => !g.players.includes(name));
+    const rand = seeded(hash(g.id));
+    const extra: string[] = [];
+    for (const want of [['PG', 'SG'], ['SF', 'PF'], ['C', 'PF']] as Position[][]) {
+      const fits = others.filter((name) => !extra.includes(name) && want.includes(people().get(name)?.position ?? 'SF'));
+      if (fits.length) extra.push(pick(fits, rand));
+    }
+    out.push({
+      id: `hof-${g.id}`,
+      group: 'hof',
+      name: g.name,
+      team: g.team,
+      colors: ['#8a6d1f', '#14161f'],
+      difficulty: kinds.hof.difficulty,
+      reward: { ...kinds.hof.reward, cards: g.players.map((n) => `h-${slug(n)}`) },
+      players: [...five, ...extra.map((name) => ({ name, ovr: bench, card: `h-${slug(name)}` }))],
+    });
+  }
+  for (const o of HISTORY.olympics ?? []) {
+    out.push({
+      id: `oly${o.year}`,
+      group: 'olympic',
+      name: `${o.year} 美國隊`,
+      colors: ['#0a3161', '#b31942'],
+      difficulty: kinds.olympic.difficulty,
+      reward: { ...kinds.olympic.reward, cards: [`x-${o.card}`] },
+      players: o.players.map((p) => (typeof p === 'string' ? { name: p, ovr: bestCardOvr(p) ?? 88 } : { name: p[0], ovr: p[1] })),
+    });
+  }
+  legacyMemo = out;
+  return out;
+}
+
+/** A history level's opponent: its players at their card overalls (the card's look and shape when there is one). */
+export function legacyTeam(l: LegacyDef): TeamInfo {
+  const players = l.players.flatMap((p) => {
+    const def = p.card ? catalogCard(p.card) : undefined;
+    if (def) return [reshape(cardPlayer(ownCard(def)), p.ovr)];
+    const base = people().get(p.name);
+    return base ? [reshape(base, p.ovr)] : [];
+  });
+  const starters = players.slice(0, 5).sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
+  const nba = l.team ? findTeam(l.team) : undefined;
+  const [primary, secondary] = l.colors ?? [nba?.primary ?? '#7a3cff', nba?.secondary ?? '#ffffff'];
+  return {
+    abbr: l.group === 'olympic' ? 'USA' : l.group === 'hof' ? 'HOF' : (nba?.abbr ?? '冠軍'),
+    name: l.name,
+    primary,
+    secondary,
+    players: [...starters, ...players.slice(5)],
+  };
+}
+
+/** A player with his ratings moved to an overall. */
+function reshape(p: PlayerInfo, ovr: number): PlayerInfo {
+  if (playerRating(p) === ovr) return p;
+  return { ...p, ratings: exactly(p.ratings, p.position, ovr) };
+}
+
+// ----------------------------------------------------------------- holidays
+
+const monthDay = (text: string): number => {
+  const [m, d] = text.split('-').map(Number);
+  return m * 100 + d;
+};
+
+/** Whether a holiday runs on this local day: the year it began and when it ends. */
+export function holidayOn(h: HolidayDef, now: number = Date.now()): { year: number; ends: number } | null {
+  const d = new Date(now);
+  const today = (d.getMonth() + 1) * 100 + d.getDate();
+  const a = monthDay(h.from);
+  const b = monthDay(h.to);
+  const on = a <= b ? today >= a && today <= b : today >= a || today <= b;
+  if (!on) return null;
+  const year = a <= b || today >= a ? d.getFullYear() : d.getFullYear() - 1;
+  const [m, day] = h.to.split('-').map(Number);
+  return { year, ends: new Date(a <= b ? year : year + 1, m - 1, day + 1).getTime() };
+}
+
+export const activeHolidays = (now: number = Date.now()): HolidayDef[] => HOLIDAYS.filter((h) => holidayOn(h, now));
+export const holidayKey = (id: string, year: number, index: number): string => `${id}:${year}:${index}`;
+
+/** Holiday levels go in order: the one before must be won this year. */
+export const holidayOpen = (save: MyTeamSave, h: HolidayDef, year: number, index: number): boolean =>
+  index <= 0 || save.holidays.includes(holidayKey(h.id, year, index - 1));
+
+/** Whole days left until `ends` (at least 1). */
+export const daysLeft = (ends: number, now: number = Date.now()): number => Math.max(1, Math.ceil((ends - now) / 86_400_000));
 
 /** A repeatable random stream from a seed (opponents stay the same each visit). */
 function seeded(seed: number): () => number {
@@ -1133,6 +1380,13 @@ export function limitedTeam(l: LimitedDef): TeamInfo {
 /** Whether a card fits the rule next to the cards already picked. */
 export function cardAllowed(rule: LineupRule, card: OwnedCard, picked: OwnedCard[] = []): boolean {
   if (rule.positions && !rule.positions.includes(card.position)) return false;
+  if (rule.sources && !rule.sources.includes(card.source)) return false;
+  if (rule.award && !(card.source === 'award' && card.id.includes(`-${rule.award}-`))) return false;
+  const year = cardYear(card);
+  if ((rule.minYear !== undefined || rule.maxYear !== undefined || rule.sameYear) && year === undefined) return false;
+  if (rule.minYear !== undefined && year! < rule.minYear) return false;
+  if (rule.maxYear !== undefined && year! > rule.maxYear) return false;
+  if (rule.sameYear && picked.length && cardYear(picked[0]) !== year) return false;
   if (rule.maxOvr !== undefined && card.ovr > rule.maxOvr) return false;
   if (rule.noRentals && isRental(card)) return false;
   if (rule.tiers && !rule.tiers.includes(card.tier)) return false;
@@ -1146,6 +1400,10 @@ export function lineupProblem(rule: LineupRule, cards: OwnedCard[], size: number
   if (cards.length !== size) return `要選 ${size} 人`;
   if (new Set(cards.map((c) => c.name)).size !== cards.length) return '同一名球員只能上一張';
   if (cards.some((c, i) => !cardAllowed(rule, c, cards.slice(0, i)))) return '有卡不符合限定條件';
+  const current = cards.filter((c) => c.source === 'current').length;
+  const history = cards.filter(isHistory).length;
+  if (rule.minCurrent && current < rule.minCurrent) return `至少要 ${rule.minCurrent} 張現役卡`;
+  if (rule.minHistory && history < rule.minHistory) return `至少要 ${rule.minHistory} 張歷史卡`;
   const h = cards.reduce((t, c) => t + c.heightM, 0) / cards.length;
   if (rule.maxHeight !== undefined && h > rule.maxHeight + 1e-9) return `平均身高 ${Math.round(h * 100)} 公分，要 ≤ ${Math.round(rule.maxHeight * 100)}`;
   if (rule.minHeight !== undefined && h < rule.minHeight - 1e-9) return `平均身高 ${Math.round(h * 100)} 公分，要 ≥ ${Math.round(rule.minHeight * 100)}`;
@@ -1163,7 +1421,26 @@ export function ruleText(rule: LineupRule): string[] {
   if (rule.noRentals) out.push('不能用租借卡');
   if (rule.tiers) out.push(`只能用${rule.tiers.map((t) => tier(t).name).join('、')}卡`);
   if (rule.baseOnly) out.push('只能用現役卡');
+  if (rule.sources) out.push(`只能用${rule.sources.map((s) => CARD_SOURCES.find(([k]) => k === s)?.[1] ?? s).join('、')}卡`);
+  if (rule.award) out.push(`只能用${AWARDS[rule.award].name}卡`);
+  if (rule.minYear !== undefined && rule.maxYear !== undefined) out.push(`卡片年份 ${rule.minYear}–${rule.maxYear}`);
+  else if (rule.maxYear !== undefined) out.push(`卡片年份 ${rule.maxYear} 以前`);
+  else if (rule.minYear !== undefined) out.push(`卡片年份 ${rule.minYear} 以後`);
+  if (rule.sameYear) out.push('全部同一年');
+  if (rule.minCurrent) out.push(`至少 ${rule.minCurrent} 張現役卡`);
+  if (rule.minHistory) out.push(`至少 ${rule.minHistory} 張歷史卡（冠軍、獎項、名人堂）`);
   return out;
+}
+
+/** Champion, award and Hall of Fame cards. */
+export const isHistory = (c: CardDef): boolean => c.source === 'champion' || c.source === 'award' || c.source === 'hof';
+
+/** A card's year: champion and award cards their season, current cards their season's end; others none. */
+export function cardYear(c: CardDef): number | undefined {
+  const m = /^[ca](\d{4})-/.exec(c.id);
+  if ((c.source === 'champion' || c.source === 'award') && m) return Number(m[1]);
+  if (c.source === 'current' && c.season) return Number(c.season.slice(0, 4)) + 1;
+  return undefined;
 }
 
 export const eventTheme = (week: number): EventTheme => EVENT_THEMES[((week % EVENT_THEMES.length) + EVENT_THEMES.length) % EVENT_THEMES.length];
@@ -1174,7 +1451,7 @@ export const eventKey = (week: number, index: number): string => `${week}:${inde
 export const eventEnds = (week: number): number => (week * 7 - 3 + 7) * 86_400_000;
 
 /** An event level's opponent: the theme's best players, rescaled around its rating. */
-export function eventTeam(theme: EventTheme, index: number, base: number): TeamInfo {
+export function eventTeam(theme: Pick<EventTheme, 'name' | 'levels'>, index: number, base: number): TeamInfo {
   const lv = theme.levels[index];
   const pk = lv.pick;
   const target = Math.min(99, base + lv.offset);

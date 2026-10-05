@@ -5330,3 +5330,93 @@ body.touch textarea {
     margin-top: 12px;
   }
 }
+
+/* ------------------------------------------------- MyTeam lineup picker */
+
+/* The pool scrolls sideways; the lineup's slots sit under it (選1 in the middle). */
+.mtpicker {
+  margin: 6px 0 10px;
+}
+
+.mtpk-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+
+.mtpk,
+.mtps {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: none;
+}
+
+.mtpk {
+  flex: 0 0 104px;
+  scroll-snap-align: start;
+}
+
+.mtpk .mtcard.small,
+.mtps .mtcard.small {
+  --w: 104px;
+}
+
+.mtpk.picked {
+  opacity: 0.5;
+}
+
+.mtpk-tip {
+  margin: 0 0 6px;
+  text-align: center;
+}
+
+.mtps-row {
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 104px));
+  justify-content: center;
+  gap: 8px;
+}
+
+.mtps-row.s3 {
+  --n: 3;
+}
+
+.mtps-row.s5 {
+  --n: 5;
+}
+
+.mtps.empty {
+  aspect-ratio: 5 / 7;
+  border: 2px dashed var(--line);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mtps.on {
+  border: 2px solid var(--accent);
+  color: var(--text);
+}
+
+.mtsearch {
+  width: 100%;
+  margin: 2px 0 8px;
+}
+
+.chip.holiday {
+  border-color: #c8102e;
+}
+
+.mtevent.holiday b {
+  color: #ffd166;
+}
+
+.mtpk .mtcard .note {
+  top: 30cqw;
+  right: 4cqw;
+  font-size: 10cqw;
+}

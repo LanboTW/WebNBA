@@ -1,11 +1,20 @@
 {
-  "$comment": "MyTeam special cards (特殊卡). Put the picture in client/public/cards/ and name it in image (any size: the card crops it); without one the card uses the player's photo or drawn portrait. player = a current or history player to build on; someone new also needs position, heightM, number and style (shooter|slasher|playmaker|rim|allround), and may set look. ovr picks the tier (97-99 black). theme = one of themes: the frame, and the week the limited pack sells it.",
+  "$comment": "MyTeam special cards (特殊卡). Put the picture in client/public/cards/ and name it in image (any size: the card crops it); without one the card uses the player's photo or drawn portrait. player = a current or history player to build on; someone new also needs position, heightM, number and style (shooter|slasher|playmaker|rim|allround), and may set look. ovr picks the tier (97-99 black). theme = one of themes: the frame, and the week the limited pack sells it (or the 活動關卡 holiday that names it); a levelOnly theme is never in a pack, its cards come from special levels only. label = the card's line (default: the theme's name).",
   "themes": [
     { "id": "xmas", "name": "聖誕", "color": "#c8102e", "accent": "#1f8a4c" },
-    { "id": "lny", "name": "新年", "color": "#d4161c", "accent": "#f5c518" }
+    { "id": "lny", "name": "新年", "color": "#d4161c", "accent": "#f5c518" },
+    { "id": "olympic", "name": "奧運", "color": "#0a3161", "accent": "#b31942", "levelOnly": true }
   ],
   "cards": [
     { "id": "xmas-lebron", "player": "LeBron James", "team": "LAL", "ovr": 98, "theme": "xmas" },
-    { "id": "lny-yao", "player": "Yao Ming", "team": "HOU", "ovr": 97, "theme": "lny" }
+    { "id": "lny-yao", "player": "Yao Ming", "team": "HOU", "ovr": 97, "theme": "lny" },
+    { "id": "oly1992-jordan", "player": "Michael Jordan", "team": "CHI", "ovr": 99, "theme": "olympic", "label": "1992 奧運" },
+    { "id": "oly1996-olajuwon", "player": "Hakeem Olajuwon", "team": "HOU", "ovr": 96, "theme": "olympic", "label": "1996 奧運" },
+    { "id": "oly2000-carter", "player": "Vince Carter", "team": "TOR", "ovr": 95, "theme": "olympic", "label": "2000 奧運" },
+    { "id": "oly2008-kobe", "player": "Kobe Bryant", "team": "LAL", "ovr": 97, "theme": "olympic", "label": "2008 奧運" },
+    { "id": "oly2012-lebron", "player": "LeBron James", "team": "MIA", "ovr": 98, "theme": "olympic", "label": "2012 奧運" },
+    { "id": "oly2016-durant", "player": "Kevin Durant", "team": "OKC", "ovr": 96, "theme": "olympic", "label": "2016 奧運" },
+    { "id": "oly2020-durant", "player": "Kevin Durant", "team": "BKN", "ovr": 95, "theme": "olympic", "label": "2020 奧運" },
+    { "id": "oly2024-curry", "player": "Stephen Curry", "team": "GSW", "ovr": 97, "theme": "olympic", "label": "2024 奧運" }
   ]
 }

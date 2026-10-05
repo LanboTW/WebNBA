@@ -74,6 +74,21 @@ import {
   seasonLabel,
   sellValue,
   specialTheme,
+  HOLIDAYS,
+  SPECIAL_GROUPS,
+  activeHolidays,
+  daysLeft,
+  holidayKey,
+  holidayOn,
+  holidayOpen,
+  legacyLevels,
+  legacyTeam,
+  teamRating,
+  isHistory,
+  limitedGroup,
+  type HolidayDef,
+  type LegacyDef,
+  type SpecialGroup,
   type CardDef,
   type CardSource,
   type Difficulty,
@@ -102,9 +117,10 @@ import { myteam } from './myteamStore';
 import { coinsText, wallet } from './wallet';
 
 /**
- * The MyTeam screen: games (ladder, street dynasty, limited and weekly event
- * levels), missions, deck, collection, practice games and the pack shop, plus the pack-opening reveal. Everything is saved through the myteam store; coins
- * come from the account wallet.
+ * The MyTeam screen: games (ladder, street dynasty, special levels, weekly and
+ * holiday events), missions, deck, collection, practice games and the pack
+ * shop, plus the pack-opening reveal. Everything is saved through the myteam
+ * store; coins come from the account wallet.
  */
 
 type Tab = 'play' | 'missions' | 'deck' | 'cards' | 'practice' | 'shop';
@@ -131,6 +147,24 @@ let confirmSell: string | null = null;
 let message = '';
 /** Cards on screen that are not owned (the collection's locked ones): their portraits get drawn too. */
 let lockedShown: OwnedCard[] = [];
+/** The search box (collection, deck, special-level picker): kept across tabs, cleared on leaving MyTeam. */
+let search = '';
+
+/** A fresh visit to MyTeam: the search starts empty. */
+export function resetMyTeamSearch(): void {
+  search = '';
+}
+
+/** Whether a card matches the search: its player, team (abbreviation or name) or label. */
+function matches(c: OwnedCard): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  return [c.name, c.team, findTeam(c.team).name, c.label].some((t) => t.toLowerCase().includes(q));
+}
+
+function searchBox(): string {
+  return `<input type="search" id="mtSearch" class="mtsearch" placeholder="搜尋球員、球隊、標示（2016、MVP、聖誕）" value="${esc(search)}" autocomplete="off" />`;
+}
 
 const allCards = (): OwnedCard[] => {
   const s = myteam.save;
@@ -176,7 +210,8 @@ function filtered(cards: OwnedCard[]): OwnedCard[] {
       (c) =>
         (filterTier === 'all' || (filterTier === 'rental' ? isRental(c) : !isRental(c) && c.tier === filterTier)) &&
         (filterPos === 'all' || c.position === filterPos) &&
-        (filterSource === 'all' || c.source === filterSource),
+        (filterSource === 'all' || c.source === filterSource) &&
+        matches(c),
     )
     .sort((a, b) => b.ovr - a.ovr || a.name.localeCompare(b.name));
 }
@@ -218,6 +253,7 @@ function deckTab(): string {
         (sel ? `<div class="mtbar"><span>已選：${esc(sel.name)}</span><button type="button" class="small" data-act="unslot">移出牌組</button></div>` : '') +
         rentals,
       `<p class="fine left">${slot === null ? '先點一個位置，' : `把卡放進第 ${slot + 1} 格：`}再挑一張卡。同一名球員只能放一張（不同版本也一樣）；租借卡打完場數就會消失。</p>` +
+        searchBox() +
         `<div class="chips">${tierChips(filterTier, 'data-ft', true, true)}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
         `<div class="chips">${sourceChips()}</div>` +
         `<div class="mtgrid mtscroll">${
@@ -296,7 +332,8 @@ function cardsTab(): string {
   return (
     `<div class="mtbar"><span>收藏 <b>${owned.size}</b> 種・${s.cards.length} 張</span>${progress}<span>已開 ${s.packsOpened} 包</span></div>` +
     cols(
-      `<div class="chips">${sourceChips()}<button type="button" class="chip toggle${showLocked ? ' on' : ''}" data-act="unowned">${showLocked ? '☑' : '☐'} 顯示未擁有</button></div>` +
+      searchBox() +
+        `<div class="chips">${sourceChips()}<button type="button" class="chip toggle${showLocked ? ' on' : ''}" data-act="unowned">${showLocked ? '☑' : '☐'} 顯示未擁有</button></div>` +
         `<div class="chips">${tierChips(filterTier as TierId | 'all', 'data-ft')}</div><div class="chips">${posChips(filterPos, 'data-fp')}</div>` +
         `<div class="mtgrid mtscroll">${
           shown
@@ -330,7 +367,7 @@ function packDesc(p: PackDef): string {
   else bits.push('白～黑');
   if (p.players?.length) bits.push(`${p.players.length} 名指定球員`);
   if (p.guarantee) bits.push(`保底 1 張${tier(p.guarantee).name}卡以上`);
-  if (p.kind === 'limited') bits.push(`本週主題：${limitedTheme()?.name ?? '—'}（特殊卡機率較高）`);
+  if (p.kind === 'limited') bits.push(`${themeWhen()}主題：${limitedTheme()?.name ?? '—'}（特殊卡機率較高）`);
   if (p.kind === 'reissue') {
     const season = reissueSeason();
     if (season) bits.push(`${seasonLabel(season)} 球季的現役卡`);
@@ -338,11 +375,19 @@ function packDesc(p: PackDef): string {
   return bits.join(' · ');
 }
 
+/** When the limited pack's theme changes: with a holiday, when it ends; else on Monday. */
+function themeWhen(): string {
+  const theme = limitedTheme();
+  const h = activeHolidays().find((x) => x.theme === theme?.id);
+  const on = h ? holidayOn(h) : null;
+  return h && on ? `${h.name}（剩 ${daysLeft(on.ends)} 天）` : '本週';
+}
+
 function shopTab(): string {
   const theme = limitedTheme();
   const season = reissueSeason();
   return (
-    `<div class="mtbar">${theme ? `<span>本週限定：<b style="color:${theme.color}">${esc(theme.name)}</b></span>` : ''}${
+    `<div class="mtbar">${theme ? `<span>${themeWhen()}限定：<b style="color:${theme.color}">${esc(theme.name)}</b></span>` : ''}${
       season ? `<span>本週復刻：<b>${seasonLabel(season)} 球季</b></span>` : ''
     }<span class="fine">卡包不會開出租借卡。同一張卡最多 ${COPY_MAX} 張，重複的可以在「收藏」強化。</span></div><div class="mtpacks">` +
     OFFICIAL_PACKS.filter((p) => packPool(p).length > 0)
@@ -376,17 +421,19 @@ type PlayMode = 'ladder' | 'dynasty' | 'limited' | 'event';
 const PLAY_MODES: [PlayMode, string][] = [
   ['ladder', '挑戰之路'],
   ['dynasty', '街頭王朝'],
-  ['limited', '限定關卡'],
+  ['limited', '特殊關卡'],
   ['event', '活動關卡'],
 ];
 
 let host: MyTeamHost | null = null;
 let ladderPeriod = 0;
-/** Deck refs picked for 3v3 games (dynasty, events, practice). */
+/** Deck refs picked for 3v3 games (dynasty, events, practice), by slot ('' = empty). */
 let streetPick: string[] = [];
-/** The limited level being set up and the cards picked for it (any owned card). */
+/** The special rule level being set up and the cards picked for it (any owned card), by slot. */
 let limitedSel: string | null = null;
 let limitedPick: string[] = [];
+/** The picker slot waiting for a card (the next card tapped goes there). */
+let pickSlot: number | null = null;
 const DIFF_LABEL = DIFFICULTY_LABEL;
 
 function pref(key: string, fallback: string): string {
@@ -415,6 +462,9 @@ function rewardText(r: Reward): string {
   if (r.pack) bits.push(OFFICIAL_PACKS.find((p) => p.id === r.pack)?.name ?? '卡包');
   if (r.rental) bits.push(`${tier(r.rental).name}級租借卡（3 場）`);
   if (r.card) bits.push(`${tier(r.card).name}卡一張`);
+  const named = (r.cards ?? []).map((id) => catalogCard(id)).filter((c): c is CardDef => !!c);
+  if (named.length === 1) bits.push(`${named[0].label} ${named[0].name}`);
+  else if (named.length) bits.push(`${named.every((c) => c.label === named[0].label) ? named[0].label : '指定'}卡隨機一張`);
   return bits.join('＋');
 }
 
@@ -426,18 +476,75 @@ function nextPeriodText(s: MyTeamSave): string {
 
 const opt = (v: string, label: string, cur: string) => `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`;
 
-/** Chips to pick cards: `on` refs are picked, the rest open while there is room and `allowed` says so. */
-function pickChips(cards: OwnedCard[], on: string[], max: number, attr: string, allowed: (c: OwnedCard) => boolean = () => true): string {
-  return cards
+/** Slots on screen, left to right: 選1 in the middle, 2 and 3 either side, 4 and 5 outside. */
+const SLOT_ORDER: Record<number, number[]> = { 3: [1, 0, 2], 5: [3, 1, 0, 2, 4] };
+
+/** Picked refs by slot ('' empty), `size` long. */
+const slots = (list: string[], size: number): string[] => Array.from({ length: size }, (_, i) => list[i] ?? '');
+const picked = (list: string[]): string[] => list.filter(Boolean);
+
+/**
+ * The card picker: the pool scrolls along the top, the lineup's slots sit
+ * under it. Tap a card to fill the next slot (or the lit one); tap a filled
+ * slot to take its card back (and light it for the next card).
+ */
+function lineupPicker(pool: OwnedCard[], list: string[], size: number, key: 'sp' | 'lim'): string {
+  const all = allCards();
+  const at = slots(list, size);
+  const top = pool
     .map((c) => {
-      const ref = refOf(c);
-      const sel = on.includes(ref);
-      const open = sel || (on.length < max && allowed(c));
-      return `<button type="button" class="chip${sel ? ' on' : ''}" ${attr}="${esc(ref)}"${open ? '' : ' disabled'}>${c.position} ${esc(c.name)} ${c.ovr}${
-        isRental(c) ? '（租）' : ''
-      }</button>`;
+      const i = at.indexOf(refOf(c));
+      return `<button type="button" class="mtpk${i >= 0 ? ' picked' : ''}" data-pk="${key}:${esc(refOf(c))}">${cardHtml(c, { cls: 'small', note: i >= 0 ? `<b class="new">選 ${i + 1}</b>` : '' })}</button>`;
     })
     .join('');
+  const row = (SLOT_ORDER[size] ?? SLOT_ORDER[3])
+    .map((i) => {
+      const c = at[i] ? all.find((x) => refOf(x) === at[i]) : undefined;
+      return `<button type="button" class="mtps${pickSlot === i ? ' on' : ''}${c ? '' : ' empty'}" data-ps="${key}:${i}">${c ? cardHtml(c, { cls: 'small' }) : `<span>選 ${i + 1}</span>`}</button>`;
+    })
+    .join('');
+  return (
+    `<div class="mtpicker"><div class="mtpk-row">${top || '<p class="fine">沒有可選的卡。</p>'}</div>` +
+    `<p class="fine mtpk-tip">${pickSlot !== null ? `點上面的卡放進「選 ${pickSlot + 1}」` : '左右滑看卡，點卡上場；點下面已選的卡可以換掉'}</p><div class="mtps-row s${size}">${row}</div></div>`
+  );
+}
+
+/** A card tapped in the picker: into the lit slot (trading places if it was in another), off if picked, else the next empty slot. */
+function placeCard(list: string[], size: number, ref: string): string[] {
+  const out = slots(list, size);
+  const nameOf = (r: string) => allCards().find((c) => refOf(c) === r)?.name;
+  const at = out.indexOf(ref);
+  // The same player in another version gives way.
+  const twin = out.findIndex((r) => r && r !== ref && nameOf(r) === nameOf(ref));
+  if (pickSlot !== null) {
+    const target = pickSlot;
+    pickSlot = null;
+    if (twin >= 0 && twin !== target) out[twin] = '';
+    if (at >= 0) out[at] = out[target];
+    out[target] = ref;
+    return out;
+  }
+  if (at >= 0) {
+    out[at] = '';
+    return out;
+  }
+  if (twin >= 0) {
+    out[twin] = ref;
+    return out;
+  }
+  const free = out.indexOf('');
+  if (free >= 0) out[free] = ref;
+  return out;
+}
+
+/** A slot tapped: a filled one gives its card back and waits for the next; an empty one lights (or unlights). */
+function tapSlot(list: string[], size: number, i: number): string[] {
+  const out = slots(list, size);
+  if (out[i]) {
+    out[i] = '';
+    pickSlot = i;
+  } else pickSlot = pickSlot === i ? null : i;
+  return out;
 }
 
 function periodChips(done: (p: number) => boolean): string {
@@ -457,17 +564,16 @@ function levelRow(o: { cls?: string; badge: string; title: string; line: string;
 
 const sizeBadge = (size: 3 | 5) => `<span class="lvbadge s${size}">${size}v${size}</span>`;
 
-/** The 3v3 lineup picker (from the deck) used by dynasty and event games. */
+/** The deck's cards in deck order (starters first). */
+const deckCards = (): OwnedCard[] =>
+  myteam.save.deck.map((r) => deckCard(myteam.save, r)).filter((c): c is OwnedCard => !!c);
+
+/** The 3v3 lineup picker (from the 13-card deck) used by dynasty, event and practice games. */
 function streetPicker(): string {
-  const lineup = deckLineup(myteam.save);
-  // Folded once all three are picked, so the levels come first; tap to change.
-  const names = lineup.filter((c) => streetPick.includes(refOf(c))).map((c) => esc(c.name));
-  return (
-    `<details class="mtfold"${streetPick.length < 3 ? ' open' : ''}><summary><h3 class="mth">街頭陣容<small>${streetPick.length}/3</small></h3>` +
-    `<span>${names.length ? names.join('、') : '還沒挑'}<em>更換</em></span></summary>` +
-    `<p class="fine left">3 對 3 的比賽用這 3 人，從牌組挑。</p>` +
-    `<div class="chips">${pickChips(lineup, streetPick, 3, 'data-sp')}</div></details>`
-  );
+  const deck = deckCards();
+  // Nothing picked yet: the first three starters.
+  if (!picked(streetPick).length) streetPick = deck.slice(0, 3).map(refOf);
+  return `<h3 class="mth">街頭陣容<small>${picked(streetPick).length}/3・從牌組挑</small></h3>` + lineupPicker(deck, streetPick, 3, 'sp');
 }
 
 function settingsBox(street: boolean, full: boolean): string {
@@ -513,7 +619,7 @@ function ladderHtml(full: boolean): string {
 
 function dynastyHtml(): string {
   const s = myteam.save;
-  const ready = streetPick.length === 3;
+  const ready = picked(streetPick).length === 3;
   const levels = dynastyLevels(ladderPeriod)
     .map((d, i) => {
       const done = s.cleared.includes(d.id);
@@ -545,14 +651,90 @@ const limitedCards = (): OwnedCard[] => bestCopies(allCards()).sort((a, b) => b.
 
 function limitedLineup(l: LimitedDef): { cards: OwnedCard[]; problem: string | null } {
   const all = limitedCards();
-  const cards = limitedPick.map((r) => all.find((c) => refOf(c) === r)).filter((c): c is OwnedCard => !!c);
+  const cards = picked(limitedPick)
+    .map((r) => all.find((c) => refOf(c) === r))
+    .filter((c): c is OwnedCard => !!c);
   return { cards, problem: lineupProblem(l.rule, cards, l.size) };
 }
 
-function limitedHtml(): string {
+/** A rule level's first lineup: the best cards that fit, one player each (the current / history cards it asks for first). */
+function autoLimited(l: LimitedDef): string[] {
+  const out: OwnedCard[] = [];
+  const take = (n: number, want: (c: OwnedCard) => boolean) => {
+    for (const c of limitedCards()) {
+      if (out.length >= l.size || n <= 0) break;
+      if (want(c) && !out.includes(c) && !out.some((x) => x.name === c.name) && cardAllowed(l.rule, c, out)) {
+        out.push(c);
+        n--;
+      }
+    }
+  };
+  take(l.rule.minCurrent ?? 0, (c) => c.source === 'current');
+  take(l.rule.minHistory ?? 0, isHistory);
+  take(l.size, () => true);
+  return out.map(refOf);
+}
+
+const specialGroup = (): SpecialGroup => {
+  const g = pref('sgroup', 'c1') as SpecialGroup;
+  return SPECIAL_GROUPS.some(([k]) => k === g) ? g : 'c1';
+};
+
+/** 特殊關卡: the group chips, then its levels. */
+function specialHtml(full: boolean): string {
   const s = myteam.save;
-  const sel = LIMITED.find((l) => l.id === limitedSel) ?? null;
-  const rows = LIMITED.map((l, i) => {
+  const group = specialGroup();
+  const legacy = legacyLevels();
+  const count = (g: SpecialGroup): [number, number] => {
+    const ids = g === 'c1' || g === 'c2' ? LIMITED.filter((l) => limitedGroup(l) === g).map((l) => l.id) : legacy.filter((l) => l.group === g).map((l) => l.id);
+    return [ids.filter((id) => s.cleared.includes(id)).length, ids.length];
+  };
+  const chips = SPECIAL_GROUPS.map(([k, label]) => {
+    const [done, all] = count(k);
+    return `<button type="button" class="chip${k === group ? ' on' : ''}" data-sg="${k}">${label} ${done}/${all}</button>`;
+  }).join('');
+  return group === 'c1' || group === 'c2' ? limitedHtml(group, chips) : legacyHtml(group, chips, full);
+}
+
+const LEGACY_TEXT: Record<string, string> = {
+  champions: '2000 年以來每一年的總冠軍隊：當年的先發五人、第六人，再加兩名替補（評分取六人平均）。',
+  hof: '名人堂球星分隊組成的傳奇隊，每隊五人，再加三名其他名人堂球員當替補。',
+  olympic: '奧運拿金牌的美國隊，真實 12 人名單；每人用他最高的那張卡的評分。',
+};
+
+/** History teams (歷年總冠軍 / 名人堂 / 奧運美國隊): played with your deck, any order. */
+function legacyHtml(group: SpecialGroup, chips: string, full: boolean): string {
+  const s = myteam.save;
+  const rows = legacyLevels()
+    .filter((l) => l.group === group)
+    .map((l) => {
+      const done = s.cleared.includes(l.id);
+      const t = legacyTeam(l);
+      return levelRow({
+        cls: done ? ' done' : '',
+        badge: l.team ? logoHtml(findTeam(l.team), 'lvlogo') : sizeBadge(5),
+        title: esc(l.name),
+        line: `${t.players
+          .slice(0, 5)
+          .map((p) => esc(p.name))
+          .join('、')}・評分 ${teamRating(t)}・${DIFF_LABEL[l.difficulty]}・${done ? `已過關（再贏 ${GAME_COINS.ladderReplay} 金幣）` : `首勝：${rewardText(l.reward)}`}`,
+        btn: `<button type="button" class="small${done ? '' : ' go'}" data-legacy="${l.id}"${full ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>`,
+      });
+    })
+    .join('');
+  return cols(
+    `<div class="chips">${chips}</div><div class="mtlevels mtscroll">${rows}</div>`,
+    `<p class="fine left">${LEGACY_TEXT[group] ?? ''}用你的牌組 5 對 5，每關都可以任意挑戰，首勝拿獎勵。</p>` +
+      settingsBox(false, true) +
+      '<p class="fine left">比賽中離開算輸、沒有金幣，租借卡有上場就扣一場。</p>',
+  );
+}
+
+/** The rule levels (挑戰（一）/（二）): pick one, then a lineup that fits. */
+function limitedHtml(group: 'c1' | 'c2', chips: string): string {
+  const s = myteam.save;
+  const sel = LIMITED.find((l) => l.id === limitedSel && limitedGroup(l) === group) ?? null;
+  const rows = LIMITED.filter((l) => limitedGroup(l) === group).map((l, i) => {
     const done = s.cleared.includes(l.id);
     return levelRow({
       cls: `${done ? ' done' : ''}${l.id === limitedSel ? ' sel' : ''}`,
@@ -564,12 +746,15 @@ function limitedHtml(): string {
       btn: `<button type="button" class="small${l.id === limitedSel ? ' go' : ''}" data-limsel="${l.id}">${l.id === limitedSel ? '設定中' : '選擇'}</button>`,
     });
   }).join('');
-  let right = '<p class="fine mtnodetail">選一個限定關卡，這裡挑符合條件的陣容。</p>';
+  let right = '<p class="fine mtnodetail">選一個關卡，這裡挑符合條件的陣容。</p>';
   if (sel) {
     const { cards, problem } = limitedLineup(sel);
-    const all = limitedCards();
-    const fits = all.filter((c) => limitedPick.includes(refOf(c)) || (cardAllowed(sel.rule, c, cards) && !cards.some((x) => x.name === c.name)));
-    const shown = fits.slice(0, 60);
+    // The 13 best cards that fit next to the others picked (and match the search).
+    const fits = limitedCards().filter((c) => {
+      const others = cards.filter((x) => refOf(x) !== refOf(c));
+      return picked(limitedPick).includes(refOf(c)) || (cardAllowed(sel.rule, c, others) && matches(c));
+    });
+    const pool = fits.filter(matches).slice(0, DECK_MAX);
     const avgH = cards.length ? Math.round((cards.reduce((t, c) => t + c.heightM, 0) / cards.length) * 100) : 0;
     right =
       `<h3 class="mth">${esc(sel.name)}<small>${sel.size} 對 ${sel.size}</small></h3><ul class="mtrules">${ruleText(sel.rule)
@@ -577,24 +762,81 @@ function limitedHtml(): string {
         .join('')}</ul>` +
       `<p class="fine left">已選 ${cards.length}/${sel.size}${cards.length ? `・平均身高 ${avgH} 公分` : ''}${
         sel.size === 5 ? '・板凳自動用其他符合條件的卡' : ''
-      }</p>` +
-      `<div class="chips mtscroll">${pickChips(shown, limitedPick, sel.size, 'data-lim')}${
-        fits.length > shown.length ? `<span class="fine">…還有 ${fits.length - shown.length} 張</span>` : ''
-      }${fits.length ? '' : '<span class="fine">收藏裡沒有符合條件的卡。</span>'}</div>` +
-      `<div class="mtplay"><span class="fine left">${problem && cards.length === sel.size ? esc(problem) : ''}</span>` +
+      }・上排是符合條件的前 ${DECK_MAX} 張，可以搜尋</p>` +
+      searchBox() +
+      lineupPicker(pool, limitedPick, sel.size, 'lim') +
+      `<div class="mtplay"><span class="fine left">${problem && cards.length === sel.size ? esc(problem) : fits.length ? '' : '收藏裡沒有符合條件的卡。'}</span>` +
       `<button type="button" class="small go" data-act="limitedgame"${problem ? ' disabled' : ''}>開始</button></div>` +
       settingsBox(sel.size === 3, sel.size === 5);
   }
-  return cols(`<div class="mtlevels mtscroll">${rows}</div>`, right, true);
+  return cols(`<div class="chips">${chips}</div><div class="mtlevels mtscroll">${rows}</div>`, right, true);
+}
+
+/** The event shown: a running holiday (by id) or the weekly one. */
+function eventSub(): HolidayDef | null {
+  const on = activeHolidays();
+  const want = pref('evsub', '');
+  if (want === 'weekly') return null;
+  return on.find((h) => h.id === want) ?? on[0] ?? null;
+}
+
+function eventChips(sub: HolidayDef | null): string {
+  const week = eventWeek();
+  const weekly = `<button type="button" class="chip${sub ? '' : ' on'}" data-evsub="weekly">${esc(eventTheme(week).name)}（剩 ${daysLeft(eventEnds(week))} 天）</button>`;
+  return (
+    activeHolidays()
+      .map((h) => `<button type="button" class="chip holiday${sub?.id === h.id ? ' on' : ''}" data-evsub="${h.id}">${esc(h.name)}（剩 ${daysLeft(holidayOn(h)!.ends)} 天）</button>`)
+      .join('') + weekly
+  );
+}
+
+/** A holiday's five levels, in order, each paying once this year. */
+function holidayHtml(h: HolidayDef, full: boolean): string {
+  const s = myteam.save;
+  const on = holidayOn(h);
+  if (!on) return '';
+  const base = eventBase(s);
+  const ready = picked(streetPick).length === 3;
+  const rows = h.levels
+    .map((lv, i) => {
+      const t = eventTeam(h, i, base);
+      const done = s.holidays.includes(holidayKey(h.id, on.year, i));
+      const open = holidayOpen(s, h, on.year, i);
+      const can = lv.size === 3 ? ready : full;
+      return levelRow({
+        cls: `${done ? ' done' : ''}${i === h.levels.length - 1 ? ' boss' : ''}`,
+        badge: sizeBadge(lv.size),
+        title: `${i === h.levels.length - 1 ? '最終關' : `第 ${i + 1} 關`}・${t.players
+          .slice(0, lv.size)
+          .map((p) => esc(p.name))
+          .join('、')}`,
+        line: `評分 ${Math.min(99, base + lv.offset)}・${DIFF_LABEL[lv.difficulty]}・${done ? `今年已完成（再贏 ${GAME_COINS.ladderReplay} 金幣）` : `首勝：${rewardText(lv.reward)}`}`,
+        btn: open
+          ? `<button type="button" class="small${done ? '' : ' go'}" data-holiday="${h.id}:${i}"${can ? '' : ' disabled'}>${done ? '再打一次' : '挑戰'}</button>`
+          : '<span class="lock">🔒</span>',
+      });
+    })
+    .join('');
+  return cols(
+    `<div class="chips">${eventChips(h)}</div><div class="mtevent holiday"><b>${esc(h.name)}</b><span>${esc(h.desc)}・還有 ${daysLeft(on.ends)} 天結束</span></div><div class="mtlevels">${rows}</div>`,
+    `<p class="fine left">節日活動每年同一段時間開放，5 關依序挑戰，每關每年領一次獎勵。評分跟著你目前的期數（第 ${s.period} 期）。${
+      h.theme ? '活動期間限定卡包賣這個主題的特殊卡。' : ''
+    }</p>` +
+      streetPicker() +
+      settingsBox(true, true),
+    true,
+  );
 }
 
 function eventHtml(full: boolean): string {
+  const sub = eventSub();
+  if (sub) return holidayHtml(sub, full);
   const s = myteam.save;
   const week = eventWeek();
   const theme = eventTheme(week);
   const base = eventBase(s);
-  const days = Math.max(1, Math.ceil((eventEnds(week) - Date.now()) / 86_400_000));
-  const ready = streetPick.length === 3;
+  const days = daysLeft(eventEnds(week));
+  const ready = picked(streetPick).length === 3;
   const rows = theme.levels
     .map((lv, i) => {
       const t = eventTeam(theme, i, base);
@@ -613,7 +855,7 @@ function eventHtml(full: boolean): string {
     })
     .join('');
   return cols(
-    `<div class="mtevent"><b>${esc(theme.name)}</b><span>${esc(theme.desc)}・還有 ${days} 天換下一個活動</span></div><div class="mtlevels">${rows}</div>`,
+    `<div class="chips">${eventChips(null)}</div><div class="mtevent"><b>${esc(theme.name)}</b><span>${esc(theme.desc)}・還有 ${days} 天換下一個活動</span></div><div class="mtlevels">${rows}</div>`,
     `<p class="fine left">活動關卡每週一換主題，每關每週可以領一次獎勵。評分跟著你目前的期數（第 ${s.period} 期）。</p>` +
       streetPicker() +
       settingsBox(true, true),
@@ -626,11 +868,11 @@ function playTab(): string {
   if (!ladderPeriod || ladderPeriod > s.period) ladderPeriod = s.period;
   const full = deckLineup(s).length >= 5;
   const mode = playMode();
-  const body = mode === 'dynasty' ? dynastyHtml() : mode === 'limited' ? limitedHtml() : mode === 'event' ? eventHtml(full) : ladderHtml(full);
+  const body = mode === 'dynasty' ? dynastyHtml() : mode === 'limited' ? specialHtml(full) : mode === 'event' ? eventHtml(full) : ladderHtml(full);
   return (
     `<div class="mtbar"><span>第 <b>${s.period}</b> 期</span><span>牌組評分 <b>${deckRating(s)}</b></span><span title="同一組先發連續比賽會越來越高">凝聚力 <b>${deckCohesion(s)}</b></span>${firstWinChip()}<span>${nextPeriodText(s)}</span></div>` +
     `<nav class="tabs mtmodes">${PLAY_MODES.map(([k, l]) => `<button type="button" data-mode="${k}" class="${k === mode ? 'on' : ''}">${l}</button>`).join('')}</nav>` +
-    (full || mode === 'limited' ? '' : '<p class="msg">牌組至少要 5 張卡才能打 5 對 5，先到「牌組」分頁放卡。</p>') +
+    (full ? '' : '<p class="msg">牌組至少要 5 張卡才能打 5 對 5，先到「牌組」分頁放卡。</p>') +
     body
   );
 }
@@ -658,7 +900,7 @@ function practiceTab(): string {
         `<button type="button" class="small go" data-act="practice5"${full ? '' : ' disabled'}>開始</button></div>`
       : streetPicker() +
         `<div class="mtplay"><span class="fine left">對上 3 名同等級的隨機球員，金幣依實際比賽分鐘數。</span>` +
-        `<button type="button" class="small go" data-act="practice3"${streetPick.length === 3 ? '' : ' disabled'}>開始</button></div>`);
+        `<button type="button" class="small go" data-act="practice3"${picked(streetPick).length === 3 ? '' : ' disabled'}>開始</button></div>`);
   const right =
     `<h3 class="mth">難度</h3><div class="row"><label>電腦難度<select id="mtDiff">${DIFFICULTIES.map((d) => opt(d, `${DIFF_LABEL[d]}（金幣 ×${DIFFICULTY_COINS[d]}）`, diff)).join(
       '',
@@ -725,10 +967,11 @@ interface GamePlan {
   difficulty: Difficulty;
   level?: string;
   event?: { week: number; index: number };
+  holiday?: { id: string; year: number; index: number };
 }
 
 const streetCards = (): OwnedCard[] =>
-  streetPick
+  picked(streetPick)
     .map((r) => deckCard(myteam.save, r))
     .filter((c): c is OwnedCard => !!c)
     .sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position));
@@ -779,6 +1022,7 @@ function startGame(plan: GamePlan): void {
         margin: a - b,
         level: plan.level,
         event: plan.event,
+        holiday: plan.holiday,
         street: plan.size === 3,
         used: played,
         forfeit,
@@ -791,8 +1035,8 @@ function startGame(plan: GamePlan): void {
           steals: sum((x) => x.stl),
         },
       });
-      streetPick = streetPick.filter((r) => deckCard(s, r));
-      limitedPick = limitedPick.filter((r) => allCards().some((c) => refOf(c) === r));
+      streetPick = streetPick.map((r) => (r && deckCard(s, r) ? r : ''));
+      limitedPick = limitedPick.map((r) => (r && allCards().some((c) => refOf(c) === r) ? r : ''));
       myteam.commit();
       if (out.coins) void wallet.add(out.coins);
       if (out.drops.length) pending = { title: out.firstClear ? '過關獎勵' : '獎勵', drops: out.drops };
@@ -818,7 +1062,7 @@ const streetTeam = (cards: OwnedCard[]): TeamInfo => ({
   players: streetOpponents(3, avgOvr(cards), cards.map((c) => c.name)),
 });
 
-function playLevel(kind: 'ladder' | 'dynasty' | 'limited' | 'event', id: string): void {
+function playLevel(kind: 'ladder' | 'dynasty' | 'limited' | 'legacy' | 'event' | 'holiday', id: string): void {
   const s = myteam.save;
   if (kind === 'ladder') {
     const level = LEVELS.find((l) => l.id === id);
@@ -847,6 +1091,26 @@ function playLevel(kind: 'ladder' | 'dynasty' | 'limited' | 'event', id: string)
       lineup = [...starters, ...bench];
     }
     startGame({ kind, size: l.size, cards: lineup, opponent: limitedTeam(l), difficulty: l.difficulty, level: id });
+  } else if (kind === 'legacy') {
+    const l: LegacyDef | undefined = legacyLevels().find((x) => x.id === id);
+    if (l) startGame({ kind: 'limited', size: 5, cards: deckLineup(s), opponent: legacyTeam(l), difficulty: l.difficulty, level: id, deck: true });
+  } else if (kind === 'holiday') {
+    const [hid, at] = id.split(':');
+    const h = HOLIDAYS.find((x) => x.id === hid);
+    const on = h ? holidayOn(h) : null;
+    const index = Number(at);
+    const lv = h?.levels[index];
+    if (!h || !on || !lv || !holidayOpen(s, h, on.year, index)) return;
+    const cards = lv.size === 3 ? streetCards() : deckLineup(s);
+    startGame({
+      kind: 'event',
+      size: lv.size,
+      cards,
+      opponent: eventTeam(h, index, eventBase(s)),
+      difficulty: lv.difficulty,
+      holiday: { id: h.id, year: on.year, index },
+      deck: lv.size === 5,
+    });
   } else {
     const week = eventWeek();
     const index = Number(id);
@@ -881,7 +1145,7 @@ export function renderMyTeam(): void {
     ([id, label]) =>
       `<button type="button" data-tab="${id}" class="${tab === id ? 'on' : ''}">${label}${id === 'missions' && ready ? ` <i class="dot">${ready}</i>` : ''}</button>`,
   ).join('');
-  streetPick = streetPick.filter((r) => s.deck.includes(r));
+  streetPick = streetPick.map((r) => (r && s.deck.includes(r) ? r : ''));
   root.innerHTML =
     (message ? `<p class="msg">${esc(message)}</p>` : '') +
     (tab === 'play'
@@ -896,7 +1160,17 @@ export function renderMyTeam(): void {
               ? practiceTab()
               : shopTab());
   hydrateCards(root, [...allCards(), ...(tab === 'cards' ? lockedShown : [])]);
+  if (searching) {
+    // Typing in the search box: keep the cursor there across the redraw.
+    const box = root.querySelector<HTMLInputElement>('#mtSearch');
+    box?.focus();
+    box?.setSelectionRange(box.value.length, box.value.length);
+  }
 }
+
+/** The search box is being typed in (its redraw keeps the focus). */
+let searching = false;
+let searchTimer = 0;
 
 // ----------------------------------------------------------------- packs
 
@@ -986,6 +1260,7 @@ export function initMyTeam(h: MyTeamHost): void {
     tab = b.dataset.tab as Tab;
     // The rental filter is the deck's alone.
     if (filterTier === 'rental') filterTier = 'all';
+    pickSlot = null;
     message = '';
     detail = null;
     confirmSell = null;
@@ -1018,7 +1293,31 @@ export function initMyTeam(h: MyTeamHost): void {
     else if (data('data-mode')) {
       setPref('mode', data('data-mode')!);
       message = '';
-    } else if (data('data-psize')) setPref('psize', data('data-psize')!);
+      pickSlot = null;
+    } else if (data('data-sg')) {
+      setPref('sgroup', data('data-sg')!);
+      pickSlot = null;
+    } else if (data('data-evsub')) {
+      setPref('evsub', data('data-evsub')!);
+      pickSlot = null;
+    } else if (data('data-legacy')) {
+      playLevel('legacy', data('data-legacy')!);
+      return;
+    } else if (data('data-holiday')) {
+      playLevel('holiday', data('data-holiday')!);
+      return;
+    } else if (data('data-pk')) {
+      const [key, ref] = data('data-pk')!.split(/:(.*)/s);
+      if (key === 'sp') streetPick = placeCard(streetPick, 3, ref);
+      else limitedPick = placeCard(limitedPick, LIMITED.find((l) => l.id === limitedSel)?.size ?? 5, ref);
+    } else if (data('data-ps')) {
+      const [key, at] = data('data-ps')!.split(':');
+      if (key === 'sp') streetPick = tapSlot(streetPick, 3, Number(at));
+      else limitedPick = tapSlot(limitedPick, LIMITED.find((l) => l.id === limitedSel)?.size ?? 5, Number(at));
+    } else if (data('data-psize')) {
+      setPref('psize', data('data-psize')!);
+      pickSlot = null;
+    }
     else if (data('data-level')) {
       playLevel('ladder', data('data-level')!);
       return;
@@ -1030,19 +1329,14 @@ export function initMyTeam(h: MyTeamHost): void {
       return;
     } else if (data('data-limsel')) {
       const id = data('data-limsel')!;
-      if (limitedSel !== id) limitedPick = [];
+      const l = LIMITED.find((x) => x.id === id);
+      if (limitedSel !== id && l) limitedPick = autoLimited(l);
       limitedSel = id;
+      pickSlot = null;
       if (window.innerWidth < 1100) $('#myteam').scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (data('data-lim')) {
-      const ref = data('data-lim')!;
-      const size = LIMITED.find((l) => l.id === limitedSel)?.size ?? 5;
-      limitedPick = limitedPick.includes(ref) ? limitedPick.filter((r) => r !== ref) : [...limitedPick, ref].slice(0, size);
     } else if (act === 'limitedgame' && limitedSel) {
       playLevel('limited', limitedSel);
       return;
-    } else if (data('data-sp')) {
-      const ref = data('data-sp')!;
-      streetPick = streetPick.includes(ref) ? streetPick.filter((r) => r !== ref) : [...streetPick, ref].slice(0, 3);
     } else if (data('data-claim')) {
       const got = claimMission(s, data('data-claim')!);
       if (got) {
@@ -1107,8 +1401,21 @@ export function initMyTeam(h: MyTeamHost): void {
     else return;
     renderMyTeam();
   });
+  $('#mtBody').addEventListener('input', (e) => {
+    const el = e.target as HTMLInputElement;
+    if (el.id !== 'mtSearch') return;
+    search = el.value;
+    // Redraw a moment after typing stops.
+    clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      searching = true;
+      renderMyTeam();
+      searching = false;
+    }, 180);
+  });
   $('#mtBody').addEventListener('change', (e) => {
     const el = e.target as HTMLSelectElement;
+    if (el.id === 'mtSearch') return;
     if (el.id === 'mtDiff') setPref('diff', el.value);
     if (el.id === 'mtQuarter') setPref('quarter', el.value);
     if (el.id === 'mtTarget') setPref('target', el.value);

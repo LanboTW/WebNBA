@@ -32,7 +32,7 @@ import { Input } from './input';
 import { LineupPanel } from './lineup';
 import { PlayerDb } from './playerDb';
 import { coinsText, wallet } from './wallet';
-import { initMyTeam, renderMyTeam } from './myteamUi';
+import { initMyTeam, renderMyTeam, resetMyTeamSearch } from './myteamUi';
 import { initCustom, renderCustom } from './customUi';
 import { custom } from './myteamStore';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
@@ -102,6 +102,8 @@ let booted = false;
 let careerLoad: Promise<void> = Promise.resolve();
 
 function show(next: Screen): void {
+  // Coming into MyTeam from elsewhere (not back from one of its games): a fresh search.
+  if (next === 'myteam' && current !== 'myteam') resetMyTeamSearch();
   current = next;
   for (const s of SCREENS) $(`#${s}`).classList.toggle('hidden', s !== next || !!session);
   if (next === 'quick') refreshCards();

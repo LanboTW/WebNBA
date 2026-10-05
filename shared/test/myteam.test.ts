@@ -1,4 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import {
+  HOLIDAYS,
+  activeHolidays,
+  catalogCard,
+  cardWhere,
+  cardYear,
+  holidayOn,
+  holidayOpen,
+  legacyLevels,
+  legacyTeam,
+  limitedGroup,
+  ruleText,
+} from '../src';
 import { LEVELS, MISSIONS, claimMission, levelOpen, levelTeam, periodLevels, recordGame, statValue, streetOpponents, teamRating } from '../src';
 import {
   OFFICIAL_PACKS,
@@ -73,7 +86,7 @@ describe('MyTeam cards', () => {
     expect(mvps.filter((c) => c.tier === 'orange').length).toBe(21);
     expect(mvps.filter((c) => c.tier === 'black').map((c) => c.label)).toEqual(['2000 巔峰MVP', '2009 巔峰MVP', '2013 巔峰MVP', '2016 巔峰MVP', '2024 巔峰MVP']);
     expect(cards.filter((c) => c.source === 'hof')).toHaveLength(40);
-    expect(cards.filter((c) => c.source === 'special').every((c) => c.tier === 'black' && c.theme)).toBe(true);
+    expect(cards.filter((c) => c.source === 'special').every((c) => tierIndex(c.tier) >= tierIndex('orange') && c.theme)).toBe(true);
   });
 
   it("a card's ratings give exactly its overall, +N included", () => {
@@ -281,9 +294,9 @@ describe('MyTeam play', () => {
 describe('MyTeam modes: dynasty, limited, events, practice', () => {
   const totals = { points: 0, threes: 0, assists: 0, blocks: 0, steals: 0 };
 
-  it('ships 30 dynasty crews, 20 limited levels and full event themes', () => {
+  it('ships 30 dynasty crews, 35 special rule levels and full event themes', () => {
     expect(DYNASTY).toHaveLength(30);
-    expect(LIMITED).toHaveLength(20);
+    expect(LIMITED).toHaveLength(35);
     expect(EVENT_THEMES.length).toBeGreaterThanOrEqual(7);
     for (const t of EVENT_THEMES) expect(t.levels).toHaveLength(3);
     for (const l of LIMITED) {
@@ -357,5 +370,83 @@ describe('MyTeam modes: dynasty, limited, events, practice', () => {
     expect(practiceCoins(12, true, 'normal')).toBe(180);
     expect(practiceCoins(20, true, 'legend')).toBe(480);
     expect(practiceCoins(3, false, 'easy')).toBe(24);
+  });
+
+  it('history levels: every player found, champions at their card overalls, first win gives one of the team', () => {
+    const levels = legacyLevels();
+    expect(levels.filter((l) => l.group === 'champions')).toHaveLength(26);
+    expect(levels.filter((l) => l.group === 'hof')).toHaveLength(8);
+    expect(levels.filter((l) => l.group === 'olympic')).toHaveLength(8);
+    for (const l of levels) {
+      const t = legacyTeam(l);
+      expect(t.players).toHaveLength(l.players.length);
+      expect(t.players.length).toBeGreaterThanOrEqual(8);
+      for (const p of t.players) expect(l.players.find((x) => x.name === p.name)!.ovr).toBe(playerRating(p));
+      for (const id of l.reward.cards ?? []) expect(catalogCard(id), id).toBeDefined();
+    }
+    const ch = levels.find((l) => l.id === 'ch2016')!;
+    expect(ch.players.slice(6).every((p) => p.ovr === 91)).toBe(true);
+    const save = newMyTeam(seeded(5));
+    const out = recordGame(save, { kind: 'limited', won: true, margin: 3, level: 'ch2016', used: [], totals: { points: 0, threes: 0, assists: 0, blocks: 0, steals: 0 } }, seeded(2));
+    expect(out.firstClear).toBe(true);
+    expect(out.coins).toBeGreaterThanOrEqual(800);
+    expect(out.drops.some((d) => d.card.id.startsWith('c2016-'))).toBe(true);
+    expect(statValue(save, 'limited')).toBe(1);
+    expect(cardWhere(catalogCard('x-oly1992-jordan')!)).toEqual(['特殊關卡・奧運美國隊・1992 美國隊首勝']);
+  });
+
+  it('奧運 cards never come from packs', () => {
+    expect(cardCatalog().filter((c) => c.levelOnly)).toHaveLength(8);
+    for (const p of OFFICIAL_PACKS) for (const w of [0, 1, 2, 3]) expect(packPool(p, w).some((c) => c.levelOnly)).toBe(false);
+  });
+
+  it('rule levels: two groups, card sources, years and current / history counts', () => {
+    expect(LIMITED.filter((l) => limitedGroup(l) === 'c1')).toHaveLength(20);
+    expect(LIMITED.filter((l) => limitedGroup(l) === 'c2')).toHaveLength(15);
+    const champ = ownCard(catalogCard('c2016-kevin-love')!);
+    const champ2 = ownCard(catalogCard('c2008-ray-allen')!);
+    const mvp = ownCard(catalogCard('a2016-mvp-stephen-curry')!);
+    const hof = ownCard(catalogCard('h-yao-ming')!);
+    const now = ownCard(cardCatalog().find((c) => c.source === 'current')!);
+    expect(cardYear(champ)).toBe(2016);
+    expect(cardYear(hof)).toBeUndefined();
+    expect(cardYear(now)).toBe(Number(ROSTER_SEASON.slice(0, 4)) + 1);
+    expect(cardAllowed({ sources: ['champion'] }, champ)).toBe(true);
+    expect(cardAllowed({ sources: ['champion'] }, mvp)).toBe(false);
+    expect(cardAllowed({ award: 'mvp' }, mvp)).toBe(true);
+    expect(cardAllowed({ award: 'mvp' }, champ)).toBe(false);
+    expect(cardAllowed({ maxYear: 2009 }, champ2)).toBe(true);
+    expect(cardAllowed({ maxYear: 2009 }, hof)).toBe(false);
+    expect(cardAllowed({ minYear: 2010, maxYear: 2019 }, champ)).toBe(true);
+    expect(cardAllowed({ sameYear: true }, champ2, [champ])).toBe(false);
+    expect(lineupProblem({ minCurrent: 1, minHistory: 1 }, [champ, mvp, hof], 3)).toBe('至少要 1 張現役卡');
+    expect(lineupProblem({ minCurrent: 1, minHistory: 1 }, [champ, mvp, now], 3)).toBeNull();
+    for (const l of LIMITED) expect(ruleText(l.rule).length).toBeGreaterThan(0);
+  });
+
+  it('holidays run on their days each year, in order, paying once a year; the limited pack follows them', () => {
+    const xmas = HOLIDAYS.find((h) => h.id === 'xmas')!;
+    const dec = new Date(2026, 11, 10, 12).getTime();
+    expect(holidayOn(xmas, new Date(2026, 9, 5).getTime())).toBeNull();
+    const on = holidayOn(xmas, dec)!;
+    expect(on.year).toBe(2026);
+    expect(on.ends).toBe(new Date(2027, 0, 1).getTime());
+    expect(activeHolidays(dec).map((h) => h.id)).toContain('xmas');
+    expect(limitedTheme(0, dec)?.id).toBe('xmas');
+    expect(limitedTheme(1, dec)?.id).toBe('xmas');
+    const save = newMyTeam(seeded(6));
+    expect(holidayOpen(save, xmas, 2026, 1)).toBe(false);
+    const totals = { points: 0, threes: 0, assists: 0, blocks: 0, steals: 0 };
+    const first = recordGame(save, { kind: 'event', won: true, margin: 2, holiday: { id: 'xmas', year: 2026, index: 0 }, used: [], totals }, seeded(1));
+    expect(first.firstClear).toBe(true);
+    expect(holidayOpen(save, xmas, 2026, 1)).toBe(true);
+    const again = recordGame(save, { kind: 'event', won: true, margin: 2, holiday: { id: 'xmas', year: 2026, index: 0 }, used: [], totals });
+    expect(again.firstClear).toBe(false);
+    expect(recordGame(save, { kind: 'event', won: true, margin: 2, holiday: { id: 'xmas', year: 2027, index: 0 }, used: [], totals }).firstClear).toBe(true);
+    expect(xmas.levels[xmas.levels.length - 1].reward.cards).toEqual(['x-xmas-lebron']);
+    for (const h of HOLIDAYS) {
+      expect(h.levels).toHaveLength(5);
+      for (let i = 0; i < 5; i++) expect(eventTeam(h, i, 80).players.length).toBeGreaterThanOrEqual(h.levels[i].size);
+    }
   });
 });
