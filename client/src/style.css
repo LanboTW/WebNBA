@@ -5345,6 +5345,23 @@ body.touch textarea {
   padding: 4px 2px 8px;
   scroll-snap-type: x proximity;
   overscroll-behavior-x: contain;
+  /* Dragged, not scrolled by a bar. */
+  scrollbar-width: none;
+  cursor: grab;
+}
+
+.mtpk-row::-webkit-scrollbar {
+  display: none;
+}
+
+.mtpk-row.dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
+}
+
+.mtpk-row img {
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 .mtpk,

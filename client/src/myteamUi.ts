@@ -571,8 +571,8 @@ const deckCards = (): OwnedCard[] =>
 /** The 3v3 lineup picker (from the 13-card deck) used by dynasty, event and practice games. */
 function streetPicker(): string {
   const deck = deckCards();
-  // Nothing picked yet: the first three starters.
-  if (!picked(streetPick).length) streetPick = deck.slice(0, 3).map(refOf);
+  // First visit: the first three starters (emptied slots stay empty after that).
+  if (!streetPick.length) streetPick = deck.slice(0, 3).map(refOf);
   return `<h3 class="mth">街頭陣容<small>${picked(streetPick).length}/3・從牌組挑</small></h3>` + lineupPicker(deck, streetPick, 3, 'sp');
 }
 
@@ -1146,6 +1146,8 @@ export function renderMyTeam(): void {
       `<button type="button" data-tab="${id}" class="${tab === id ? 'on' : ''}">${label}${id === 'missions' && ready ? ` <i class="dot">${ready}</i>` : ''}</button>`,
   ).join('');
   streetPick = streetPick.map((r) => (r && s.deck.includes(r) ? r : ''));
+  // The picker's card row stays where it was dragged to.
+  const rowLeft = root.querySelector<HTMLElement>('.mtpk-row')?.scrollLeft ?? 0;
   root.innerHTML =
     (message ? `<p class="msg">${esc(message)}</p>` : '') +
     (tab === 'play'
@@ -1160,6 +1162,8 @@ export function renderMyTeam(): void {
               ? practiceTab()
               : shopTab());
   hydrateCards(root, [...allCards(), ...(tab === 'cards' ? lockedShown : [])]);
+  const row = root.querySelector<HTMLElement>('.mtpk-row');
+  if (row) row.scrollLeft = rowLeft;
   if (searching) {
     // Typing in the search box: keep the cursor there across the redraw.
     const box = root.querySelector<HTMLInputElement>('#mtSearch');
@@ -1400,6 +1404,33 @@ export function initMyTeam(h: MyTeamHost): void {
     } else if (act === 'close') detail = null;
     else return;
     renderMyTeam();
+  });
+  // The picker's card row: drag it sideways with the mouse (touch scrolls by itself); a drag is not a tap.
+  let drag: { row: HTMLElement; x: number; left: number; moved: boolean } | null = null;
+  $('#mtBody').addEventListener('pointerdown', (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('.mtpk-row');
+    if (!row || e.pointerType !== 'mouse' || e.button !== 0) return;
+    drag = { row, x: e.clientX, left: row.scrollLeft, moved: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    if (Math.abs(dx) > 5) {
+      drag.moved = true;
+      drag.row.classList.add('dragging');
+    }
+    if (drag.moved) drag.row.scrollLeft = drag.left - dx;
+  });
+  window.addEventListener('pointerup', () => {
+    if (!drag) return;
+    drag.row.classList.remove('dragging');
+    // The click that ends a drag (if the browser sends one) picks nothing; later taps work as usual.
+    const moved = drag.moved;
+    drag = null;
+    if (!moved) return;
+    const eat = (e: Event) => e.stopPropagation();
+    window.addEventListener('click', eat, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 0);
   });
   $('#mtBody').addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;

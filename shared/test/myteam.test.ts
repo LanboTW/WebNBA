@@ -10,7 +10,6 @@ import {
   legacyLevels,
   legacyTeam,
   limitedGroup,
-  ruleText,
 } from '../src';
 import { LEVELS, MISSIONS, claimMission, levelOpen, levelTeam, periodLevels, recordGame, statValue, streetOpponents, teamRating } from '../src';
 import {
