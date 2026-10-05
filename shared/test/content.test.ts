@@ -41,6 +41,15 @@ describe('content files (the content editor)', () => {
     expect(validateCustomTeams({ ...file, teams: [{ ...team, logo: '../x.png' }] }, NBA_TEAMS).some((e) => e.includes('logo 要寫成'))).toBe(true);
   });
 
+  it('custom players may set only a model type; an unknown one is caught', () => {
+    const file = JSON.parse(read('custom-teams.json')) as { ratingKeys: string[]; teams: RawTeam[] };
+    const team = file.teams.find((t) => t.abbr === 'DON')!;
+    expect(team.players.find((p) => p[0] === '郭柏呈')![5]).toEqual({ body: 'wheelchair' });
+    expect(validateCustomTeams({ ...file, teams: [team] }, NBA_TEAMS)).toEqual([]);
+    const bad = { ...team, players: team.players.map((p, i) => (i ? p : ([...p.slice(0, 5), { body: 'robot' }] as unknown as RawTeam['players'][number]))) };
+    expect(validateCustomTeams({ ...file, teams: [bad] }, NBA_TEAMS).some((e) => e.includes('body 要是'))).toBe(true);
+  });
+
   it('catches mistakes in plain words', () => {
     const s = special();
     const m = myteam();

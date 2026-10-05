@@ -21,6 +21,7 @@ import {
   toOverall,
   validateCustomTeams,
   type ArchetypeId,
+  type Look,
   type Position,
   type RawPlayer,
   type RawTeam,
@@ -198,6 +199,12 @@ function ratingsFor(pos: Position, style: ArchetypeId, heightM: number, ovr: num
   return RATING_KEYS.map((k) => Math.max(1, Math.min(99, Math.round(r[k]))));
 }
 
+/** Model types: a standing player, or one in a wheelchair (purely visual). */
+const BODY_OPTIONS: [string, string][] = [
+  ['', '一般'],
+  ['wheelchair', '輪椅'],
+];
+
 const playerOvr = (p: RawPlayer): number =>
   playerRating({ position: p[3] as Position, ratings: Object.fromEntries(RATING_KEYS.map((k, i) => [k, p[4][i] ?? 50])) as unknown as Ratings });
 
@@ -215,6 +222,7 @@ function teamForm(): string {
         `<input type="number" data-p="${i}:1" value="${p[1]}" min="0" max="99" title="背號" />` +
         `<input type="number" data-p="${i}:2" value="${p[2]}" step="0.01" min="1.4" max="2.6" title="身高（公尺）" />` +
         `<select data-p="${i}:3">${POSITIONS.map((pos) => opt(pos, pos, p[3])).join('')}</select>` +
+        `<select data-p="${i}:5" title="模型">${BODY_OPTIONS.map(([v, l]) => opt(v, l, p[5]?.body)).join('')}</select>` +
         `<b class="ce-ovr" title="總評">${playerOvr(p)}</b>` +
         `<button type="button" class="small" data-act="ratings" data-i="${i}">${open ? '收起' : '能力'}</button>` +
         `<button type="button" class="small" data-act="up" data-i="${i}"${i ? '' : ' disabled'}>↑</button>` +
@@ -261,7 +269,7 @@ function formHtml(): string {
         .map((n) => `<option value="${esc(n)}"></option>`)
         .join('')}</datalist>` +
       `<div class="row">${field('總評（66–99，97 以上黑卡）', 'ovr', 'number', 'min="66" max="99"')}${select('球隊（隊徽）', 'team', teamOptions())}${select('主題', 'theme', themeOptions())}</div>` +
-      `<div class="row">${field('卡面右下角的字（空白＝主題名）', 'label', 'text')}</div>` +
+      `<div class="row">${field('卡面右下角的字（空白＝主題名）', 'label', 'text')}${select('模型', 'look.body', BODY_OPTIONS.slice(1), '一般')}</div>` +
       (unknown
         ? `<p class="fine left">「${esc(String(form.player))}」不在名單上：補上位置、身高、背號和球風，能力由球風和身高推算。</p>` +
           `<div class="row">${select('位置', 'position', POSITIONS.map((p) => [p, p]), '—')}${field('身高（公尺）', 'heightM', 'number', 'step="0.01"')}${field('背號', 'number', 'number')}${select(
@@ -791,7 +799,14 @@ function wire(): void {
       const p = players[i];
       if (!p) return;
       if (el.dataset.r) p[4][j] = Number(el.value);
-      else if (j === 0 || j === 3) (p as unknown[])[j] = el.value;
+      else if (j === 5) {
+        // Model type: kept in the look, which goes away when nothing is left in it.
+        const look = { ...p[5] } as Partial<Look>;
+        if (el.value) look.body = el.value as Look['body'];
+        else delete look.body;
+        if (Object.keys(look).length) p[5] = look as Look;
+        else p.length = 5;
+      } else if (j === 0 || j === 3) (p as unknown[])[j] = el.value;
       else (p as unknown[])[j] = Number(el.value);
       if (e.type === 'change') renderEditor();
       else {
@@ -829,6 +844,8 @@ function wire(): void {
                 .filter(Boolean)
             : el.value;
     setPath(form, path, value);
+    // A look emptied out (back to a standing player) leaves no trace.
+    if (path.startsWith('look.') && form.look && !Object.keys(form.look as object).length) delete form.look;
     // A new player name may need the extra fields; a select changes what is shown.
     if (e.type === 'change' && (el.tagName === 'SELECT' || path === 'player' || t === 'bool')) renderEditor();
     else refreshPreview();

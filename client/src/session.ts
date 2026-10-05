@@ -33,6 +33,7 @@ import { CAMERA_LABEL, GameCamera, type CameraMode } from './camera';
 import { periodLabel, type Hud } from './hud';
 import type { Input } from './input';
 import { LineupPanel, type SubActions } from './lineup';
+import { modelTop } from './playerModel';
 import { PlayerView, kitFor } from './playerView';
 
 const QUALITY_TEXT: Record<ShotQuality, [string, string]> = {
@@ -329,7 +330,7 @@ export class Session {
         el.classList.add('hidden');
         return;
       }
-      const v = new THREE.Vector3(m.pos.x, m.pos.y + m.info.heightM + 0.45, m.pos.z).project(this.cam.camera);
+      const v = new THREE.Vector3(m.pos.x, m.pos.y + modelTop(m.info) + 0.45, m.pos.z).project(this.cam.camera);
       el.classList.remove('hidden');
       el.classList.toggle('aim', m.id === aimed);
       el.classList.toggle('play', m.id === s.plays[this.team as 0 | 1]?.targetId);
@@ -430,7 +431,7 @@ export class Session {
       this.hud.setStamina(-1, null);
     }
     if (me && me.action === 'shooting') {
-      const head = new THREE.Vector3(me.pos.x, me.pos.y + me.info.heightM + 0.2, me.pos.z).project(this.cam.camera);
+      const head = new THREE.Vector3(me.pos.x, me.pos.y + modelTop(me.info) + 0.2, me.pos.z).project(this.cam.camera);
       this.hud.setMeter(me.shotMeter, {
         x: ((head.x + 1) / 2) * window.innerWidth,
         y: ((1 - head.y) / 2) * window.innerHeight,

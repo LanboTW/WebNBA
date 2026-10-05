@@ -28,6 +28,8 @@ export const BEARD = ['none', 'stubble', 'full'] as const;
 export const SLEEVE = ['none', 'left', 'right', 'both'] as const;
 export const SHOE = ['white', 'black', 'team'] as const;
 export const SOCKS = ['low', 'high'] as const;
+/** Model types besides a standing player. */
+export const BODY = ['wheelchair'] as const;
 
 /** Field-by-field check, for roster.json, custom-teams.json and overrides.json. */
 export function lookErrors(look: unknown, partial = false): string[] {
@@ -48,13 +50,14 @@ export function lookErrors(look: unknown, partial = false): string[] {
   need('shoe', oneOf(SHOE), `要是 ${SHOE.join('/')}`);
   need('socks', oneOf(SOCKS), `要是 ${SOCKS.join('/')}`);
   if (l.hairColor !== undefined && !hex(l.hairColor)) errors.push('hairColor 要是 #RRGGBB');
-  const known = new Set(['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks']);
+  if (l.body !== undefined && !BODY.includes(l.body as (typeof BODY)[number])) errors.push(`body 要是 ${BODY.join('/')}`);
+  const known = new Set(['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks', 'body']);
   for (const k of Object.keys(l)) if (!known.has(k)) errors.push(`不認識的外觀欄位 ${k}`);
   return errors;
 }
 
 /** Rules every team follows, NBA or custom. */
-export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [number, number] = [1.6, 2.4]): string[] {
+export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [number, number] = [1.6, 2.4], partialLooks = false): string[] {
   const errors: string[] = [];
   for (const t of teams) {
     if (!/^#[0-9a-fA-F]{6}$/.test(t.primary) || !/^#[0-9a-fA-F]{6}$/.test(t.secondary)) errors.push(`${t.abbr} 顏色要寫成 #RRGGBB`);
@@ -66,7 +69,7 @@ export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [
       if (p[4].length !== ratingKeys.length || p[4].some((v) => !(v >= 1 && v <= 99))) errors.push(`${p[0]} 能力值不正確`);
       if (!(p[2] >= heights[0] && p[2] <= heights[1])) errors.push(`${p[0]} 身高 ${p[2]} 不合理`);
       if (!['PG', 'SG', 'SF', 'PF', 'C'].includes(p[3])) errors.push(`${p[0]} 位置 ${p[3]} 不正確`);
-      if (p[5] !== undefined) for (const e of lookErrors(p[5])) errors.push(`${p[0]} 外觀：${e}`);
+      if (p[5] !== undefined) for (const e of lookErrors(p[5], partialLooks)) errors.push(`${p[0]} 外觀：${e}`);
     }
   }
   return errors;
@@ -74,11 +77,12 @@ export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [
 
 /**
  * custom-teams.json: same rules as NBA teams, plus abbreviations that fit the
- * scoreboard and never collide. Fun teams may stretch heights a little.
+ * scoreboard and never collide. Fun teams may stretch heights a little, and a
+ * look may set only some fields (just a wheelchair, say): the game fills in the rest.
  * `logos`: the files under client/public/logos/, when known.
  */
 export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTeam[] }, nba: { abbr: string }[], logos?: Set<string>): string[] {
-  const errors = validateTeams(custom.teams, custom.ratingKeys, [1.4, 2.6]);
+  const errors = validateTeams(custom.teams, custom.ratingKeys, [1.4, 2.6], true);
   const seen = new Set(nba.map((t) => t.abbr));
   for (const t of custom.teams) {
     if (!/^[A-Z0-9]{2,5}$/.test(t.abbr)) errors.push(`${t.abbr}：縮寫要 2–5 個大寫英文或數字`);
@@ -92,7 +96,7 @@ export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTe
   return errors;
 }
 
-const LOOK_ORDER: (keyof Look)[] = ['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks'];
+const LOOK_ORDER: (keyof Look)[] = ['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks', 'body'];
 
 /** A look on one line, fields always in the same order. */
 export function formatLook(look: Look): string {

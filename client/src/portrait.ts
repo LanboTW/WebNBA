@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerInfo, TeamInfo } from '@webnba/shared';
-import { buildPlayerModel } from './playerModel';
+import { buildPlayerModel, modelTop } from './playerModel';
 import { kitFor } from './playerView';
 
 /**
@@ -27,14 +27,16 @@ function draw(info: PlayerInfo, team: TeamInfo): string | null {
   sun.position.set(1.2, 2.6, 2.4);
   scene.add(sun);
   const model = buildPlayerModel(info, kitFor(team, false));
-  model.body.rotation.y = -0.25;
-  scene.add(model.body);
+  model.root.rotation.y = -0.25;
+  scene.add(model.root);
+  // Framed on the head, sitting or standing (the model is drawn at 2 m).
+  const drop = 2 - (2 * modelTop(info)) / info.heightM;
   const camera = new THREE.PerspectiveCamera(26, W / H, 0.1, 20);
-  camera.position.set(0.22, 1.9, 1.5);
-  camera.lookAt(0, 1.83, 0);
+  camera.position.set(0.22, 1.9 - drop, 1.5);
+  camera.lookAt(0, 1.83 - drop, 0);
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL('image/png');
-  model.body.traverse((o) => {
+  model.root.traverse((o) => {
     if (o instanceof THREE.Mesh) {
       o.geometry.dispose();
       const m = o.material as THREE.Material | THREE.Material[];

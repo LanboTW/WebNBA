@@ -48,6 +48,8 @@ export interface Look {
   /** #RRGGBB shoes (shop gear), over `shoe`. */
   shoeColor?: string;
   socks: 'low' | 'high';
+  /** Model type: a standing player when absent. Purely visual, the sim never reads it. */
+  body?: 'wheelchair';
 }
 
 export interface TeamInfo {

@@ -8,6 +8,8 @@ export interface Kit {
   outline: string;
   /** The team's own colour, for team-coloured shoes and headbands. */
   team: string;
+  /** The team's second colour (wheelchair frames). */
+  accent: string;
 }
 
 /** Proportions are authored for a 2.0 m player and scaled to the real height. */
@@ -21,6 +23,14 @@ export const HIP_Y = THIGH + SHIN + 0.07;
 export const SHOULDER_Y = HIP_Y + 0.58;
 export const SHOULDER_X = 0.235;
 export const HIP_X = 0.105;
+/** Seated in a wheelchair: hip height, and the whole model's top as a share of standing height. */
+export const SEAT_HIP = 0.6;
+export const SEATED = (BASE_HEIGHT - HIP_Y + SEAT_HIP) / BASE_HEIGHT;
+
+/** How high the model's head really reaches (a seated player is shorter). */
+export function modelTop(info: PlayerInfo): number {
+  return info.look?.body === 'wheelchair' ? info.heightM * SEATED : info.heightM;
+}
 
 export interface Limb {
   upper: THREE.Group;
@@ -29,7 +39,21 @@ export interface Limb {
   end: THREE.Group;
 }
 
+/** The moving parts of a wheelchair. */
+export interface Wheelchair {
+  /** Tips the whole chair about the rear wheels' contact with the floor (- lifts the front). */
+  pivot: THREE.Group;
+  /** Big rear wheels: spin about x. */
+  wheels: THREE.Group[];
+  /** Front casters: swivel about y, the wheel inside spins about x. */
+  casters: { swivel: THREE.Group; spin: THREE.Group }[];
+  /** The motor's light. */
+  led: THREE.MeshStandardMaterial;
+}
+
 export interface PlayerModel {
+  /** What goes in the scene: the body itself, or the chair with the body sitting in it. */
+  root: THREE.Group;
   body: THREE.Group;
   /** Rotates at the waist (lean, twist); everything above the shorts. */
   spine: THREE.Group;
@@ -39,6 +63,7 @@ export interface PlayerModel {
   armR: Limb;
   legL: Limb;
   legR: Limb;
+  chair?: Wheelchair;
 }
 
 const SKIN = ['#eac0a0', '#d29a72', '#b0744c', '#8a5634', '#653d24', '#432819'];
@@ -95,7 +120,8 @@ function segment(len: number, rTop: number, rBottom: number, material: THREE.Mat
 }
 
 export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
-  const look = info.look ?? fallbackLook(info.name);
+  // A look may be partial (a custom player with only a body type): the rest falls back.
+  const look: Look = { ...fallbackLook(info.name), ...info.look };
   const skin = mat(skinColor(look.skin), 0.55);
   const jersey = mat(kit.body, 0.75);
   const trim = mat(kit.trim, 0.7);
@@ -182,10 +208,119 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
   legR.upper.position.set(-HIP_X, HIP_Y, 0);
   body.add(legL.upper, legR.upper);
 
-  body.traverse((o) => {
+  const chair = look.body === 'wheelchair' ? buildWheelchair(body, kit) : undefined;
+  const root = chair ? chair.root : body;
+  root.traverse((o) => {
     if (o instanceof THREE.Mesh) o.castShadow = true;
   });
-  return { body, spine, head, armL, armR, legL, legR };
+  return { root, body, spine, head, armL, armR, legL, legR, ...(chair ? { chair: chair.parts } : {}) };
+}
+
+/** Where the rear wheels touch the floor: the chair tips about this line. */
+const AXLE_Z = -0.05;
+const REAR_R = 0.3;
+const CASTER_R = 0.07;
+
+/** A tube between two points. */
+function rod(a: [number, number, number], b: [number, number, number], r: number, material: THREE.Material): THREE.Mesh {
+  const from = new THREE.Vector3(...a);
+  const dir = new THREE.Vector3(...b).sub(from);
+  const m = mesh(new THREE.CylinderGeometry(r, r, dir.length(), 8), material);
+  m.position.copy(from).addScaledVector(dir, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  return m;
+}
+
+/** A wheel turning about x: tyre, rim, spokes and (for the big ones) a push rim on the outside. */
+function makeWheel(r: number, tyre: THREE.Material, metal: THREE.Material, spokes: number, out = 0): THREE.Group {
+  const spin = new THREE.Group();
+  const disc = new THREE.Group();
+  disc.rotation.y = Math.PI / 2;
+  spin.add(disc);
+  disc.add(mesh(new THREE.TorusGeometry(r - r * 0.08, r * 0.08, 8, 28), tyre));
+  disc.add(mesh(new THREE.TorusGeometry(r * 0.84, r * 0.035, 6, 28), metal));
+  for (let i = 0; i < spokes; i++) {
+    const s = mesh(new THREE.CylinderGeometry(r * 0.012, r * 0.012, r * 1.66, 4), metal);
+    s.rotation.z = (i / spokes) * Math.PI;
+    disc.add(s);
+  }
+  disc.add(mesh(new THREE.CylinderGeometry(r * 0.12, r * 0.12, r * 0.2, 10), metal).rotateX(Math.PI / 2));
+  if (out) disc.add(mesh(new THREE.TorusGeometry(r * 0.88, 0.011, 6, 28), metal, 0, 0, out * 0.035));
+  return spin;
+}
+
+/** Seats the body in a wheelchair in the team's second colour, with a motor under the seat. */
+function buildWheelchair(body: THREE.Group, kit: Kit): { root: THREE.Group; parts: Wheelchair } {
+  const root = new THREE.Group();
+  const pivot = new THREE.Group();
+  pivot.position.z = AXLE_Z;
+  root.add(pivot);
+  const chair = new THREE.Group();
+  chair.position.z = -AXLE_Z;
+  pivot.add(chair);
+  // The body sits: its own pose (and the view's bob) moves it within the seat.
+  const seat = new THREE.Group();
+  seat.position.y = SEAT_HIP - HIP_Y;
+  seat.add(body);
+  chair.add(seat);
+
+  const frame = mat(kit.accent, 0.35, { metalness: 0.6 });
+  const metal = mat('#c9ccd2', 0.3, { metalness: 0.85 });
+  const tyre = mat('#18181a', 0.9);
+  const fabric = mat('#232326', 0.9);
+  const motorMat = mat('#3a3d44', 0.5, { metalness: 0.4 });
+  const led = new THREE.MeshStandardMaterial({ color: '#1d3a66', emissive: '#3aa0ff', emissiveIntensity: 0, roughness: 0.3 });
+
+  chair.add(mesh(new THREE.BoxGeometry(0.46, 0.04, 0.44), fabric, 0, SEAT_HIP - 0.1, 0.17));
+  const back = mesh(new THREE.BoxGeometry(0.44, 0.42, 0.03), fabric, 0, SEAT_HIP + 0.18, -0.16);
+  back.rotation.x = -0.12;
+  chair.add(back);
+  const rail = SEAT_HIP - 0.12;
+  for (const s of [1, -1]) {
+    // Back post and push handle, side rail, the front tube down to the footrest.
+    chair.add(rod([s * 0.23, rail, -0.12], [s * 0.23, SEAT_HIP + 0.42, -0.2], 0.016, frame));
+    chair.add(rod([s * 0.23, SEAT_HIP + 0.42, -0.2], [s * 0.23, SEAT_HIP + 0.4, -0.31], 0.018, fabric));
+    chair.add(rod([s * 0.23, rail, -0.12], [s * 0.23, rail, 0.42], 0.016, frame));
+    chair.add(rod([s * 0.23, rail, 0.42], [s * 0.17, 0.06, 0.6], 0.015, frame));
+    chair.add(rod([s * 0.23, rail, 0.42], [s * 0.2, CASTER_R * 2 + 0.03, 0.42], 0.015, frame));
+    // Armrest.
+    chair.add(rod([s * 0.27, rail, -0.08], [s * 0.27, 0.74, -0.08], 0.013, frame));
+    chair.add(rod([s * 0.27, rail, 0.22], [s * 0.27, 0.74, 0.22], 0.013, frame));
+    chair.add(mesh(new THREE.BoxGeometry(0.06, 0.03, 0.36), fabric, s * 0.27, 0.755, 0.07));
+  }
+  chair.add(rod([-REAR_R - 0.04, REAR_R, AXLE_Z], [REAR_R + 0.04, REAR_R, AXLE_Z], 0.014, metal));
+  chair.add(mesh(new THREE.BoxGeometry(0.36, 0.02, 0.14), frame, 0, 0.05, 0.6));
+  // Joystick on the right armrest (the model's -x).
+  chair.add(mesh(new THREE.BoxGeometry(0.07, 0.045, 0.1), motorMat, -0.27, 0.79, 0.25));
+  chair.add(rod([-0.27, 0.8, 0.26], [-0.27, 0.86, 0.27], 0.007, metal));
+  chair.add(mesh(new THREE.SphereGeometry(0.018, 8, 6), tyre, -0.27, 0.865, 0.27));
+  // Motor and battery under the seat, its light at the front.
+  chair.add(mesh(new THREE.BoxGeometry(0.3, 0.14, 0.24), motorMat, 0, 0.3, 0.12));
+  chair.add(mesh(new THREE.SphereGeometry(0.022, 10, 8), led, 0, 0.33, 0.245));
+
+  const wheels: THREE.Group[] = [];
+  for (const s of [1, -1]) {
+    const w = makeWheel(REAR_R, tyre, metal, 8, s);
+    // Cambered: tops lean in.
+    const camber = new THREE.Group();
+    camber.position.set(s * (REAR_R + 0.02), REAR_R, AXLE_Z);
+    camber.rotation.z = s * 0.07;
+    camber.add(w);
+    chair.add(camber);
+    wheels.push(w);
+  }
+  const casters: Wheelchair['casters'] = [];
+  for (const s of [1, -1]) {
+    const swivel = new THREE.Group();
+    swivel.position.set(s * 0.2, CASTER_R * 2 + 0.03, 0.42);
+    swivel.add(rod([0, 0, 0], [0, -0.05, -0.03], 0.01, frame));
+    const spin = makeWheel(CASTER_R, tyre, metal, 3);
+    spin.position.set(0, -CASTER_R - 0.03, -0.035);
+    swivel.add(spin);
+    chair.add(swivel);
+    casters.push({ swivel, spin });
+  }
+  return { root, parts: { pivot, wheels, casters, led } };
 }
 
 function buildHead(head: THREE.Group, look: Look, skin: THREE.Material, hairMat: THREE.Material, band: THREE.Material): void {

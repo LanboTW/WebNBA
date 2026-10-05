@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BALL_RADIUS, DEFENSE_SET_SPEED, SHOT_SWEET, type PlayerState, type TeamInfo } from '@webnba/shared';
-import { BASE_HEIGHT, buildPlayerModel, type Kit, type Limb } from './playerModel';
+import { BASE_HEIGHT, buildPlayerModel, type Kit, type Limb, type Wheelchair } from './playerModel';
 
 export type { Kit };
 
@@ -8,8 +8,8 @@ export type { Kit };
 export function kitFor(team: TeamInfo, home: boolean): Kit {
   const own = team.primary === '#000000' ? team.secondary : team.primary;
   return home
-    ? { body: '#f2f2f2', trim: team.primary, number: team.primary, outline: team.secondary, team: own }
-    : { body: team.primary, trim: team.secondary, number: team.secondary === '#000000' ? '#ffffff' : team.secondary, outline: '#111111', team: own };
+    ? { body: '#f2f2f2', trim: team.primary, number: team.primary, outline: team.secondary, team: own, accent: team.secondary }
+    : { body: team.primary, trim: team.secondary, number: team.secondary === '#000000' ? '#ffffff' : team.secondary, outline: '#111111', team: own, accent: team.secondary };
 }
 
 export type OneShot = 'pass' | 'lob' | 'reach' | 'celebrate' | 'flop' | 'fouled';
@@ -73,6 +73,8 @@ const smooth = (x: number) => {
   return t * t * (3 - 2 * t);
 };
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+/** Wheelchair: pushing the rims by hand below this speed (m/s), the motor above it. */
+const MOTOR_SPEED = 3.5;
 
 /** Dribble moves are purely visual: the sim keeps the ball on the right, we draw it where the hands are. */
 type DribbleMove = 'cross' | 'legs' | 'behind';
@@ -87,6 +89,12 @@ export class PlayerView {
   private readonly legL: Limb;
   private readonly legR: Limb;
   private readonly bigMan: boolean;
+  private readonly chair: Wheelchair | undefined;
+  /** Wheelchair: wheel angle, push-stroke phase, and the chair's tip and turn. */
+  private wheelAngle = 0;
+  private pushPhase = 0;
+  private chairPitch = 0;
+  private chairYaw = 0;
   private runPhase = 0;
   private slidePhase = 0;
   private clock = Math.random() * 10;
@@ -117,9 +125,10 @@ export class PlayerView {
     this.armR = model.armR;
     this.legL = model.legL;
     this.legR = model.legR;
+    this.chair = model.chair;
     this.bigMan = info.position === 'C' || info.position === 'PF';
     this.root.scale.setScalar(info.heightM / BASE_HEIGHT);
-    this.root.add(this.body);
+    this.root.add(model.root);
   }
 
   /** Plays a one-shot animation driven by a game event. */
@@ -162,7 +171,8 @@ export class PlayerView {
     const sliding = guarding && !airborne && speed > 0.6 && Math.abs(vRight) > Math.abs(vFwd) * 0.9;
 
     // ---------------------------------------------------------------- legs and body
-    if (sliding) this.slide(dt, speed, vRight, pressure);
+    if (this.chair) this.wheel(dt, speed, vFwd, vRight, guarding);
+    else if (sliding) this.slide(dt, speed, vRight, pressure);
     else if (speed > 0.3) this.run(dt, speed, vFwd);
     else this.idle(guarding);
 
@@ -238,6 +248,7 @@ export class PlayerView {
       t.armL = [-0.55 + wave, 0.95, -0.55, 0.2];
       t.armR = [-0.55 - wave, 0.95, -0.55, 0.2];
     }
+    if (this.chair) this.sit(dt, airborne);
 
     this.blend(dt);
     this.aimHead(ctx.lookAt, dt);
@@ -275,6 +286,73 @@ export class PlayerView {
     t.twist = swing * 0.12 * stride;
     t.hipYaw = -swing * 0.08 * stride;
     t.roll = Math.cos(ph) * 0.03 * stride;
+  }
+
+  /** Wheelchair: pushing the rims by hand when slow, the motor and joystick when fast; on defence it turns side to side. */
+  private wheel(dt: number, speed: number, vFwd: number, vRight: number, guarding: boolean): void {
+    const t = this.target;
+    const c = this.chair!;
+    const scale = this.root.scale.x;
+    // Rolling: forward or back with the body, otherwise (turning on the spot) just forward.
+    const roll = speed > 0.3 ? (Math.abs(vFwd) > 0.3 ? vFwd : speed) : 0;
+    this.wheelAngle += (roll / (0.3 * scale)) * dt;
+    for (const w of c.wheels) w.rotation.x = this.wheelAngle;
+    const k = 1 - Math.exp(-dt * 8);
+    // Casters trail the way the chair moves (the sim's right is the model's -x).
+    const yaw = speed > 0.3 ? Math.atan2(-vRight, vFwd) : 0;
+    for (const cs of c.casters) {
+      cs.spin.rotation.x += ((speed * dt) / (0.07 * scale)) * (speed > 0.3 ? 1 : 0);
+      let d = yaw - cs.swivel.rotation.y;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      cs.swivel.rotation.y += d * k;
+    }
+    const motor = speed >= MOTOR_SPEED;
+    c.led.emissiveIntensity = motor ? 2.5 : 0;
+    const turn = guarding ? Math.sin(this.clock * (speed > 0.6 ? 6 : 3)) * (speed > 0.6 ? 0.28 : 0.15) : 0;
+    this.chairYaw += (turn - this.chairYaw) * k;
+    c.pivot.rotation.y = this.chairYaw;
+    if (motor) {
+      // Right hand on the joystick, left on the armrest; the motor hums through the frame.
+      t.armR = [-0.15, 0.12, -1.45, 0.1];
+      t.armL = [-0.1, 0.15, -1.35, 0];
+      t.lean = -0.02;
+      t.bodyY = Math.sin(this.clock * 55) * 0.004;
+    } else if (speed > 0.3) {
+      // Both hands drive the push rims forward, then swing back for the next stroke.
+      this.pushPhase += dt * (2.2 + speed * 0.9) * (vFwd < -0.3 ? -1 : 1);
+      const s = Math.sin(this.pushPhase);
+      const arm: [number, number, number, number] = [-0.1 - 0.35 * s, 0.34, -0.35 + 0.25 * s, 0];
+      t.armL = [...arm];
+      t.armR = [...arm];
+      t.lean = 0.18 + 0.08 * s;
+    } else {
+      // Hands resting on the rims.
+      const breathe = Math.sin(this.clock * 1.7);
+      t.armL = [0.15, 0.32, -0.7, 0];
+      t.armR = [0.15, 0.32, -0.7, 0];
+      t.lean = 0.06 + breathe * 0.012;
+    }
+  }
+
+  /** Wheelchair, after every action: legs stay seated, the chair (not the hips) tips for jumps, landings and falls. */
+  private sit(dt: number, airborne: boolean): void {
+    const t = this.target;
+    t.legL = [-1.5, 1.52, 0.07, 0];
+    t.legR = [-1.5, 1.52, 0.07, 0];
+    t.bodyY = Math.max(-0.02, Math.min(0.05, t.bodyY));
+    t.tilt = 0;
+    t.hipYaw = 0;
+    t.roll = 0;
+    t.lean = Math.max(-0.15, Math.min(0.5, t.lean));
+    let pitch = 0;
+    if (this.oneShot === 'flop') {
+      // Over backwards, a beat on the floor, then back on the wheels.
+      const u = this.oneShotT;
+      pitch = -1.2 * smooth(u / 0.3) * (1 - smooth((u - 0.65) / 0.35));
+    } else if (airborne) pitch = -0.35;
+    else if (this.landT > 0) pitch = 0.08 * (this.landT / 0.22);
+    this.chairPitch += (pitch - this.chairPitch) * (1 - Math.exp(-dt * 10));
+    this.chair!.pivot.rotation.x = this.chairPitch;
   }
 
   /** Defensive slide: wide, low, feet never cross. */
@@ -336,8 +414,10 @@ export class PlayerView {
     }
 
     // Ball position across the body (+1 right, -1 left) and forward of it.
+    // From a wheelchair the ball goes down outside the wheel.
+    const wide = this.chair ? 0.48 : 0.32;
     let side: number = this.hand;
-    let fwd = 0.28;
+    let fwd = this.chair ? 0.18 : 0.28;
     if (this.move) {
       const m = smooth(u);
       side = mix(this.move.from, -this.move.from, m);
@@ -351,15 +431,15 @@ export class PlayerView {
     const rx = -fz;
     const rz = fx;
     this.dribbleBall.set(
-      pos.x + rx * 0.32 * side + fx * fwd,
-      BALL_RADIUS + bounce * (h * 0.45 - BALL_RADIUS),
-      pos.z + rz * 0.32 * side + fz * fwd,
+      pos.x + rx * wide * side + fx * fwd,
+      BALL_RADIUS + bounce * (h * (this.chair ? 0.3 : 0.45) - BALL_RADIUS),
+      pos.z + rz * wide * side + fz * fwd,
     );
     this.dribbling = true;
 
     // The hand on the ball pumps; the free one guards. Mid-move, the ball changes hands at the floor.
     const active = this.move ? (u < 0.5 ? this.move.from : -this.move.from) : this.hand;
-    const pump: Arm = [-0.45 - 0.2 * bounce, 0.28, -0.35 - (1 - bounce) * 0.55, 0.35 * (1 - bounce)];
+    const pump: Arm = [-0.45 - 0.2 * bounce, this.chair ? 0.55 : 0.28, -0.35 - (1 - bounce) * 0.55, 0.35 * (1 - bounce)];
     const guard: Arm = [-0.75, 0.5, -1.0, 0];
     if (this.move?.kind === 'behind' && u > 0.15 && u < 0.6) {
       // Wrap the ball around the back.
@@ -393,6 +473,12 @@ export class PlayerView {
 
   /** Chooses a move for the next bounce: cross toward where we are heading, sometimes just for show. */
   private pickMove(speed: number, vRight: number): { kind: DribbleMove; from: 1 | -1 } | null {
+    const move = this.pickAnyMove(speed, vRight);
+    // Nothing goes between the legs of a seated player.
+    return move && this.chair && move.kind === 'legs' ? { ...move, kind: 'cross' } : move;
+  }
+
+  private pickAnyMove(speed: number, vRight: number): { kind: DribbleMove; from: 1 | -1 } | null {
     const r = Math.random();
     // Heading away from the ball hand: switch hands.
     if (vRight * this.hand < -1.5 && r < 0.75) return { kind: r < 0.5 ? 'cross' : r < 0.65 ? 'legs' : 'behind', from: this.hand };
