@@ -7,7 +7,8 @@
  * position-based default ratings until someone tunes them in overrides.json.
  */
 
-import { lookErrors, type Look } from './looks';
+import { formatLook, validateTeams } from '../../shared/src/teamFile';
+import type { Look } from './looks';
 
 export type RawPlayer = [string, number, number, string, number[], Look?];
 
@@ -308,50 +309,7 @@ export function validateRoster(r: RawRoster): string[] {
   return errors.concat(validateTeams(r.teams, r.ratingKeys));
 }
 
-/** Rules every team follows, NBA or custom. */
-export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [number, number] = [1.6, 2.4]): string[] {
-  const errors: string[] = [];
-  for (const t of teams) {
-    if (!/^#[0-9a-fA-F]{6}$/.test(t.primary) || !/^#[0-9a-fA-F]{6}$/.test(t.secondary)) errors.push(`${t.abbr} 顏色要寫成 #RRGGBB`);
-    if (t.players.length < MIN_PLAYERS || t.players.length > MAX_PLAYERS) errors.push(`${t.abbr} 有 ${t.players.length} 人`);
-    const names = new Set<string>();
-    for (const p of t.players) {
-      if (names.has(p[0])) errors.push(`${t.abbr} 重複球員 ${p[0]}`);
-      names.add(p[0]);
-      if (p[4].length !== ratingKeys.length || p[4].some((v) => !(v >= 1 && v <= 99))) errors.push(`${p[0]} 能力值不正確`);
-      if (!(p[2] >= heights[0] && p[2] <= heights[1])) errors.push(`${p[0]} 身高 ${p[2]} 不合理`);
-      if (!['PG', 'SG', 'SF', 'PF', 'C'].includes(p[3])) errors.push(`${p[0]} 位置 ${p[3]} 不正確`);
-      if (p[5] !== undefined) for (const e of lookErrors(p[5])) errors.push(`${p[0]} 外觀：${e}`);
-    }
-  }
-  return errors;
-}
-
-/**
- * custom-teams.json: same rules as NBA teams, plus abbreviations that fit the
- * scoreboard and never collide. Fun teams may stretch heights a little.
- */
-export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTeam[] }, nba: RawTeam[]): string[] {
-  const errors = validateTeams(custom.teams, custom.ratingKeys, [1.4, 2.6]);
-  const seen = new Set(nba.map((t) => t.abbr));
-  for (const t of custom.teams) {
-    if (!/^[A-Z0-9]{2,5}$/.test(t.abbr)) errors.push(`${t.abbr}：縮寫要 2–5 個大寫英文或數字`);
-    if (seen.has(t.abbr)) errors.push(`${t.abbr}：縮寫和其他隊伍重複`);
-    seen.add(t.abbr);
-    if (!t.name) errors.push(`${t.abbr}：缺少隊名`);
-    if (t.logo !== undefined && (typeof t.logo !== 'string' || !/^[w./-]+.(png|webp|svg)$/i.test(t.logo) || t.logo.includes('..')))
-      errors.push(`${t.abbr}：logo 要寫成 logos/ 底下的 .png／.webp／.svg 路徑，例如 "taiwan/tpe.png"`);
-  }
-  return errors;
-}
-
-const LOOK_ORDER: (keyof Look)[] = ['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks'];
-
-/** A look on one line, fields always in the same order. */
-export function formatLook(look: Look): string {
-  const fields = LOOK_ORDER.filter((k) => look[k] !== undefined).map((k) => `${JSON.stringify(k)}: ${JSON.stringify(look[k])}`);
-  return `{${fields.join(', ')}}`;
-}
+export { formatLook, validateCustomTeams, validateTeams } from '../../shared/src/teamFile';
 
 /** Same layout as the hand-written file: one player per line. */
 export function formatRoster(r: RawRoster): string {

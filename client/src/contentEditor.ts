@@ -11,7 +11,20 @@ import {
   TIERS,
   checkContent,
   eventTeam,
+  formatCustomTeams,
   formatJson,
+  overallOf,
+  parseRoster,
+  playerRating,
+  startingRatings,
+  teamRating,
+  toOverall,
+  validateCustomTeams,
+  type ArchetypeId,
+  type Position,
+  type RawPlayer,
+  type RawTeam,
+  type Ratings,
   knownPlayers,
   packOdds,
   packPool,
@@ -25,6 +38,7 @@ import {
   type SpecialRow,
   type SpecialTheme,
 } from '@webnba/shared';
+import customJson from '../../shared/data/custom-teams.json';
 import myteamJson from '../../shared/data/myteam.json';
 import specialJson from '../../shared/data/special-cards.json';
 import { esc } from './boxscore';
@@ -33,18 +47,27 @@ import { RATING_LABEL } from './careerCreate';
 
 /**
  * The content editor (npm run dev only): special cards, their themes, holiday
- * events and packs, with a live preview. A save checks everything, then the
- * dev server writes shared/data/*.json (and the picture into
- * client/public/cards/); commit and push to ship it.
+ * events, packs and the shipped custom teams, with a live preview. A save
+ * checks everything, then the dev server writes shared/data/*.json (and the
+ * picture into client/public/cards/ or logos/custom/); commit and push to
+ * ship it.
  */
 
-type Kind = 'card' | 'theme' | 'holiday' | 'pack';
+type Kind = 'card' | 'theme' | 'holiday' | 'pack' | 'team';
 const KINDS: [Kind, string][] = [
   ['card', '特殊卡'],
   ['theme', '主題'],
   ['holiday', '節日活動'],
   ['pack', '卡包'],
+  ['team', '自訂隊伍'],
 ];
+
+/** custom-teams.json. */
+interface CustomFile {
+  $comment?: string;
+  ratingKeys: string[];
+  teams: RawTeam[];
+}
 
 type Entry = Record<string, unknown>;
 
@@ -53,6 +76,12 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 let special: SpecialFile = clone(specialJson as unknown as SpecialFile);
 let myteam: ContentMyTeam = clone(myteamJson as unknown as ContentMyTeam);
+let custom: CustomFile = clone(customJson as unknown as CustomFile);
+let logos = new Set<string>();
+/** A team logo waiting for the save (webp data URL). */
+let logoPic: string | null = null;
+/** The player whose ratings are open in the team form. */
+let openPlayer: number | null = null;
 let kind: Kind = 'card';
 /** The entry open in the form (its id; '' = a new one). */
 let current: string | null = null;
@@ -68,10 +97,25 @@ let picture: string | null = null;
 let crop: { img: HTMLImageElement; zoom: number; x: number; y: number } | null = null;
 let wired = false;
 
-const listOf = (k: Kind = kind): Entry[] =>
-  (k === 'card' ? special.cards : k === 'theme' ? special.themes : k === 'holiday' ? myteam.holidays : myteam.packs) as unknown as Entry[];
+const listIn = (k: Kind, s: SpecialFile, m: ContentMyTeam, c: CustomFile): Entry[] =>
+  (k === 'card' ? s.cards : k === 'theme' ? s.themes : k === 'holiday' ? m.holidays : k === 'pack' ? m.packs : c.teams) as unknown as Entry[];
+const listOf = (k: Kind = kind): Entry[] => listIn(k, special, myteam, custom);
+/** An entry's key: teams go by abbreviation, the rest by id. */
+const keyOf = (e: Entry, k: Kind = kind): string => String((k === 'team' ? e.abbr : e.id) ?? '');
 
 function blank(k: Kind): Entry {
+  if (k === 'team') {
+    const groups = custom.teams.map((t) => t.group).filter(Boolean);
+    const player = (name: string, number: number, h: number, pos: Position): RawPlayer => [name, number, h, pos, ratingsFor(pos, 'allround', h, 70)];
+    return {
+      group: groups[groups.length - 1] ?? '自訂隊伍',
+      abbr: '',
+      name: '',
+      primary: '#1d428a',
+      secondary: '#ffc72c',
+      players: [player('控球後衛', 1, 1.88, 'PG'), player('得分後衛', 2, 1.96, 'SG'), player('小前鋒', 3, 2.01, 'SF'), player('大前鋒', 4, 2.06, 'PF'), player('中鋒', 5, 2.11, 'C')],
+    };
+  }
   if (k === 'card') return { id: '', player: '', team: 'LAL', ovr: 97, theme: special.themes[0]?.id ?? '' };
   if (k === 'theme') return { id: '', name: '', color: '#c8102e', accent: '#f5c518' };
   if (k === 'pack') return { id: '', name: '', price: 1000, count: 3 };
@@ -146,7 +190,68 @@ const teamOptions = (): [string, string][] => NBA_TEAMS.map((t) => [t.abbr, `${t
 const themeOptions = (): [string, string][] => special.themes.map((t) => [t.id, `${t.name}（${t.id}）`]);
 const packOptions = (): [string, string][] => myteam.packs.map((p) => [p.id, p.name]);
 
+const CAPS = Object.fromEntries(RATING_KEYS.map((k) => [k, 99])) as unknown as Ratings;
+
+/** Ratings (file order) for a position, style and height at an overall. */
+function ratingsFor(pos: Position, style: ArchetypeId, heightM: number, ovr: number): number[] {
+  const r = toOverall(startingRatings(pos, style, heightM), CAPS, ovr, (x) => overallOf(pos, x));
+  return RATING_KEYS.map((k) => Math.max(1, Math.min(99, Math.round(r[k]))));
+}
+
+const playerOvr = (p: RawPlayer): number =>
+  playerRating({ position: p[3] as Position, ratings: Object.fromEntries(RATING_KEYS.map((k, i) => [k, p[4][i] ?? 50])) as unknown as Ratings });
+
+/** Players: one row each (the first five start), ratings open one player at a time. */
+function teamForm(): string {
+  const players = (form.players as RawPlayer[]) ?? [];
+  const groups = [...new Set(custom.teams.map((t) => t.group).filter((g): g is string => !!g))];
+  const logoSrc = logoPic ?? (form.logo ? `${import.meta.env.BASE_URL}logos/${String(form.logo)}` : '');
+  const rows = players
+    .map((p, i) => {
+      const open = openPlayer === i;
+      return (
+        `<div class="ce-player${open ? ' open' : ''}"><span class="ce-tag">${i < 5 ? '先發' : '板凳'}</span>` +
+        `<input type="text" data-p="${i}:0" value="${esc(p[0])}" placeholder="名字" />` +
+        `<input type="number" data-p="${i}:1" value="${p[1]}" min="0" max="99" title="背號" />` +
+        `<input type="number" data-p="${i}:2" value="${p[2]}" step="0.01" min="1.4" max="2.6" title="身高（公尺）" />` +
+        `<select data-p="${i}:3">${POSITIONS.map((pos) => opt(pos, pos, p[3])).join('')}</select>` +
+        `<b class="ce-ovr" title="總評">${playerOvr(p)}</b>` +
+        `<button type="button" class="small" data-act="ratings" data-i="${i}">${open ? '收起' : '能力'}</button>` +
+        `<button type="button" class="small" data-act="up" data-i="${i}"${i ? '' : ' disabled'}>↑</button>` +
+        `<button type="button" class="small" data-act="down" data-i="${i}"${i < players.length - 1 ? '' : ' disabled'}>↓</button>` +
+        `<button type="button" class="small" data-act="delplayer" data-i="${i}">刪除</button></div>` +
+        (open
+          ? `<div class="ce-ratings">${RATING_KEYS.map(
+              (k, j) => `<label>${RATING_LABEL[k]}<input type="number" data-r="${i}:${j}" value="${p[4][j] ?? 50}" min="1" max="99" /></label>`,
+            ).join('')}</div>` +
+            `<div class="row ce-gen"><label>依球風產生<select id="ceGenStyle">${ARCHETYPES.map((a) => opt(a.id, a.name, 'allround')).join('')}</select></label>` +
+            `<label>總評<input type="number" id="ceGenOvr" value="${playerOvr(p)}" min="40" max="99" /></label>` +
+            `<button type="button" class="small" data-act="genratings" data-i="${i}">產生能力（會蓋掉上面的數字）</button></div>`
+          : '')
+      );
+    })
+    .join('');
+  return (
+    `<div class="row">${field('縮寫（2–5 個大寫英文或數字；建立後不能改）', 'abbr', 'text', current ? 'disabled' : 'maxlength="5"')}${field('隊名', 'name', 'text')}${field(
+      '選單分組',
+      'group',
+      'text',
+      'list="ceGroups"',
+    )}</div>` +
+    `<datalist id="ceGroups">${groups.map((g) => `<option value="${esc(g)}"></option>`).join('')}</datalist>` +
+    `<div class="row">${field('主色', 'primary', 'color')}${field('副色', 'secondary', 'color')}</div>` +
+    `<h3 class="mth">隊徽<small>${form.logo ? esc(String(form.logo)) : '沒有就用縮寫和隊色'}</small></h3>` +
+    `<div class="row ce-logo">${logoSrc ? `<img src="${esc(logoSrc)}" alt="" />` : ''}<label>選圖片（會縮到 256×256、保留透明）<input type="file" id="ceLogo" accept="image/*" /></label>${
+      form.logo || logoPic ? '<button type="button" class="small" data-act="nologo">不用隊徽</button>' : ''
+    }</div>` +
+    `<h3 class="mth">球員<small>${players.length} 人（5–10 人，前 5 個先發）</small></h3>${rows}` +
+    (players.length < 10 ? '<button type="button" class="small" data-act="addplayer">＋ 加一名球員</button>' : '') +
+    '<p class="fine left">名字可以用中文；能力 1–99（先點「能力」展開，或用球風加總評一鍵產生）。</p>'
+  );
+}
+
 function formHtml(): string {
+  if (kind === 'team') return teamForm();
   if (kind === 'card') {
     const known = new Set(knownPlayers());
     const unknown = !!form.player && !known.has(String(form.player));
@@ -269,7 +374,28 @@ function themesWithForm(): SpecialTheme[] {
   return [...others, form as unknown as SpecialTheme];
 }
 
+function teamPreview(): string {
+  let team;
+  try {
+    team = parseRoster({ season: '', ratingKeys: custom.ratingKeys, teams: [form as unknown as RawTeam] } as never)[0];
+  } catch {
+    return '<p class="fine">球員資料還不完整。</p>';
+  }
+  const logoSrc = logoPic ?? (form.logo ? `${import.meta.env.BASE_URL}logos/${String(form.logo)}` : '');
+  const line = (p: { name: string; position: string; number: number }, i: number) =>
+    `<li>${i < 5 ? '' : '<em>板凳</em> '}${esc(p.position)} #${p.number} ${esc(p.name)} <b>${playerRating(team.players[i])}</b></li>`;
+  return (
+    `<div class="ce-team" style="--c1:${esc(String(form.primary ?? '#333333'))};--c2:${esc(String(form.secondary ?? '#ffffff'))}">` +
+    `<div class="ce-teamhead">${logoSrc ? `<img src="${esc(logoSrc)}" alt="" />` : `<span class="ce-abbr">${esc(String(form.abbr || '???'))}</span>`}<div><b>${esc(String(form.name || '（隊名）'))}</b><small>${esc(
+      String(form.group ?? ''),
+    )}・評分 ${teamRating(team)}</small></div></div>` +
+    `<ol class="ce-roster">${team.players.map(line).join('')}</ol></div>` +
+    '<p class="fine left">快速模式、街頭和自訂分組的活動會用到這支隊伍。</p>'
+  );
+}
+
 function previewHtml(): string {
+  if (kind === 'team') return teamPreview();
   if (kind === 'card') {
     if (!form.player) return '<p class="fine">填上球員名字就會出現卡面。</p>';
     const c = previewSpecial({ ...(form as unknown as SpecialRow), id: String(form.id || 'new') }, special.themes);
@@ -337,9 +463,17 @@ function previewHtml(): string {
 function listHtml(): string {
   const rows = listOf()
     .map((e) => {
-      const id = String(e.id);
+      const id = keyOf(e);
       const label =
-        kind === 'card' ? `${esc(String(e.player))} ${e.ovr}` : kind === 'theme' ? esc(String(e.name)) : kind === 'holiday' ? `${esc(String(e.name))}（${e.from}～${e.to}）` : `${esc(String(e.name))} ${e.price}`;
+        kind === 'card'
+          ? `${esc(String(e.player))} ${e.ovr}`
+          : kind === 'theme'
+            ? esc(String(e.name))
+            : kind === 'holiday'
+              ? `${esc(String(e.name))}（${e.from}～${e.to}）`
+              : kind === 'team'
+                ? `${esc(String(e.name))}<small> ${esc(String(e.group ?? ''))}</small>`
+                : `${esc(String(e.name))} ${e.price}`;
       return `<button type="button" class="ce-item${current === id ? ' on' : ''}" data-open="${esc(id)}"><b>${label}</b><small>${esc(id)}</small></button>`;
     })
     .join('');
@@ -441,6 +575,22 @@ function updatePicture(): void {
   refreshPreview();
 }
 
+/** A team logo: fitted (not cropped) into 256x256, transparency kept, as webp. */
+function loadLogo(file: File): void {
+  const img = new Image();
+  img.onload = () => {
+    const out = document.createElement('canvas');
+    out.width = 256;
+    out.height = 256;
+    const s = Math.min(256 / img.width, 256 / img.height);
+    out.getContext('2d')!.drawImage(img, (256 - img.width * s) / 2, (256 - img.height * s) / 2, img.width * s, img.height * s);
+    logoPic = out.toDataURL('image/webp', 0.92);
+    form.logo = logoPath(String(form.abbr));
+    renderEditor();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
 function loadPicture(file: File): void {
   const img = new Image();
   img.onload = () => {
@@ -459,6 +609,7 @@ const KEY_ORDER: Record<Kind, string[]> = {
   theme: ['id', 'name', 'color', 'accent', 'levelOnly'],
   holiday: ['id', 'name', 'desc', 'from', 'to', 'theme', 'levels'],
   pack: ['id', 'name', 'price', 'count', 'kind', 'tiers', 'positions', 'players', 'guarantee', 'weights'],
+  team: ['group', 'abbr', 'name', 'primary', 'secondary', 'logo', 'players'],
 };
 
 function ordered(e: Entry): Entry {
@@ -467,17 +618,21 @@ function ordered(e: Entry): Entry {
 }
 
 /** The files with the form put in (or the entry taken out). */
-function withForm(remove = false): { special: SpecialFile; myteam: ContentMyTeam } {
+function withForm(remove = false): { special: SpecialFile; myteam: ContentMyTeam; custom: CustomFile } {
   const s = clone(special);
   const m = clone(myteam);
-  const list = (kind === 'card' ? s.cards : kind === 'theme' ? s.themes : kind === 'holiday' ? m.holidays : m.packs) as unknown as Entry[];
-  const at = current ? list.findIndex((e) => e.id === current) : -1;
+  const c = clone(custom);
+  const list = listIn(kind, s, m, c);
+  const at = current ? list.findIndex((e) => keyOf(e) === current) : -1;
   if (remove) {
     if (at >= 0) list.splice(at, 1);
   } else if (at >= 0) list[at] = ordered(form);
   else list.push(ordered(form));
-  return { special: s, myteam: m };
+  return { special: s, myteam: m, custom: c };
 }
+
+/** The logo the editor makes for a team: logos/custom/<abbr>.webp. */
+const logoPath = (abbr: string) => `custom/${abbr.toLowerCase()}.webp`;
 
 async function post(path: string, body: unknown): Promise<{ ok?: boolean; error?: string; images?: string[] }> {
   const res = await fetch(`/__content/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -486,11 +641,16 @@ async function post(path: string, body: unknown): Promise<{ ok?: boolean; error?
 
 async function save(remove = false): Promise<void> {
   if (!remove && kind === 'card' && picture && form.id) form.image = `${form.id}.webp`;
+  if (!remove && kind === 'team' && logoPic && form.abbr) form.logo = logoPath(String(form.abbr));
   const next = withForm(remove);
   const known = new Set(images);
   if (!remove && picture && form.image) known.add(String(form.image));
-  const result = checkContent(next.special, next.myteam, known);
-  problems = result.errors;
+  const knownLogos = new Set(logos);
+  if (!remove && logoPic && form.logo) knownLogos.add(String(form.logo));
+  // Events pick opponents from custom-team groups: check them against the teams about to be saved.
+  const groups = new Set([...next.custom.teams.map((t) => t.group).filter((g): g is string => !!g)]);
+  const result = checkContent(next.special, next.myteam, known, groups);
+  problems = [...result.errors, ...(kind === 'team' ? validateCustomTeams(next.custom, NBA_TEAMS, knownLogos) : [])];
   warnings = result.warnings;
   if (problems.length) {
     message = remove ? '不能刪除：' : '還不能存檔，先修正下面的問題：';
@@ -504,18 +664,26 @@ async function save(remove = false): Promise<void> {
     }
     // A deleted card takes its picture along (one the editor made, named after it); before the save, whose reload would cut it off.
     if (remove && kind === 'card' && form.image === `${form.id}.webp`) await post('unimage', { name: form.image });
-    const file = kind === 'card' || kind === 'theme' ? 'special' : 'myteam';
-    const text = file === 'special' ? formatJson(next.special, CONTENT_WIDTH.special) : formatJson(next.myteam, CONTENT_WIDTH.myteam);
+    if (!remove && kind === 'team' && logoPic && form.logo) {
+      const r = await post('logo', { name: form.logo, data: logoPic });
+      if (!r.ok) throw new Error(r.error);
+    }
+    if (remove && kind === 'team' && form.logo === logoPath(String(form.abbr))) await post('unlogo', { name: form.logo });
+    const file = kind === 'card' || kind === 'theme' ? 'special' : kind === 'team' ? 'custom' : 'myteam';
+    const text =
+      file === 'special' ? formatJson(next.special, CONTENT_WIDTH.special) : file === 'custom' ? formatCustomTeams(next.custom).trimEnd() : formatJson(next.myteam, CONTENT_WIDTH.myteam);
     // Reopen here after the reload the saved file brings.
-    sessionStorage.setItem('webnba.editor', JSON.stringify({ kind, id: remove ? null : String(form.id) }));
+    sessionStorage.setItem('webnba.editor', JSON.stringify({ kind, id: remove ? null : keyOf(form) }));
     const r = await post('save', { file, text: `${text}\n` });
     if (!r.ok) throw new Error(r.error);
     special = next.special;
     myteam = next.myteam;
+    custom = next.custom;
     picture = null;
     crop = null;
+    logoPic = null;
     confirmDelete = false;
-    current = remove ? null : String(form.id);
+    current = remove ? null : keyOf(form);
     message = `${remove ? '已刪除' : '已存檔'}${warnings.length ? '（有提醒，見下方）' : ''}，頁面重新整理後生效。記得 commit、push。`;
     renderEditor();
   } catch (e) {
@@ -528,11 +696,13 @@ async function save(remove = false): Promise<void> {
 
 function open(id: string | null): void {
   current = id;
-  const found = id ? listOf().find((e) => e.id === id) : undefined;
+  const found = id ? listOf().find((e) => keyOf(e) === id) : undefined;
   form = found ? clone(found) : blank(kind);
   if (id === '') current = '';
   picture = null;
   crop = null;
+  logoPic = null;
+  openPlayer = null;
   confirmDelete = false;
   problems = [];
   warnings = [];
@@ -574,6 +744,32 @@ function wire(): void {
       picture = null;
       crop = null;
       delete form.image;
+    } else if (act && ['ratings', 'up', 'down', 'delplayer', 'addplayer', 'genratings', 'nologo'].includes(act) && kind === 'team') {
+      const players = (form.players as RawPlayer[]) ?? [];
+      const i = Number(data('data-i'));
+      if (act === 'ratings') openPlayer = openPlayer === i ? null : i;
+      else if (act === 'up' || act === 'down') {
+        const j = act === 'up' ? i - 1 : i + 1;
+        if (j >= 0 && j < players.length) {
+          [players[i], players[j]] = [players[j], players[i]];
+          if (openPlayer === i) openPlayer = j;
+        }
+      } else if (act === 'delplayer') {
+        players.splice(i, 1);
+        openPlayer = null;
+      } else if (act === 'addplayer') {
+        players.push([`新球員${players.length + 1}`, players.length + 1, 1.98, 'SF', ratingsFor('SF', 'allround', 1.98, 70)]);
+        openPlayer = players.length - 1;
+      } else if (act === 'genratings') {
+        const p = players[i];
+        const style = (document.querySelector<HTMLSelectElement>('#ceGenStyle')?.value ?? 'allround') as ArchetypeId;
+        const ovr = Number(document.querySelector<HTMLInputElement>('#ceGenOvr')?.value) || 70;
+        if (p) p[4] = ratingsFor(p[3] as Position, style, p[2], Math.max(40, Math.min(99, ovr)));
+      } else if (act === 'nologo') {
+        logoPic = null;
+        delete form.logo;
+      }
+      form.players = players;
     } else if (act === 'askdelete') confirmDelete = true;
     else if (act === 'nodelete') confirmDelete = false;
     else if (act === 'save') {
@@ -587,6 +783,23 @@ function wire(): void {
   });
   const onInput = (e: Event) => {
     const el = e.target as HTMLInputElement;
+    // A player's field or rating (team form).
+    if (el.dataset.p || el.dataset.r) {
+      const players = (form.players as RawPlayer[]) ?? [];
+      const [i, j] = (el.dataset.p ?? el.dataset.r)!.split(':').map(Number);
+      const p = players[i];
+      if (!p) return;
+      if (el.dataset.r) p[4][j] = Number(el.value);
+      else if (j === 0 || j === 3) (p as unknown[])[j] = el.value;
+      else (p as unknown[])[j] = Number(el.value);
+      if (e.type === 'change') renderEditor();
+      else {
+        refreshPreview();
+        const ovr = el.closest('.ce-player')?.querySelector('.ce-ovr') ?? el.closest('.ce-ratings')?.previousElementSibling?.querySelector('.ce-ovr');
+        if (ovr) ovr.textContent = String(playerOvr(p));
+      }
+      return;
+    }
     if (el.id === 'ceZoom' && crop) {
       crop.zoom = Number(el.value);
       drawCrop();
@@ -622,6 +835,15 @@ function wire(): void {
   body.addEventListener('input', onInput);
   body.addEventListener('change', (e) => {
     const el = e.target as HTMLInputElement;
+    if (el.id === 'ceLogo' && el.files?.[0]) {
+      if (!form.abbr) {
+        message = '先填縮寫再選隊徽（隊徽用縮寫命名）。';
+        renderEditor();
+        return;
+      }
+      loadLogo(el.files[0]);
+      return;
+    }
     if (el.id === 'cePic' && el.files?.[0]) {
       if (!form.id) {
         message = '先填 id 再選圖片（圖片用 id 命名）。';
@@ -658,6 +880,8 @@ export async function openEditor(): Promise<void> {
   try {
     const res = await fetch('/__content/images');
     if (res.ok) images = new Set((await res.json()) as string[]);
+    const got = await fetch('/__content/logos');
+    if (got.ok) logos = new Set((await got.json()) as string[]);
   } catch {
     // No dev server: saving will say so.
   }

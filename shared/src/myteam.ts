@@ -1504,7 +1504,9 @@ export function eventTeam(theme: Pick<EventTheme, 'name' | 'levels'>, index: num
   const teams = pk.group
     ? TEAMS.filter((t) => t.group === pk.group)
     : NBA_TEAMS.filter((t) => (!pk.teams || pk.teams.includes(t.abbr)) && (!pk.conference || t.conference === pk.conference));
-  const pool = teams.flatMap((t) => t.players).filter((p) => !pk.positions || pk.positions.includes(p.position));
+  const picked = teams.flatMap((t) => t.players).filter((p) => !pk.positions || pk.positions.includes(p.position));
+  // Too few to field a side (a custom group renamed away, say): the whole league instead.
+  const pool = picked.length >= lv.size ? picked : NBA_TEAMS.flatMap((t) => t.players);
   const by = (p: PlayerInfo) => (pk.sort === 'height' ? p.heightM : pk.sort ? p.ratings[pk.sort] : playerRating(p));
   const best = [...pool].sort((a, b) => by(b) - by(a) || playerRating(b) - playerRating(a));
   const n = lv.size === 3 ? 3 : 8;

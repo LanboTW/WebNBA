@@ -13,7 +13,8 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 function contentEditor(): Plugin {
   const data = new URL('../shared/data/', import.meta.url);
   const cards = new URL('./public/cards/', import.meta.url);
-  const files: Record<string, string> = { special: 'special-cards.json', myteam: 'myteam.json' };
+  const logos = new URL('./public/logos/', import.meta.url);
+  const files: Record<string, string> = { special: 'special-cards.json', myteam: 'myteam.json', custom: 'custom-teams.json' };
   const local = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
   const send = (res: ServerResponse, code: number, body: unknown) => {
     res.statusCode = code;
@@ -21,6 +22,9 @@ function contentEditor(): Plugin {
     res.end(JSON.stringify(body));
   };
   const images = () => (existsSync(cards) ? readdirSync(cards).filter((f) => !f.startsWith('.')) : []);
+  /** Every picture under logos/, as the paths custom-teams.json names them (custom/abc.webp). */
+  const logoFiles = () => (existsSync(logos) ? (readdirSync(logos, { recursive: true }) as string[]).map((f) => f.replace(/\\/g, '/')).filter((f) => /\.(png|webp|svg)$/i.test(f)) : []);
+  const logoName = /^custom\/[a-z0-9][a-z0-9-]*\.webp$/;
   return {
     name: 'webnba-content-editor',
     apply: 'serve',
@@ -29,6 +33,7 @@ function contentEditor(): Plugin {
         // The dev server listens on the network too: saving stays on this machine.
         if (!local.has(req.socket.remoteAddress ?? '')) return send(res, 403, { error: '只能在本機使用' });
         if (req.method === 'GET' && req.url === '/images') return send(res, 200, images());
+        if (req.method === 'GET' && req.url === '/logos') return send(res, 200, logoFiles());
         if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
         let body = '';
         req.on('data', (chunk: Buffer) => {
@@ -57,6 +62,19 @@ function contentEditor(): Plugin {
               if (!/^[a-z0-9][a-z0-9-]*\.webp$/.test(msg.name ?? '')) throw new Error('圖片名稱不對');
               rmSync(new URL(msg.name!, cards), { force: true });
               return send(res, 200, { ok: true, images: images() });
+            }
+            if (req.url === '/logo') {
+              // A custom team's logo: client/public/logos/custom/<name>.webp.
+              const prefix = 'data:image/webp;base64,';
+              if (!logoName.test(msg.name ?? '') || !msg.data?.startsWith(prefix)) throw new Error('隊徽名稱或格式不對');
+              mkdirSync(new URL('custom/', logos), { recursive: true });
+              writeFileSync(new URL(msg.name!, logos), Buffer.from(msg.data.slice(prefix.length), 'base64'));
+              return send(res, 200, { ok: true });
+            }
+            if (req.url === '/unlogo') {
+              if (!logoName.test(msg.name ?? '')) throw new Error('隊徽名稱不對');
+              rmSync(new URL(msg.name!, logos), { force: true });
+              return send(res, 200, { ok: true });
             }
             send(res, 404, { error: 'unknown' });
           } catch (e) {

@@ -85,7 +85,7 @@ function rewardsIn(value: unknown, out: Reward[] = []): Reward[] {
  * the tests): ids, colours, players, teams, days, tiers, rewards. `images`:
  * the files in client/public/cards/, when known.
  */
-export function checkContent(special: SpecialFile, myteam: ContentMyTeam, images?: Set<string>): ContentCheck {
+export function checkContent(special: SpecialFile, myteam: ContentMyTeam, images?: Set<string>, customGroups?: Set<string>): ContentCheck {
   const errors: string[] = [];
   const warnings: string[] = [];
   const dupes = (what: string, ids: string[]) => {
@@ -148,7 +148,8 @@ export function checkContent(special: SpecialFile, myteam: ContentMyTeam, images
 
   // Holidays.
   const specialIds = new Set(special.cards.map((c) => `x-${c.id}`));
-  const groups = new Set(TEAMS.map((t) => t.group).filter(Boolean));
+  // Custom-team menu groups events pick from (the editor passes the ones it is about to save).
+  const groups = customGroups ?? new Set(TEAMS.map((t) => t.group).filter(Boolean));
   const rewardProblems = (at: string, r: Reward) => {
     if (r.coins !== undefined && (!Number.isInteger(r.coins) || r.coins < 0)) errors.push(`${at}：金幣要是 0 以上的整數`);
     if (r.rental && !TIER_IDS.has(r.rental)) errors.push(`${at}：租借卡等級「${r.rental}」不存在`);
@@ -167,7 +168,8 @@ export function checkContent(special: SpecialFile, myteam: ContentMyTeam, images
     if (pk.sort && pk.sort !== 'height' && !RATING_KEYS.includes(pk.sort)) errors.push(`${at}：排序能力「${pk.sort}」不存在`);
     for (const t of pk.teams ?? []) if (!NBA_TEAMS.some((x) => x.abbr === t)) errors.push(`${at}：球隊「${t}」不存在`);
     for (const pos of pk.positions ?? []) if (!POSITIONS.includes(pos)) errors.push(`${at}：沒有「${pos}」這個位置`);
-    if (pk.group && !groups.has(pk.group)) errors.push(`${at}：自訂分組「${pk.group}」不存在`);
+    // The game falls back to the whole league: worth a look, not a blocker.
+    if (pk.group && !groups.has(pk.group)) warnings.push(`${at}：自訂分組「${pk.group}」沒有隊伍，會改用全聯盟球員`);
     if (pk.conference && pk.conference !== 'East' && pk.conference !== 'West') errors.push(`${at}：分區只能是 East 或 West`);
     rewardProblems(at, lv.reward ?? {});
   };
@@ -183,6 +185,10 @@ export function checkContent(special: SpecialFile, myteam: ContentMyTeam, images
     if (!h.levels?.length) errors.push(`${at}：至少要 1 關`);
     else if (h.levels.length !== 5) warnings.push(`${at}有 ${h.levels.length} 關（建議 5 關）`);
     h.levels?.forEach((lv, i) => levelProblems(`${at}第 ${i + 1} 關`, lv));
+  }
+  // The weekly events pick opponents the same way.
+  for (const ev of (myteam.events as { name: string; levels: EventLevelDef[] }[] | undefined) ?? []) {
+    ev.levels?.forEach((lv, i) => levelProblems(`每週活動「${ev.name}」第 ${i + 1} 關`, lv));
   }
   // The same problem found in several places says so once.
   return { errors: [...new Set(errors)], warnings: [...new Set(warnings)] };

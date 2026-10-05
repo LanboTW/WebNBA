@@ -1,6 +1,18 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CONTENT_WIDTH, checkContent, formatJson, previewSpecial, validMonthDay, type ContentMyTeam, type SpecialFile } from '../src';
+import {
+  CONTENT_WIDTH,
+  NBA_TEAMS,
+  checkContent,
+  formatCustomTeams,
+  formatJson,
+  previewSpecial,
+  validMonthDay,
+  validateCustomTeams,
+  type ContentMyTeam,
+  type RawTeam,
+  type SpecialFile,
+} from '../src';
 
 const read = (f: string) => readFileSync(new URL(`../data/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const special = (): SpecialFile => JSON.parse(read('special-cards.json'));
@@ -17,6 +29,16 @@ describe('content files (the content editor)', () => {
   it('the editor writes the files back as they are', () => {
     expect(formatJson(special(), CONTENT_WIDTH.special) + '\n').toBe(read('special-cards.json'));
     expect(formatJson(myteam(), CONTENT_WIDTH.myteam) + '\n').toBe(read('myteam.json'));
+    expect(formatCustomTeams(JSON.parse(read('custom-teams.json')))).toBe(read('custom-teams.json'));
+  });
+
+  it('custom team logos: a path under logos/ that exists', () => {
+    const file = JSON.parse(read('custom-teams.json')) as { ratingKeys: string[]; teams: RawTeam[] };
+    const team = { ...file.teams[0], logo: 'custom/don.webp' };
+    const check = (logos: string[]) => validateCustomTeams({ ...file, teams: [team] }, NBA_TEAMS, new Set(logos));
+    expect(check(['custom/don.webp'])).toEqual([]);
+    expect(check([]).some((e) => e.includes('沒有「custom/don.webp」'))).toBe(true);
+    expect(validateCustomTeams({ ...file, teams: [{ ...team, logo: '../x.png' }] }, NBA_TEAMS).some((e) => e.includes('logo 要寫成'))).toBe(true);
   });
 
   it('catches mistakes in plain words', () => {

@@ -5,15 +5,12 @@
  * JSON so it can be corrected by hand afterwards.
  */
 import { PNG } from 'pngjs';
+import { SHOE, SLEEVE, SOCKS } from '../../shared/src/teamFile';
 import type { Look } from '../../shared/src/types';
 
 export type { Look };
 
-export const HAIR = ['bald', 'buzz', 'short', 'afro', 'twists', 'dreads', 'long', 'mohawk'] as const;
-export const BEARD = ['none', 'stubble', 'full'] as const;
-export const SLEEVE = ['none', 'left', 'right', 'both'] as const;
-export const SHOE = ['white', 'black', 'team'] as const;
-export const SOCKS = ['low', 'high'] as const;
+export { BEARD, HAIR, SHOE, SLEEVE, SOCKS, lookErrors } from '../../shared/src/teamFile';
 
 /** CIE L* of the cheeks below which each skin level starts, from level 2 up to 6 (checked against ~50 photos). */
 const SKIN_STEPS = [72, 64, 58, 51, 43];
@@ -44,30 +41,6 @@ export function rollAccessories(name: string): Pick<Look, 'headband' | 'sleeve' 
 
 export function defaultLook(name: string): Look {
   return { skin: 3, hair: 'short', beard: 'none', ...rollAccessories(name) };
-}
-
-/** Field-by-field check, for roster.json, custom-teams.json and overrides.json. */
-export function lookErrors(look: unknown, partial = false): string[] {
-  if (typeof look !== 'object' || look === null) return ['外觀要是物件'];
-  const l = look as Record<string, unknown>;
-  const errors: string[] = [];
-  const need = (k: string, ok: (v: unknown) => boolean, rule: string) => {
-    if (l[k] === undefined ? !partial : !ok(l[k])) errors.push(`${k} ${rule}`);
-  };
-  const oneOf = (list: readonly string[]) => (v: unknown) => list.includes(v as string);
-  const hex = (v: unknown) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
-  need('skin', (v) => (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 6) || hex(v), '要是 1–6 或 #RRGGBB');
-  need('hair', oneOf(HAIR), `要是 ${HAIR.join('/')}`);
-  need('beard', oneOf(BEARD), `要是 ${BEARD.join('/')}`);
-  need('headband', (v) => typeof v === 'boolean', '要是 true/false');
-  need('sleeve', oneOf(SLEEVE), `要是 ${SLEEVE.join('/')}`);
-  need('kneepad', (v) => typeof v === 'boolean', '要是 true/false');
-  need('shoe', oneOf(SHOE), `要是 ${SHOE.join('/')}`);
-  need('socks', oneOf(SOCKS), `要是 ${SOCKS.join('/')}`);
-  if (l.hairColor !== undefined && !hex(l.hairColor)) errors.push('hairColor 要是 #RRGGBB');
-  const known = new Set(['skin', 'hair', 'hairColor', 'beard', 'headband', 'sleeve', 'kneepad', 'shoe', 'socks']);
-  for (const k of Object.keys(l)) if (!known.has(k)) errors.push(`不認識的外觀欄位 ${k}`);
-  return errors;
 }
 
 export type Analysis = Pick<Look, 'skin' | 'hair' | 'beard' | 'hairColor'>;
