@@ -922,6 +922,68 @@ button.small {
   pointer-events: none;
 }
 
+/* Play dial: opens round the finger on the play button; slide to a slice and let go. */
+#touch .tdial {
+  position: fixed;
+  z-index: 2;
+  width: 184px;
+  height: 184px;
+  border: 1px solid rgba(255, 122, 26, 0.55);
+  border-radius: 50%;
+  background: rgba(10, 12, 20, 0.78);
+  pointer-events: none;
+}
+
+#touch .tdial-mid {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+#touch .tdial.picking .tdial-mid {
+  opacity: 0.3;
+}
+
+#touch .tdial span {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  padding: 3px 5px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+#touch .tdial span b {
+  font-size: 15px;
+  color: var(--accent);
+}
+
+#touch .tdial span.on {
+  background: rgba(255, 122, 26, 0.9);
+  color: #1a0d00;
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
+#touch .tdial span.on b {
+  color: #1a0d00;
+}
+
 #touch .tsmall {
   position: absolute;
   top: max(6px, env(safe-area-inset-top));
@@ -934,9 +996,9 @@ button.small {
 }
 
 #touch .tsmall button {
-  border-radius: 9px;
-  padding: 5px 10px;
-  font-size: 12px;
+  border-radius: 10px;
+  padding: 6px 11px;
+  font-size: 13px;
   border-width: 1px;
   background: rgba(10, 12, 20, 0.4);
 }

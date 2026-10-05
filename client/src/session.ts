@@ -116,7 +116,6 @@ export class Session {
   private readonly icons: HTMLElement[];
   /** The play wheel (L held, or the touch 戰術 button). */
   private readonly wheel = document.createElement('div');
-  private touchWheel = false;
   private readonly timeoutPanel = document.querySelector<HTMLElement>('#timeoutPanel')!;
   private readonly timeoutLineup = new LineupPanel(document.querySelector<HTMLElement>('#timeoutLineup')!);
   private timeoutShown = false;
@@ -219,7 +218,6 @@ export class Session {
       if (!b) return;
       e.preventDefault();
       this.input.choosePlay(Number(b.dataset.play));
-      this.touchWheel = false;
     });
     document.querySelector('#passIcons')!.after(this.wheel);
     this.input.canCall = () => this.canCallPlay();
@@ -245,10 +243,11 @@ export class Session {
       this.hud.toast(CAMERA_LABEL[next], '', true);
       this.callbacks.onViewChange?.(next);
     }
-    if (this.input.touch?.consumeTap('plays')) this.touchWheel = !this.touchWheel;
+    // Phones pick plays on the dial over the round button; this bar is for the keyboard and pad.
     const callable = this.canCallPlay();
-    if (!callable) this.touchWheel = false;
-    this.wheel.classList.toggle('hidden', !(callable && (this.input.wheelOpen || this.touchWheel)) || this.paused);
+    const dialed = this.input.touch?.consumePlay() ?? 0;
+    if (dialed && callable && !this.paused) this.input.choosePlay(dialed);
+    this.wheel.classList.toggle('hidden', !(callable && this.input.wheelOpen) || this.paused);
     if (s.settings.mode === 'practice' && this.input.consumePress('KeyR')) {
       if (s.players[0].action === 'normal') giveBall(s, 0);
     }
