@@ -132,6 +132,8 @@ export interface PackDef {
   guarantee?: TierId;
   /** limited: this week's special cards join; reissue: one past season's cards only. */
   kind?: 'limited' | 'reissue';
+  /** Not sold in the shop (rewards can still give it). */
+  hidden?: boolean;
 }
 
 export const DEFAULT_WEIGHTS: Record<TierId, number> = {
@@ -557,7 +559,7 @@ export function cardWhere(c: CardDef): string[] {
   } else if (c.retired) out.push('復刻卡包（輪到它的球季時）');
   else
     for (const p of OFFICIAL_PACKS) {
-      if (p.kind) continue;
+      if (p.kind || p.hidden) continue;
       if ((!p.tiers?.length || p.tiers.includes(c.tier)) && (!p.positions?.length || p.positions.includes(c.position))) out.push(p.name);
     }
   const sources = [...rewardSources(), ...MISSIONS.map((m) => ({ reward: m.reward, where: '' }))];

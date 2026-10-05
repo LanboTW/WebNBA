@@ -410,6 +410,19 @@ describe('MyTeam modes: dynasty, limited, events, practice', () => {
     expect(cardWhere(catalogCard('x-oly1992-jordan')!)).toEqual(['特殊關卡・奧運美國隊・1992 美國隊首勝']);
   });
 
+  it('a pack hidden from the shop is not where a card comes from', async () => {
+    const { OFFICIAL_PACKS, cardCatalog } = await import('../src');
+    const standard = OFFICIAL_PACKS.find((p) => p.id === 'standard')!;
+    const card = cardCatalog().find((c) => c.source === 'current' && c.tier === 'white')!;
+    expect(cardWhere(card)).toContain(standard.name);
+    standard.hidden = true;
+    try {
+      expect(cardWhere(card)).not.toContain(standard.name);
+    } finally {
+      delete standard.hidden;
+    }
+  });
+
   it('奧運 cards never come from packs', () => {
     expect(cardCatalog().filter((c) => c.levelOnly)).toHaveLength(8);
     for (const p of OFFICIAL_PACKS) for (const w of [0, 1, 2, 3]) expect(packPool(p, w).some((c) => c.levelOnly)).toBe(false);

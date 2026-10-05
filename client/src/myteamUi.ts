@@ -396,7 +396,7 @@ function shopTab(): string {
     }${
       season ? `<span>本週復刻：<b>${seasonLabel(season)} 球季</b></span>` : ''
     }<span class="fine">卡包不會開出租借卡。同一張卡最多 ${COPY_MAX} 張，重複的可以在「收藏」強化。</span></div><div class="mtpacks">` +
-    OFFICIAL_PACKS.filter((p) => packPool(p).length > 0)
+    OFFICIAL_PACKS.filter((p) => !p.hidden && packPool(p).length > 0)
       .map((p) => {
         const can = wallet.coins >= p.price;
         const t = p.kind === 'limited' ? specialTheme(theme?.id) : undefined;

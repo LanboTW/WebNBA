@@ -296,6 +296,7 @@ function formHtml(): string {
     return (
       `<div class="row">${idField()}${field('名稱', 'name', 'text')}</div>` +
       `<div class="row">${field('價格（金幣）', 'price', 'number', 'min="1"')}${field('張數（1–10）', 'count', 'number', 'min="1" max="10"')}${select('種類', 'kind', kindOptions, '一般')}</div>` +
+      `<div class="row">${check('在商店隱藏（不賣；關卡、任務獎勵還是會給）', 'hidden')}</div>` +
       chips(
         '只出這些等級（不選＝全部）',
         'tiers',
@@ -473,7 +474,7 @@ function listHtml(): string {
               ? `${esc(String(e.name))}（${e.from}～${e.to}）`
               : kind === 'team'
                 ? `${esc(String(e.name))}<small> ${esc(String(e.group ?? ''))}</small>`
-                : `${esc(String(e.name))} ${e.price}`;
+                : `${esc(String(e.name))} ${e.price}${e.hidden ? '<small> 隱藏</small>' : ''}`;
       return `<button type="button" class="ce-item${current === id ? ' on' : ''}" data-open="${esc(id)}"><b>${label}</b><small>${esc(id)}</small></button>`;
     })
     .join('');
@@ -608,7 +609,7 @@ const KEY_ORDER: Record<Kind, string[]> = {
   card: ['id', 'player', 'team', 'ovr', 'theme', 'label', 'position', 'heightM', 'number', 'style', 'look', 'image'],
   theme: ['id', 'name', 'color', 'accent', 'levelOnly'],
   holiday: ['id', 'name', 'desc', 'from', 'to', 'theme', 'levels'],
-  pack: ['id', 'name', 'price', 'count', 'kind', 'tiers', 'positions', 'players', 'guarantee', 'weights'],
+  pack: ['id', 'name', 'price', 'count', 'kind', 'hidden', 'tiers', 'positions', 'players', 'guarantee', 'weights'],
   team: ['group', 'abbr', 'name', 'primary', 'secondary', 'logo', 'players'],
 };
 
