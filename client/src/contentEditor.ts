@@ -126,7 +126,7 @@ function blank(k: Kind): Entry {
     desc: '',
     from: '01-01',
     to: '01-14',
-    levels: [level(3, 0, 'normal', 300), level(5, 1, 'normal', 400), level(3, 2, 'hard', 300), level(5, 3, 'hard', 500), { ...level(5, 6, 'expert', 800), reward: { coins: 800, pack: 'elite' } }],
+    levels: [level(3, 0, 'normal', 900), level(5, 1, 'normal', 1200), level(3, 2, 'hard', 900), level(5, 3, 'hard', 1500), { ...level(5, 6, 'expert', 2400), reward: { coins: 2400, pack: 'elite' } }],
   };
 }
 
@@ -731,7 +731,7 @@ function wire(): void {
       setPath(form, path, list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
     } else if (act === 'addlevel') {
       const levels = (form.levels as unknown[]) ?? [];
-      form.levels = [...levels, { size: 5, offset: 3, difficulty: 'hard', reward: { coins: 500 }, pick: {} }];
+      form.levels = [...levels, { size: 5, offset: 3, difficulty: 'hard', reward: { coins: 1500 }, pick: {} }];
     } else if (act === 'dellevel') {
       const levels = (form.levels as unknown[]) ?? [];
       levels.splice(Number(data('data-i')), 1);

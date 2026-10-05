@@ -821,7 +821,7 @@ export function noteDeckGame(save: MyTeamSave): void {
 }
 
 /** The first MyTeam win of each local day pays this on top. */
-export const FIRST_WIN_COINS = 300;
+export const FIRST_WIN_COINS = 900;
 
 export function localDay(now: number = Date.now()): string {
   const d = new Date(now);
@@ -906,7 +906,7 @@ export const MISSIONS: MissionDef[] = CONTENT.missions;
 /** Missions claimed that open each next period (3 open period 2, 6 period 3, ...). */
 export const MISSIONS_PER_PERIOD = 3;
 /** Coins for games that are not a first ladder win. */
-export const GAME_COINS = { win: 225, loss: 75, ladderReplay: 150 };
+export const GAME_COINS = { win: 675, loss: 225, ladderReplay: 450 };
 
 export const periodLevels = (period: number): LevelDef[] => LEVELS.filter((l) => l.period === period);
 
@@ -1523,8 +1523,8 @@ export function eventTeam(theme: Pick<EventTheme, 'name' | 'levels'>, index: num
   return { abbr: '活動', name: theme.name, primary: '#d4a017', secondary: '#14161f', players };
 }
 
-/** Practice games (隨機比賽) pay by game time: 30 coins every 3 minutes, a win 1.5x, times the level. */
-export const PRACTICE_COINS = { per3: 30, win: 1.5 };
+/** Practice games (隨機比賽) pay by game time: 90 coins every 3 minutes, a win 1.5x, times the level. */
+export const PRACTICE_COINS = { per3: 90, win: 1.5 };
 export function practiceCoins(minutes: number, won: boolean, difficulty: Difficulty): number {
   return Math.round((minutes / 3) * PRACTICE_COINS.per3 * (won ? PRACTICE_COINS.win : 1) * DIFFICULTY_COINS[difficulty]);
 }

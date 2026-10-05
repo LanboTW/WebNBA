@@ -243,22 +243,22 @@ describe('MyTeam play', () => {
       coins += out.coins;
       if (l.boss) expect(out.unlocked).toBe(2);
     }
-    expect(coins).toBeGreaterThanOrEqual(1200);
+    expect(coins).toBeGreaterThanOrEqual(3600);
     expect(save.period).toBe(2);
     const again = recordGame(save, { kind: 'ladder', won: true, margin: 5, level: list[0].id, used: [], totals });
     expect(again.firstClear).toBe(false);
-    expect(again.coins).toBe(150);
+    expect(again.coins).toBe(450);
   });
 
   it('game coins scale with the computer level, level rewards do not', () => {
     const save = newMyTeam(seeded(6));
-    // The day's first win brings 300 more, once.
+    // The day's first win brings 900 more, once.
     const first = recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals, difficulty: 'legend' }, Math.random, '2026-10-05');
-    expect(first.coins).toBe(360 + 300);
-    expect(first.firstWin).toBe(300);
-    expect(recordGame(save, { kind: 'quick', won: false, margin: -3, used: [], totals, difficulty: 'easy' }, Math.random, '2026-10-05').coins).toBe(60);
-    expect(recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals }, Math.random, '2026-10-05').coins).toBe(225);
-    expect(recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals }, Math.random, '2026-10-06').coins).toBe(525);
+    expect(first.coins).toBe(1080 + 900);
+    expect(first.firstWin).toBe(900);
+    expect(recordGame(save, { kind: 'quick', won: false, margin: -3, used: [], totals, difficulty: 'easy' }, Math.random, '2026-10-05').coins).toBe(180);
+    expect(recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals }, Math.random, '2026-10-05').coins).toBe(675);
+    expect(recordGame(save, { kind: 'quick', won: true, margin: 3, used: [], totals }, Math.random, '2026-10-06').coins).toBe(675 + 900);
     const lv = periodLevels(1)[0];
     const out = recordGame(save, { kind: 'ladder', won: true, margin: 5, level: lv.id, used: [], totals, difficulty: 'legend' }, seeded(1), '2026-10-06');
     expect(out.firstClear).toBe(true);
@@ -273,7 +273,7 @@ describe('MyTeam play', () => {
     expect(save.rentals.find((x) => x.uid === r.uid)?.games).toBe(1);
     const out = recordGame(save, { kind: 'quick', won: true, margin: 3, used: [r.uid], totals });
     expect(out.gone).toEqual([r.name]);
-    expect(out.coins).toBe(225 + 300);
+    expect(out.coins).toBe(675 + 900);
     expect(save.deck).not.toContain(r.uid);
   });
 
@@ -381,10 +381,10 @@ describe('MyTeam modes: dynasty, limited, events, practice', () => {
   });
 
   it('practice pays by game time and level', () => {
-    expect(practiceCoins(12, false, 'normal')).toBe(120);
-    expect(practiceCoins(12, true, 'normal')).toBe(180);
-    expect(practiceCoins(20, true, 'legend')).toBe(480);
-    expect(practiceCoins(3, false, 'easy')).toBe(24);
+    expect(practiceCoins(12, false, 'normal')).toBe(360);
+    expect(practiceCoins(12, true, 'normal')).toBe(540);
+    expect(practiceCoins(20, true, 'legend')).toBe(1440);
+    expect(practiceCoins(3, false, 'easy')).toBe(72);
   });
 
   it('history levels: every player found, champions at their card overalls, first win gives one of the team', () => {
@@ -404,7 +404,7 @@ describe('MyTeam modes: dynasty, limited, events, practice', () => {
     const save = newMyTeam(seeded(5));
     const out = recordGame(save, { kind: 'limited', won: true, margin: 3, level: 'ch2016', used: [], totals: { points: 0, threes: 0, assists: 0, blocks: 0, steals: 0 } }, seeded(2));
     expect(out.firstClear).toBe(true);
-    expect(out.coins).toBeGreaterThanOrEqual(800);
+    expect(out.coins).toBeGreaterThanOrEqual(2400);
     expect(out.drops.some((d) => d.card.id.startsWith('c2016-'))).toBe(true);
     expect(statValue(save, 'limited')).toBe(1);
     expect(cardWhere(catalogCard('x-oly1992-jordan')!)).toEqual(['特殊關卡・奧運美國隊・1992 美國隊首勝']);
