@@ -1158,7 +1158,7 @@
     {
       "id": "lny",
       "name": "新年",
-      "desc": "新春開打：台灣之光、火箭和全聯盟明星",
+      "desc": "新春開打：火箭和全聯盟明星",
       "from": "01-15",
       "to": "02-20",
       "theme": "lny",
@@ -1168,7 +1168,7 @@
           "offset": 0,
           "difficulty": "normal",
           "reward": { "coins": 300 },
-          "pick": { "group": "台灣" }
+          "pick": { "sort": "pass" }
         },
         {
           "size": 5,
@@ -1549,34 +1549,6 @@
           "difficulty": "hard",
           "reward": { "coins": 300, "pack": "standard" },
           "pick": { "sort": "jump" }
-        }
-      ]
-    },
-    {
-      "id": "taiwan",
-      "name": "台灣之光週",
-      "desc": "台灣分組的球員組隊挑戰你",
-      "levels": [
-        {
-          "size": 3,
-          "offset": 0,
-          "difficulty": "normal",
-          "reward": { "coins": 300 },
-          "pick": { "group": "台灣" }
-        },
-        {
-          "size": 5,
-          "offset": 3,
-          "difficulty": "normal",
-          "reward": { "coins": 400 },
-          "pick": { "group": "台灣" }
-        },
-        {
-          "size": 3,
-          "offset": 6,
-          "difficulty": "hard",
-          "reward": { "coins": 300, "pack": "standard" },
-          "pick": { "group": "台灣" }
         }
       ]
     }
