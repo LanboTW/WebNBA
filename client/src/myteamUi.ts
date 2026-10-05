@@ -66,6 +66,7 @@ import {
   copiesOf,
   firstWinBonus,
   limitedTheme,
+  nextLimited,
   localDay,
   mergeCard,
   mergeFodder,
@@ -386,8 +387,13 @@ function themeWhen(): string {
 function shopTab(): string {
   const theme = limitedTheme();
   const season = reissueSeason();
+  // No limited pack now: when the next one comes.
+  const next = theme ? null : nextLimited();
+  const nextDay = next ? new Date(next.starts) : null;
   return (
     `<div class="mtbar">${theme ? `<span>${themeWhen()}限定：<b style="color:${theme.color}">${esc(theme.name)}</b></span>` : ''}${
+      next && nextDay ? `<span>下次限定卡包：<b>${esc(next.holiday.name)}</b> ${nextDay.getMonth() + 1}/${nextDay.getDate()} 開始</span>` : ''
+    }${
       season ? `<span>本週復刻：<b>${seasonLabel(season)} 球季</b></span>` : ''
     }<span class="fine">卡包不會開出租借卡。同一張卡最多 ${COPY_MAX} 張，重複的可以在「收藏」強化。</span></div><div class="mtpacks">` +
     OFFICIAL_PACKS.filter((p) => packPool(p).length > 0)

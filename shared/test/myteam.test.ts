@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   HOLIDAYS,
   activeHolidays,
@@ -18,6 +18,7 @@ import {
   TIERS,
   copiesOf,
   limitedTheme,
+  nextLimited,
   mergeCard,
   packPool,
   seasonLabel,
@@ -117,11 +118,26 @@ describe('MyTeam packs', () => {
     expect(odds.reduce((s, o) => s + o.chance, 0)).toBeCloseTo(1);
   });
 
-  it('special cards only come from the limited pack, in their theme week; no 復刻 without old seasons', () => {
+  it('special cards only come from the limited pack, in their holiday; no 復刻 without old seasons', () => {
     for (const p of OFFICIAL_PACKS.filter((x) => x.kind !== 'limited')) expect(packPool(p).some((c) => c.source === 'special')).toBe(false);
-    const theme = limitedTheme(100)!;
-    expect(packPool(pack('limited'), 100).filter((c) => c.source === 'special').every((c) => c.theme === theme.id)).toBe(true);
-    expect(packPool(pack('limited'), 100).some((c) => c.source === 'special')).toBe(true);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 11, 10, 12));
+      const theme = limitedTheme(100)!;
+      expect(theme.id).toBe('xmas');
+      expect(packPool(pack('limited'), 100).filter((c) => c.source === 'special').every((c) => c.theme === theme.id)).toBe(true);
+      expect(packPool(pack('limited'), 100).some((c) => c.source === 'special')).toBe(true);
+      // Outside every holiday the holiday themes are not sold: the pack is off the shelf.
+      vi.setSystemTime(new Date(2026, 9, 5, 12));
+      for (const w of [0, 1, 2, 3]) expect(limitedTheme(w)).toBeUndefined();
+      expect(packPool(pack('limited'))).toHaveLength(0);
+      const next = nextLimited()!;
+      expect(next.holiday.id).toBe('xmas');
+      expect(next.starts).toBe(new Date(2026, 11, 1).getTime());
+      expect(nextLimited(new Date(2027, 0, 1, 12).getTime())!.holiday.id).toBe('lny');
+    } finally {
+      vi.useRealTimers();
+    }
     expect(packPool(pack('reissue'))).toHaveLength(0);
   });
 

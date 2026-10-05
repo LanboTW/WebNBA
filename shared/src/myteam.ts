@@ -423,15 +423,35 @@ export const eventWeek = (now: number = Date.now()): number => Math.floor((Math.
 
 const rotate = <T>(list: T[], week: number): T | undefined => (list.length ? list[((week % list.length) + list.length) % list.length] : undefined);
 
-/** The limited pack's theme: a running holiday's (活動關卡), else this week's in turn (one with cards to sell). */
+/** A theme with cards a pack may sell (not a levels-only one). */
+const sells = (id: string | undefined): boolean => !!id && !specialTheme(id)?.levelOnly && SPECIAL.cards.some((c) => c.theme === id);
+
+/**
+ * The limited pack's theme: a running holiday's (活動關卡); otherwise this
+ * week's in turn among the themes no holiday owns. A holiday's theme is never
+ * sold outside its days; with nothing to sell the pack is off the shelf.
+ */
 export function limitedTheme(week: number = eventWeek(), now: number = Date.now()): SpecialTheme | undefined {
-  const sells = (id: string | undefined) => !!id && !specialTheme(id)?.levelOnly && SPECIAL.cards.some((c) => c.theme === id);
   const holiday = activeHolidays(now).find((h) => sells(h.theme));
   if (holiday) return specialTheme(holiday.theme);
   return rotate(
-    SPECIAL_THEMES.filter((t) => sells(t.id)),
+    SPECIAL_THEMES.filter((t) => sells(t.id) && !HOLIDAYS.some((h) => h.theme === t.id)),
     week,
   );
+}
+
+/** The next holiday that brings the limited pack back, and the day it starts (local midnight). */
+export function nextLimited(now: number = Date.now()): { holiday: HolidayDef; starts: number } | null {
+  const d = new Date(now);
+  let best: { holiday: HolidayDef; starts: number } | null = null;
+  for (const h of HOLIDAYS) {
+    if (!sells(h.theme)) continue;
+    const [m, day] = h.from.split('-').map(Number);
+    let starts = new Date(d.getFullYear(), m - 1, day).getTime();
+    if (starts <= now) starts = new Date(d.getFullYear() + 1, m - 1, day).getTime();
+    if (!best || starts < best.starts) best = { holiday: h, starts };
+  }
+  return best;
 }
 
 /** This week's 復刻 season. */
