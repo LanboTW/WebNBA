@@ -5437,3 +5437,131 @@ body.touch textarea {
   right: 4cqw;
   font-size: 10cqw;
 }
+
+/* ------------------------------------------------- content editor (dev only) */
+
+.ce-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ce-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+}
+
+.ce-item small {
+  color: var(--muted);
+}
+
+.ce-item.on {
+  border-color: var(--accent);
+  background: rgba(255, 122, 26, 0.14);
+}
+
+.ce-item.new {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.ce-form .row {
+  flex-wrap: wrap;
+}
+
+.ce-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.ce-chips > span {
+  margin-right: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ce-weights label {
+  max-width: 90px;
+}
+
+.ce-level {
+  margin: 10px 0;
+  padding: 6px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.ce-level legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.ce-crop {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.ce-crop canvas {
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  cursor: grab;
+  touch-action: none;
+  background: #000;
+}
+
+.ce-errors,
+.ce-warnings {
+  margin: 8px 0;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.ce-errors {
+  color: #ff6b6b;
+}
+
+.ce-warnings {
+  color: #ffd166;
+}
+
+.ce-cardview {
+  display: flex;
+  justify-content: center;
+}
+
+.ce-cardrow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ce-cardrow .mtcard.small {
+  --w: 130px;
+  margin: 0;
+}
+
+.ce-levels {
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.ce-levels li span {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}

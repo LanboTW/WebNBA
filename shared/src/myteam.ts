@@ -204,7 +204,8 @@ export interface SpecialTheme {
   /** Its cards come from special levels only, never a pack. */
   levelOnly?: boolean;
 }
-interface SpecialRow {
+/** A line of special-cards.json's cards. */
+export interface SpecialRow {
   id: string;
   player: string;
   ovr: number;
@@ -219,7 +220,13 @@ interface SpecialRow {
   /** The card's line (default: the theme's name). */
   label?: string;
 }
-const SPECIAL = specialJson as unknown as { themes: SpecialTheme[]; cards: SpecialRow[] };
+/** special-cards.json. */
+export interface SpecialFile {
+  $comment?: string;
+  themes: SpecialTheme[];
+  cards: SpecialRow[];
+}
+const SPECIAL = specialJson as unknown as SpecialFile;
 export const SPECIAL_THEMES: SpecialTheme[] = SPECIAL.themes;
 export const specialTheme = (id: string | undefined): SpecialTheme | undefined => SPECIAL_THEMES.find((t) => t.id === id);
 
@@ -307,35 +314,54 @@ export function cardCatalog(): CardDef[] {
   }
   for (const [name, team, ovr] of HISTORY.hof) add(`h-${slug(name)}`, name, team, ovr, 'hof', '名人堂');
   for (const s of SPECIAL.cards) {
-    const theme = specialTheme(s.theme);
-    const known = people().get(s.player);
-    const position = s.position ?? known?.position ?? 'SF';
-    const heightM = s.heightM ?? known?.heightM ?? 2;
-    const base: PlayerInfo = known
-      ? { ...known, ...(s.look ? { look: { ...(known.look ?? LOOK), ...s.look } } : {}) }
-      : { name: s.player, number: s.number ?? 0, heightM, position, ratings: startingRatings(position, s.style ?? 'allround', heightM), look: { ...LOOK, ...s.look } };
-    const id = `x-${s.id}`;
-    cardBase.set(id, base);
-    out.push({
-      id,
-      name: s.player,
-      team: s.team ?? 'LAL',
-      position,
-      number: s.number ?? base.number,
-      heightM,
-      tier: tierOf(s.ovr),
-      ovr: s.ovr,
-      source: 'special',
-      label: s.label ?? theme?.name ?? '特殊',
-      theme: s.theme,
-      ...(s.image ? { image: s.image } : {}),
-      ...(theme?.levelOnly ? { levelOnly: true } : {}),
-    });
+    const { def, base } = specialCard(s, SPECIAL_THEMES);
+    cardBase.set(def.id, base);
+    out.push(def);
   }
   catalog = out;
   byId = new Map(out.map((c) => [c.id, c]));
   return out;
 }
+
+/** A special card's catalog entry and the player under it (a known one, or one made from the line's position, height and style). */
+function specialCard(s: SpecialRow, themes: SpecialTheme[]): { def: CardDef; base: PlayerInfo } {
+  const theme = themes.find((t) => t.id === s.theme);
+  const known = people().get(s.player);
+  const position = s.position ?? known?.position ?? 'SF';
+  const heightM = s.heightM ?? known?.heightM ?? 2;
+  const base: PlayerInfo = known
+    ? { ...known, ...(s.look ? { look: { ...(known.look ?? LOOK), ...s.look } } : {}) }
+    : { name: s.player, number: s.number ?? 0, heightM, position, ratings: startingRatings(position, s.style ?? 'allround', heightM), look: { ...LOOK, ...s.look } };
+  const def: CardDef = {
+    id: `x-${s.id}`,
+    name: s.player,
+    team: s.team ?? 'LAL',
+    position,
+    number: s.number ?? base.number,
+    heightM,
+    tier: tierOf(s.ovr),
+    ovr: s.ovr,
+    source: 'special',
+    label: s.label ?? theme?.name ?? '特殊',
+    theme: s.theme,
+    ...(s.image ? { image: s.image } : {}),
+    ...(theme?.levelOnly ? { levelOnly: true } : {}),
+  };
+  return { def, base };
+}
+
+/** A special card from a line not saved yet (the content editor's preview). */
+export function previewSpecial(s: SpecialRow, themes: SpecialTheme[]): OwnedCard {
+  const { def, base } = specialCard(s, themes);
+  const ovr = Math.max(1, Math.min(99, Math.round(def.ovr) || 1));
+  const r = exactly(base.ratings, def.position, ovr);
+  return { ...def, ovr, tier: tierOf(ovr), uid: 'preview', ratings: RATING_KEYS.map((k) => r[k]) };
+}
+
+/** Whether a name is a player the game knows (today's roster or the history files). */
+export const knownPlayer = (name: string): boolean => people().has(name);
+/** Every player the game knows, by name. */
+export const knownPlayers = (): string[] => [...people().keys()].sort();
 
 export function catalogCard(id: string): CardDef | undefined {
   cardCatalog();

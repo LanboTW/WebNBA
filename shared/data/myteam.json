@@ -1,13 +1,45 @@
 {
   "$comment": "MyTeam official content. Packs: price in coins, count = cards per pack, optional tiers / positions filters, weights per tier (missing tiers use the defaults), guarantee = the first card is of this tier or better, kind = limited (this week's special theme joins) or reissue (one past season's cards); packs never give rentals. Levels (挑戰之路): period, NBA team, ovr = the opponent starters are rescaled to this team rating, difficulty, boss = clearing it with the rest clears the period, reward {coins, pack id, rental tier, card tier}. Missions: one-time goals on a counter (games, wins, cleared, streetWins, points, threes, assists, blocks, steals, packs, cards, deckRating, bigWins, dynasty, limited, events). Dynasty (街頭王朝): 3v3 levels like the ladder, name = the crew. Limited (特殊關卡 挑戰（一）/（二）, group c1 or c2): rule {positions, maxOvr, sameTeam, maxHeight / minHeight (starters average, m), noRentals, tiers, baseOnly, sources (card sources), minYear / maxYear (the card's year: champion and award years, a current card's season end; others never fit), sameYear, award (that award's cards), minCurrent / minHistory (lineup counts)}, size 3 or 5 (5 needs a team). Legacy (特殊關卡 歷年總冠軍 / 名人堂 / 奧運美國隊): difficulty and reward of each kind's levels, built from history.json; the first win also gives one of that team's cards. Holidays (活動關卡 節日): from / to as MM-DD every year, optional theme (its special cards are the limited pack's while it runs), five levels played in order, each paying once a year; reward cards = one of these card ids. Events (活動關卡): weekly themes in turn; each level has size, offset (added to your period base rating), difficulty, reward and pick {sort: rating key or height, positions, teams, conference, group}.",
   "packs": [
-    {"id":"standard","name":"一般卡包","price":500,"count":3},
-    {"id":"premium","name":"高級卡包","price":2500,"count":3,"tiers":["gold","pink","orange","black"],"guarantee":"pink","weights":{"gold":60,"pink":30,"orange":8,"black":2}},
-    {"id":"elite","name":"頂級卡包","price":6000,"count":3,"tiers":["pink","orange","black"],"guarantee":"orange","weights":{"pink":70,"orange":22,"black":8}},
-    {"id":"limited","name":"限定卡包","price":2500,"count":3,"kind":"limited","tiers":["gold","pink","orange","black"],"guarantee":"pink","weights":{"gold":56,"pink":30,"orange":9,"black":5}},
-    {"id":"reissue","name":"復刻卡包","price":500,"count":3,"kind":"reissue","guarantee":"gold"},
-    {"id":"guards","name":"後場卡包","price":700,"count":3,"positions":["PG","SG"]},
-    {"id":"bigs","name":"禁區卡包","price":700,"count":3,"positions":["PF","C"]}
+    { "id": "standard", "name": "一般卡包", "price": 500, "count": 3 },
+    {
+      "id": "premium",
+      "name": "高級卡包",
+      "price": 2500,
+      "count": 3,
+      "tiers": ["gold", "pink", "orange", "black"],
+      "guarantee": "pink",
+      "weights": { "gold": 60, "pink": 30, "orange": 8, "black": 2 }
+    },
+    {
+      "id": "elite",
+      "name": "頂級卡包",
+      "price": 6000,
+      "count": 3,
+      "tiers": ["pink", "orange", "black"],
+      "guarantee": "orange",
+      "weights": { "pink": 70, "orange": 22, "black": 8 }
+    },
+    {
+      "id": "limited",
+      "name": "限定卡包",
+      "price": 2500,
+      "count": 3,
+      "kind": "limited",
+      "tiers": ["gold", "pink", "orange", "black"],
+      "guarantee": "pink",
+      "weights": { "gold": 56, "pink": 30, "orange": 9, "black": 5 }
+    },
+    {
+      "id": "reissue",
+      "name": "復刻卡包",
+      "price": 500,
+      "count": 3,
+      "kind": "reissue",
+      "guarantee": "gold"
+    },
+    { "id": "guards", "name": "後場卡包", "price": 700, "count": 3, "positions": ["PG", "SG"] },
+    { "id": "bigs", "name": "禁區卡包", "price": 700, "count": 3, "positions": ["PF", "C"] }
   ],
   "levels": [
     {
@@ -265,34 +297,10 @@
       "target": 1,
       "reward": { "coins": 100 }
     },
-    {
-      "id": "w3",
-      "text": "贏 3 場比賽",
-      "stat": "wins",
-      "target": 3,
-      "reward": { "coins": 200 }
-    },
-    {
-      "id": "w10",
-      "text": "贏 10 場比賽",
-      "stat": "wins",
-      "target": 10,
-      "reward": { "coins": 500 }
-    },
-    {
-      "id": "w25",
-      "text": "贏 25 場比賽",
-      "stat": "wins",
-      "target": 25,
-      "reward": { "coins": 1000 }
-    },
-    {
-      "id": "l5",
-      "text": "挑戰之路過 5 關",
-      "stat": "cleared",
-      "target": 5,
-      "reward": { "coins": 300 }
-    },
+    { "id": "w3", "text": "贏 3 場比賽", "stat": "wins", "target": 3, "reward": { "coins": 200 } },
+    { "id": "w10", "text": "贏 10 場比賽", "stat": "wins", "target": 10, "reward": { "coins": 500 } },
+    { "id": "w25", "text": "贏 25 場比賽", "stat": "wins", "target": 25, "reward": { "coins": 1000 } },
+    { "id": "l5", "text": "挑戰之路過 5 關", "stat": "cleared", "target": 5, "reward": { "coins": 300 } },
     {
       "id": "l15",
       "text": "挑戰之路過 15 關",
@@ -370,13 +378,7 @@
       "target": 20,
       "reward": { "coins": 600, "rental": "pink" }
     },
-    {
-      "id": "c40",
-      "text": "收藏 40 張卡",
-      "stat": "cards",
-      "target": 40,
-      "reward": { "coins": 300 }
-    },
+    { "id": "c40", "text": "收藏 40 張卡", "stat": "cards", "target": 40, "reward": { "coins": 300 } },
     {
       "id": "c100",
       "text": "收藏 100 張卡",
@@ -398,13 +400,7 @@
       "target": 88,
       "reward": { "coins": 800 }
     },
-    {
-      "id": "bw",
-      "text": "單場贏 20 分以上",
-      "stat": "bigWins",
-      "target": 1,
-      "reward": { "coins": 400 }
-    },
+    { "id": "bw", "text": "單場贏 20 分以上", "stat": "bigWins", "target": 1, "reward": { "coins": 400 } },
     {
       "id": "dy1",
       "text": "街頭王朝通關第 1 期",
@@ -721,12 +717,7 @@
     {
       "id": "x01",
       "name": "後場風暴",
-      "rule": {
-        "positions": [
-          "PG",
-          "SG"
-        ]
-      },
+      "rule": { "positions": ["PG", "SG"] },
       "size": 3,
       "ovr": 72,
       "difficulty": "normal",
@@ -782,12 +773,7 @@
     {
       "id": "x07",
       "name": "雙塔",
-      "rule": {
-        "positions": [
-          "PF",
-          "C"
-        ]
-      },
+      "rule": { "positions": ["PF", "C"] },
       "size": 3,
       "ovr": 78,
       "difficulty": "normal",
@@ -796,12 +782,7 @@
     {
       "id": "x08",
       "name": "白綠逆襲",
-      "rule": {
-        "tiers": [
-          "white",
-          "green"
-        ]
-      },
+      "rule": { "tiers": ["white", "green"] },
       "size": 5,
       "team": "CHI",
       "ovr": 74,
@@ -821,12 +802,7 @@
     {
       "id": "x10",
       "name": "鋒線大軍",
-      "rule": {
-        "positions": [
-          "SF",
-          "PF"
-        ]
-      },
+      "rule": { "positions": ["SF", "PF"] },
       "size": 3,
       "ovr": 80,
       "difficulty": "hard",
@@ -855,12 +831,7 @@
     {
       "id": "x13",
       "name": "後衛之城",
-      "rule": {
-        "positions": [
-          "PG",
-          "SG"
-        ]
-      },
+      "rule": { "positions": ["PG", "SG"] },
       "size": 5,
       "team": "MIA",
       "ovr": 82,
@@ -1106,58 +1077,36 @@
           "size": 3,
           "offset": 0,
           "difficulty": "normal",
-          "reward": {
-            "coins": 300
-          },
-          "pick": {
-            "sort": "steal"
-          }
+          "reward": { "coins": 300 },
+          "pick": { "sort": "steal" }
         },
         {
           "size": 5,
           "offset": 1,
           "difficulty": "normal",
-          "reward": {
-            "coins": 400
-          },
-          "pick": {
-            "sort": "block"
-          }
+          "reward": { "coins": 400 },
+          "pick": { "sort": "block" }
         },
         {
           "size": 3,
           "offset": 2,
           "difficulty": "hard",
-          "reward": {
-            "coins": 300,
-            "pack": "standard"
-          },
-          "pick": {
-            "sort": "defense"
-          }
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "defense" }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "hard",
-          "reward": {
-            "coins": 500
-          },
-          "pick": {
-            "sort": "steal"
-          }
+          "reward": { "coins": 500 },
+          "pick": { "sort": "steal" }
         },
         {
           "size": 5,
           "offset": 6,
           "difficulty": "expert",
-          "reward": {
-            "coins": 800,
-            "pack": "elite"
-          },
-          "pick": {
-            "sort": "block"
-          }
+          "reward": { "coins": 800, "pack": "elite" },
+          "pick": { "sort": "block" }
         }
       ]
     },
@@ -1173,90 +1122,36 @@
           "size": 3,
           "offset": 0,
           "difficulty": "normal",
-          "reward": {
-            "coins": 300
-          },
-          "pick": {
-            "teams": [
-              "LAL",
-              "GSW",
-              "BOS",
-              "NYK",
-              "PHI"
-            ]
-          }
+          "reward": { "coins": 300 },
+          "pick": { "teams": ["LAL", "GSW", "BOS", "NYK", "PHI"] }
         },
         {
           "size": 5,
           "offset": 1,
           "difficulty": "normal",
-          "reward": {
-            "coins": 400
-          },
-          "pick": {
-            "teams": [
-              "LAL",
-              "GSW",
-              "BOS",
-              "NYK",
-              "PHI"
-            ]
-          }
+          "reward": { "coins": 400 },
+          "pick": { "teams": ["LAL", "GSW", "BOS", "NYK", "PHI"] }
         },
         {
           "size": 3,
           "offset": 2,
           "difficulty": "hard",
-          "reward": {
-            "coins": 300,
-            "pack": "standard"
-          },
-          "pick": {
-            "teams": [
-              "LAL",
-              "GSW",
-              "BOS",
-              "NYK",
-              "PHI"
-            ]
-          }
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "teams": ["LAL", "GSW", "BOS", "NYK", "PHI"] }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "hard",
-          "reward": {
-            "coins": 500
-          },
-          "pick": {
-            "teams": [
-              "LAL",
-              "GSW",
-              "BOS",
-              "NYK",
-              "PHI"
-            ]
-          }
+          "reward": { "coins": 500 },
+          "pick": { "teams": ["LAL", "GSW", "BOS", "NYK", "PHI"] }
         },
         {
           "size": 5,
           "offset": 6,
           "difficulty": "expert",
-          "reward": {
-            "coins": 800,
-            "cards": [
-              "x-xmas-lebron"
-            ]
-          },
-          "pick": {
-            "teams": [
-              "LAL",
-              "GSW",
-              "BOS",
-              "NYK",
-              "PHI"
-            ]
-          }
+          "reward": { "coins": 800, "cards": ["x-xmas-lebron"] },
+          "pick": { "teams": ["LAL", "GSW", "BOS", "NYK", "PHI"] }
         }
       ]
     },
@@ -1272,57 +1167,29 @@
           "size": 3,
           "offset": 0,
           "difficulty": "normal",
-          "reward": {
-            "coins": 300
-          },
-          "pick": {
-            "group": "台灣"
-          }
+          "reward": { "coins": 300 },
+          "pick": { "group": "台灣" }
         },
         {
           "size": 5,
           "offset": 1,
           "difficulty": "normal",
-          "reward": {
-            "coins": 400
-          },
-          "pick": {
-            "teams": [
-              "HOU"
-            ]
-          }
+          "reward": { "coins": 400 },
+          "pick": { "teams": ["HOU"] }
         },
         {
           "size": 3,
           "offset": 2,
           "difficulty": "hard",
-          "reward": {
-            "coins": 300,
-            "pack": "standard"
-          },
-          "pick": {
-            "sort": "three"
-          }
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "three" }
         },
-        {
-          "size": 5,
-          "offset": 3,
-          "difficulty": "hard",
-          "reward": {
-            "coins": 500
-          },
-          "pick": {}
-        },
+        { "size": 5, "offset": 3, "difficulty": "hard", "reward": { "coins": 500 }, "pick": {} },
         {
           "size": 5,
           "offset": 6,
           "difficulty": "expert",
-          "reward": {
-            "coins": 800,
-            "cards": [
-              "x-lny-yao"
-            ]
-          },
+          "reward": { "coins": 800, "cards": ["x-lny-yao"] },
           "pick": {}
         }
       ]
@@ -1338,55 +1205,35 @@
           "size": 3,
           "offset": 0,
           "difficulty": "normal",
-          "reward": {
-            "coins": 300
-          },
-          "pick": {
-            "conference": "East"
-          }
+          "reward": { "coins": 300 },
+          "pick": { "conference": "East" }
         },
         {
           "size": 5,
           "offset": 1,
           "difficulty": "normal",
-          "reward": {
-            "coins": 400
-          },
-          "pick": {
-            "conference": "West"
-          }
+          "reward": { "coins": 400 },
+          "pick": { "conference": "West" }
         },
         {
           "size": 3,
           "offset": 2,
           "difficulty": "hard",
-          "reward": {
-            "coins": 300,
-            "pack": "standard"
-          },
-          "pick": {
-            "sort": "three"
-          }
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "three" }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "hard",
-          "reward": {
-            "coins": 500
-          },
-          "pick": {
-            "sort": "jump"
-          }
+          "reward": { "coins": 500 },
+          "pick": { "sort": "jump" }
         },
         {
           "size": 5,
           "offset": 6,
           "difficulty": "expert",
-          "reward": {
-            "coins": 800,
-            "pack": "elite"
-          },
+          "reward": { "coins": 800, "pack": "elite" },
           "pick": {}
         }
       ]
@@ -1402,55 +1249,35 @@
           "size": 3,
           "offset": 0,
           "difficulty": "normal",
-          "reward": {
-            "coins": 300
-          },
-          "pick": {
-            "sort": "defense"
-          }
+          "reward": { "coins": 300 },
+          "pick": { "sort": "defense" }
         },
         {
           "size": 5,
           "offset": 1,
           "difficulty": "normal",
-          "reward": {
-            "coins": 400
-          },
-          "pick": {
-            "sort": "rebound"
-          }
+          "reward": { "coins": 400 },
+          "pick": { "sort": "rebound" }
         },
         {
           "size": 3,
           "offset": 2,
           "difficulty": "hard",
-          "reward": {
-            "coins": 300,
-            "pack": "standard"
-          },
-          "pick": {
-            "sort": "mid"
-          }
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "sort": "mid" }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "hard",
-          "reward": {
-            "coins": 500
-          },
-          "pick": {
-            "sort": "defense"
-          }
+          "reward": { "coins": 500 },
+          "pick": { "sort": "defense" }
         },
         {
           "size": 5,
           "offset": 6,
           "difficulty": "expert",
-          "reward": {
-            "coins": 800,
-            "pack": "elite"
-          },
+          "reward": { "coins": 800, "pack": "elite" },
           "pick": {}
         }
       ]
@@ -1466,73 +1293,36 @@
           "size": 3,
           "offset": 0,
           "difficulty": "normal",
-          "reward": {
-            "coins": 300
-          },
-          "pick": {
-            "teams": [
-              "OKC",
-              "IND"
-            ]
-          }
+          "reward": { "coins": 300 },
+          "pick": { "teams": ["OKC", "IND"] }
         },
         {
           "size": 5,
           "offset": 1,
           "difficulty": "normal",
-          "reward": {
-            "coins": 400
-          },
-          "pick": {
-            "teams": [
-              "OKC",
-              "IND"
-            ]
-          }
+          "reward": { "coins": 400 },
+          "pick": { "teams": ["OKC", "IND"] }
         },
         {
           "size": 3,
           "offset": 2,
           "difficulty": "hard",
-          "reward": {
-            "coins": 300,
-            "pack": "standard"
-          },
-          "pick": {
-            "teams": [
-              "OKC",
-              "IND"
-            ]
-          }
+          "reward": { "coins": 300, "pack": "standard" },
+          "pick": { "teams": ["OKC", "IND"] }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "hard",
-          "reward": {
-            "coins": 500
-          },
-          "pick": {
-            "teams": [
-              "OKC",
-              "IND"
-            ]
-          }
+          "reward": { "coins": 500 },
+          "pick": { "teams": ["OKC", "IND"] }
         },
         {
           "size": 5,
           "offset": 6,
           "difficulty": "expert",
-          "reward": {
-            "coins": 800,
-            "pack": "elite"
-          },
-          "pick": {
-            "teams": [
-              "OKC",
-              "IND"
-            ]
-          }
+          "reward": { "coins": 800, "pack": "elite" },
+          "pick": { "teams": ["OKC", "IND"] }
         }
       ]
     }
@@ -1604,33 +1394,21 @@
           "offset": 0,
           "difficulty": "normal",
           "reward": { "coins": 300 },
-          "pick": {
-            "positions": [
-              "PG"
-            ]
-          }
+          "pick": { "positions": ["PG"] }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "normal",
           "reward": { "coins": 400 },
-          "pick": {
-            "positions": [
-              "PG"
-            ]
-          }
+          "pick": { "positions": ["PG"] }
         },
         {
           "size": 3,
           "offset": 6,
           "difficulty": "hard",
           "reward": { "coins": 300, "pack": "standard" },
-          "pick": {
-            "positions": [
-              "PG"
-            ]
-          }
+          "pick": { "positions": ["PG"] }
         }
       ]
     },
@@ -1644,42 +1422,21 @@
           "offset": 0,
           "difficulty": "normal",
           "reward": { "coins": 300 },
-          "pick": {
-            "teams": [
-              "GSW",
-              "LAL",
-              "LAC",
-              "SAC"
-            ]
-          }
+          "pick": { "teams": ["GSW", "LAL", "LAC", "SAC"] }
         },
         {
           "size": 5,
           "offset": 3,
           "difficulty": "normal",
           "reward": { "coins": 400 },
-          "pick": {
-            "teams": [
-              "GSW",
-              "LAL",
-              "LAC",
-              "SAC"
-            ]
-          }
+          "pick": { "teams": ["GSW", "LAL", "LAC", "SAC"] }
         },
         {
           "size": 3,
           "offset": 6,
           "difficulty": "hard",
           "reward": { "coins": 300, "pack": "standard" },
-          "pick": {
-            "teams": [
-              "GSW",
-              "LAL",
-              "LAC",
-              "SAC"
-            ]
-          }
+          "pick": { "teams": ["GSW", "LAL", "LAC", "SAC"] }
         }
       ]
     },

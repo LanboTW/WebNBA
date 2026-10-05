@@ -84,8 +84,8 @@ function save(key: string, value: string): void {
 
 // ----------------------------------------------------------------- screens
 
-type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub' | 'myteam' | 'custom';
-const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub', 'myteam', 'custom'];
+type Screen = 'home' | 'quick' | 'practice' | 'players' | 'settings' | 'career' | 'account' | 'create' | 'hub' | 'myteam' | 'custom' | 'editor';
+const SCREENS: Screen[] = ['home', 'quick', 'practice', 'players', 'settings', 'career', 'account', 'create', 'hub', 'myteam', 'custom', 'editor'];
 /** Screens with your career player on the court behind them. */
 const CAREER_SCREENS: Screen[] = ['create', 'hub'];
 /** Screens with a player on the court behind them; the rest are menus that need the room. */
@@ -111,6 +111,8 @@ function show(next: Screen): void {
   if (next === 'players') renderPlayerDb();
   if (next === 'myteam') renderMyTeam();
   if (next === 'custom') renderCustom();
+  // The content editor: npm run dev only (the built site leaves it out).
+  if (next === 'editor' && import.meta.env.DEV) void import('./contentEditor').then((m) => m.openEditor());
   if (next === 'home' || next === 'quick' || next === 'practice' || next === 'custom') careerLoad = refreshCareerTeams();
   if (next === 'career') void renderCareer();
   document.body.classList.toggle('menu-solid', !session && !SHOWCASE_SCREENS.includes(next));
@@ -941,6 +943,7 @@ const SCREEN_NAME: Record<Screen, string> = {
   hub: '生涯',
   myteam: 'MyTeam',
   custom: '自訂隊伍/人員',
+  editor: '內容編輯器',
 };
 
 /** What goes along with a report: the screen, and in a game its mode and score. */
@@ -960,6 +963,11 @@ document.addEventListener('click', (e) => {
 });
 
 show('home');
+if (import.meta.env.DEV) {
+  $('#editorBtn').classList.remove('hidden');
+  // Back from a content editor save (the saved file reloads the page).
+  if (sessionStorage.getItem('webnba.editor')) show('editor');
+}
 // The first player on the court may be yours: wait a moment for the saves.
 void Promise.race([careerLoad, new Promise((r) => setTimeout(r, 800))]).then(() => {
   booted = true;

@@ -13,3 +13,4 @@ export * from './economy';
 export * from './myteam';
 export * from './custom';
 export * from './plays';
+export * from './content';

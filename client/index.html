@@ -75,6 +75,7 @@
           <button type="button" data-go="practice"><b>練習</b><small>投籃、運球，陪練員幫你撿球</small></button>
           <button type="button" data-go="players"><b>球員資料庫</b><small>所有球隊的球員能力值</small></button>
           <button type="button" data-go="settings"><b>設定</b><small>畫質、視角、規則</small></button>
+          <button type="button" data-go="editor" id="editorBtn" class="hidden"><b>內容編輯器（開發用）</b><small>特殊卡、主題、節日活動、卡包：只在 npm run dev 出現</small></button>
           <button type="button" id="authStatus" class="authbtn hidden"><b>登入</b><small>登入後可雲端存檔：生涯、金幣、MyTeam 都跟著帳號，換裝置也能繼續</small></button>
         </nav>
         <p class="fine">非官方粉絲作品，與 NBA 及其球隊無關。</p>
@@ -233,6 +234,13 @@
         <div class="screenhead"><button type="button" class="back">← 返回</button><h2>MyTeam</h2><span id="mtCoins" class="mtcoins"></span></div>
         <div id="mtTabs" class="tabs"></div>
         <div id="mtBody"></div>
+      </div>
+    </div>
+
+    <div id="editor" class="overlay screen hidden">
+      <div class="panel duo">
+        <div class="screenhead"><button type="button" class="back">← 返回</button><h2>內容編輯器</h2></div>
+        <div id="ceBody"></div>
       </div>
     </div>
 
