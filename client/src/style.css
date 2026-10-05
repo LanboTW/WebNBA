@@ -910,8 +910,8 @@ button.small {
 
 /* Over jump: plays with the ball, change player / switch on defence. */
 #touch .tb.act {
-  right: 22px;
-  bottom: 186px;
+  right: 74px;
+  bottom: 182px;
   width: 56px;
   height: 56px;
   font-size: 13px;

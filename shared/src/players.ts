@@ -102,6 +102,11 @@ export function passIcons(state: GameState, p: PlayerState): PlayerState[] {
   return teammates(state, p).sort((a, b) => a.slot - b.slot);
 }
 
+/** A practice feeder (陪練員): not you, not in the way, only there to fetch and pass. */
+export function isFeeder(state: GameState, p: PlayerState): boolean {
+  return state.settings.mode === 'practice' && !!state.settings.feeders && p.team === 0 && p.slot > 0;
+}
+
 export function opponents(state: GameState, team: 0 | 1): PlayerState[] {
   return state.players.filter((o) => o.team !== team);
 }
@@ -221,8 +226,10 @@ export function updatePlayer(state: GameState, p: PlayerState, inp: PlayerInput)
       if (pivotOnly) state.events.push({ type: 'deadDribble', playerId: p.id });
     }
   }
-  const limX = COURT.halfLength + 1.2;
-  const limZ = COURT.halfWidth + 1.2;
+  // Feeders may walk to the wall to fetch a ball that rolled into the crowd.
+  const out = isFeeder(state, p) ? 2.8 : 1.2;
+  const limX = COURT.halfLength + out;
+  const limZ = COURT.halfWidth + out;
   // Street courts end a step past the half-court line.
   p.pos.x = Math.max(state.settings.street ? -1.2 : -limX, Math.min(limX, p.pos.x));
   p.pos.z = Math.max(-limZ, Math.min(limZ, p.pos.z));
@@ -282,7 +289,7 @@ export function resolveCollisions(state: GameState): void {
       const dx = b.pos.x - a.pos.x;
       const dz = b.pos.z - a.pos.z;
       const d = Math.hypot(dx, dz);
-      if (d >= min) continue;
+      if (d >= min || isFeeder(state, a) || isFeeder(state, b)) continue;
       const nx = d > 1e-6 ? dx / d : 1;
       const nz = d > 1e-6 ? dz / d : 0;
       const overlap = min - d;
@@ -657,10 +664,20 @@ export function releasePass(state: GameState, p: PlayerState, targetId: number):
 
 // ---------------------------------------------------------------- steals
 
-/** Solo games: pass without the ball while a teammate has it = "give me the ball". */
+/**
+ * Solo games: pass without the ball while a teammate has it = "give me the
+ * ball". In practice the feeders hear it even while still fetching the ball.
+ */
 function callForBall(state: GameState, p: PlayerState): boolean {
   const b = state.ball;
-  if (state.settings.solo === undefined || state.controlled[p.team] !== p.id || b.mode !== 'held') return false;
+  if (state.controlled[p.team] !== p.id) return false;
+  if (state.settings.mode === 'practice' && state.settings.feeders) {
+    if (b.mode === 'held' && state.players[b.holderId].team !== p.team) return false;
+    state.ballCall = { playerId: p.id, timer: 4 };
+    state.events.push({ type: 'call', kind: 'ball', playerId: p.id, ok: true });
+    return true;
+  }
+  if (state.settings.solo === undefined || b.mode !== 'held') return false;
   const h = state.players[b.holderId];
   if (h.team !== p.team) return false;
   state.ballCall = { playerId: p.id, timer: 1.5 };

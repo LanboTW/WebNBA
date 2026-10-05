@@ -148,7 +148,7 @@ export class Session {
     const practice = settings.mode === 'practice';
     // Street teams are just the picked players.
     const street = !!settings.street;
-    const counts: [number, number] = practice ? [1, 0] : street ? [teams[0].players.length, teams[1].players.length] : [5, 5];
+    const counts: [number, number] = practice ? [settings.feeders ? 3 : 1, 0] : street ? [teams[0].players.length, teams[1].players.length] : [5, 5];
     this.state = createGame({ teams, settings, playersPerTeam: counts });
     this.team = this.state.settings.humanTeams.includes(0) ? 0 : -1;
     this.solo = this.state.settings.solo !== undefined;
@@ -417,9 +417,12 @@ export class Session {
             ? 'offball'
             : 'offense'
         : me
-          ? 'offense'
+          ? holder === me.id || !s.settings.feeders
+            ? 'offense'
+            : 'offball'
           : 'none';
-    this.input.touch?.setMode(touchMode, this.solo, this.canCallPlay());
+    // Practice has nobody to switch to or call plays for: the round button goes dim.
+    this.input.touch?.setMode(touchMode, this.solo || s.settings.mode === 'practice', this.canCallPlay());
     if (me && s.settings.mode === 'game' && s.settings.rules.fatigue && s.phase !== 'timeout') {
       const feet = this.ring.position.clone().project(this.cam.camera);
       this.hud.setStamina(me.energy, { x: ((feet.x + 1) / 2) * window.innerWidth, y: ((1 - feet.y) / 2) * window.innerHeight });

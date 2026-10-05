@@ -1,6 +1,7 @@
-import { COURT, DT, attackHoop } from './constants';
+import { COURT, DT, HOOP_X, attackHoop } from './constants';
 import {
   hdist,
+  isFeeder,
   isInbounder,
   opponents,
   shotValue,
@@ -124,8 +125,40 @@ function controllingTeam(state: GameState): 0 | 1 | -1 {
   return -1;
 }
 
+/** Where a practice feeder waits: a wing on the half you are in, one each side. */
+function feederSpot(p: PlayerState, me: PlayerState): Target {
+  const hx = (Math.sign(me.pos.x) || 1) * HOOP_X;
+  return { x: hx - Math.sign(hx) * 5.6, z: (p.slot % 2 ? -1 : 1) * 5 };
+}
+
+/**
+ * A practice feeder: the one nearer a ball on the floor fetches it (out of
+ * bounds too), then waits on his wing and passes it when you call for it.
+ */
+function feederAi(state: GameState, p: PlayerState): PlayerInput {
+  const me = state.players[state.controlled[0]];
+  if (!me) return NO_INPUT;
+  const b = state.ball;
+  const holder = b.mode === 'held' ? state.players[b.holderId] : null;
+  if (holder === p) {
+    if (state.ballCall?.playerId === me.id) {
+      state.ballCall = null;
+      return passTo(me);
+    }
+    return steer(p, feederSpot(p, me));
+  }
+  if (b.mode === 'pass' && b.pass?.targetId === p.id) {
+    return steer(p, { x: b.pos.x + b.vel.x * 0.15, z: b.pos.z + b.vel.z * 0.15 }, true, 1, false);
+  }
+  if (b.mode === 'loose' && b.pos.y < 1) {
+    const fetcher = state.players.filter((o) => isFeeder(state, o)).sort((a, c) => hdist(a.pos, b.pos) - hdist(c.pos, b.pos))[0];
+    if (fetcher === p) return steer(p, b.pos, true, 1, false);
+  }
+  return steer(p, feederSpot(p, me));
+}
+
 export function aiInput(state: GameState, p: PlayerState): PlayerInput {
-  if (state.settings.mode === 'practice') return NO_INPUT;
+  if (state.settings.mode === 'practice') return isFeeder(state, p) ? feederAi(state, p) : NO_INPUT;
   if (state.phase === 'tipoff' || state.phase === 'periodEnd' || state.phase === 'final') return NO_INPUT;
   p.ai.decisionTimer -= DT;
   if (p.ai.modeTimer > 0) p.ai.modeTimer -= DT;

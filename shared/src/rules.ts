@@ -69,7 +69,9 @@ export function setPossession(state: GameState, team: 0 | 1): void {
  * that touched it last before this player.
  */
 export function onGainBall(state: GameState, p: PlayerState, prevTouch: 0 | 1 = p.team): void {
-  if (isHuman(state, p.team)) state.controlled[p.team] = p.id;
+  // Practice with feeders: you stay on your player when one of them gets the ball.
+  const feeding = state.settings.mode === 'practice' && !!state.settings.feeders;
+  if (isHuman(state, p.team) && !feeding) state.controlled[p.team] = p.id;
   if (state.settings.mode !== 'game') return;
   state.clockHold = false;
   // Recovering a ball the defence knocked into the backcourt is legal; a new count starts.

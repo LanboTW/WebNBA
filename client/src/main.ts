@@ -625,14 +625,26 @@ $('#practicePlayers').addEventListener('click', (e) => {
   renderPractice();
 });
 
+/** The two practice feeders (陪練員): plain players with a sure pass. */
+function feeder(n: number): PlayerInfo {
+  return {
+    name: `陪練員 ${n}`,
+    number: 90 + n,
+    heightM: 1.9,
+    position: 'SG',
+    ratings: { speed: 70, jump: 50, close: 50, mid: 50, three: 50, ft: 50, handle: 60, pass: 95, steal: 30, block: 30, defense: 30, rebound: 60, stamina: 99 },
+    look: { skin: n === 1 ? 2 : 5, hair: 'short', beard: 'none', headband: false, sleeve: 'none', kneepad: false, shoe: 'white', socks: 'low' },
+  };
+}
+
 $('#practiceBtn').addEventListener('click', () => {
   sfx.unlock();
   save('practiceTeam', practiceTeam.value);
   save('practicePlayer', String(practicePlayer));
   const t = teamFor(practiceTeam.value);
   const me = t.players[practicePlayer];
-  const lineup: TeamInfo = { ...t, players: [me, ...t.players.filter((p) => p !== me)] };
-  startSession([lineup, lineup], { mode: 'practice', humanTeams: [0], seed: (Math.random() * 2 ** 31) | 0 });
+  const lineup: TeamInfo = { ...t, players: [me, feeder(1), feeder(2)] };
+  startSession([lineup, lineup], { mode: 'practice', humanTeams: [0], seed: (Math.random() * 2 ** 31) | 0, feeders: true });
 });
 
 // ----------------------------------------------------------------- menu background

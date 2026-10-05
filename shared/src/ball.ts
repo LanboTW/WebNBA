@@ -1,6 +1,6 @@
 import { BALL_RADIUS, BOARD_X, COURT, DT, GRAVITY, HOOP, HOOP_X, OREB_SHOT_CLOCK } from './constants';
 import { shootingFoul } from './fouls';
-import { CATCH_HOLD, hdist, heldBallPosition } from './players';
+import { CATCH_HOLD, hdist, heldBallPosition, isFeeder } from './players';
 import { nextRandom } from './rng';
 import { onGainBall, onMadeBasket } from './rules';
 import type { GameState, PlayerState } from './types';
@@ -285,7 +285,8 @@ function tryCatch(state: GameState): void {
     state.events.push({ type: 'steal', playerId: r.id, fromId: passer.id });
     state.events.push({ type: 'turnover', team: passer.team, reason: 'intercept', playerId: passer.id });
   } else {
-    b.assist = { passerId: passer.id, receiverId: r.id, tick: state.tick };
+    // A feeder's pass is not an assist.
+    if (!isFeeder(state, passer)) b.assist = { passerId: passer.id, receiverId: r.id, tick: state.tick };
   }
   onGainBall(state, r, prevTouch);
 }
@@ -297,6 +298,8 @@ function tryPickup(state: GameState): void {
   for (const p of state.players) {
     if (p.pickupCooldown > 0 || p.action === 'shooting') continue;
     if (b.pos.y > p.pos.y + p.info.heightM * 1.3) continue;
+    // Feeders leave rebounds to you: only a ball down on the floor is theirs.
+    if (b.pos.y > 0.6 && isFeeder(state, p)) continue;
     const d = hdist(b.pos, p.pos);
     if (d > PICKUP_RADIUS) continue;
     // Better rebounders and players in the air win close contests.

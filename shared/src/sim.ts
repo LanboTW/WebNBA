@@ -294,6 +294,8 @@ function callSwitch(state: GameState, me: PlayerState): boolean {
 
 /** Switch button: jump to the teammate nearest the ball (next nearest if already there). */
 function handleSwitching(state: GameState, inputs: Partial<Record<0 | 1, PlayerInput>>): void {
+  // Practice: you stay on your player (the others are feeders).
+  if (state.settings.mode === 'practice') return;
   for (const team of state.settings.humanTeams) {
     const pressed = !!inputs[team]?.switchPlayer;
     const edge = pressed && !state.switchLatch[team];

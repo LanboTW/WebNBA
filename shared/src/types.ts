@@ -312,6 +312,11 @@ export interface GameSettings {
   /** 0-100 per team: how well they run plays together (default 70). */
   cohesion?: [number, number];
   /**
+   * Practice: everyone after your player is a feeder (陪練員). They fetch the
+   * ball wherever it rolls, wait on the wings and pass it when you call for it.
+   */
+  feeders?: boolean;
+  /**
    * Street game: half court at the +x hoop, first to `target` points (1 inside
    * the arc, 2 beyond), no clocks, free throws, timeouts or subs. Every change
    * of possession must take the ball back beyond the arc ("clear") and play
