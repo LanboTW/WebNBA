@@ -4,7 +4,7 @@ import type { PlayerInput } from '@webnba/shared';
 const RADIUS = 60;
 const SPRINT_AT = 0.92;
 
-type ButtonId = 'shoot' | 'pass' | 'jump' | 'switch' | 'timeout' | 'menu' | 'camera' | 'plays';
+type ButtonId = 'shoot' | 'pass' | 'jump' | 'act' | 'timeout' | 'menu' | 'camera';
 
 /** What the player is doing right now, so the big buttons can say what they do. */
 export type TouchMode = 'offense' | 'offball' | 'defense' | 'none';
@@ -17,13 +17,11 @@ const LABELS: Record<TouchMode, Record<'shoot' | 'pass' | 'jump', string>> = {
   none: { shoot: '投籃', pass: '傳球', jump: '跳' },
 };
 
-/** The small switch button: change player, or in career games call a pick / a switch. */
-const SWITCH_LABEL: Record<TouchMode, [string, string]> = {
-  offense: ['換人', '擋拆'],
-  offball: ['換人', '擋拆'],
-  defense: ['換人', '換防'],
-  none: ['換人', '換人'],
-};
+/**
+ * The round button over jump: plays while your team has the ball, otherwise
+ * change player (career games: trade men with a teammate on defence).
+ */
+type ActRole = 'plays' | 'switch' | 'off';
 
 /**
  * On-screen controls for phones and tablets: a floating joystick on the left
@@ -42,6 +40,8 @@ export class TouchControls {
   private readonly buttons = new Map<ButtonId, HTMLElement>();
   private mode: TouchMode = 'none';
   private solo = false;
+  private calls = false;
+  private role: ActRole = 'off';
   /** One-shot UI presses (menu, camera) for the frame loop to pick up. */
   private readonly taps = new Set<ButtonId>();
 
@@ -53,17 +53,14 @@ export class TouchControls {
       <div class="tzone"></div>
       <div class="tstick hidden"><i></i></div>
       <div class="tbig">
+        <button data-b="act" class="tb act">換人</button>
         <button data-b="jump" class="tb jump">跳</button>
         <button data-b="pass" class="tb pass">傳球</button>
         <button data-b="shoot" class="tb shoot">投籃</button>
       </div>
       <div class="trotate">橫放手機玩起來更順手</div>
-      <div class="tsmall tl">
-        <button data-b="switch">換人</button>
-        <button data-b="plays">戰術</button>
-        <button data-b="timeout">叫暫停</button>
-      </div>
       <div class="tsmall tr">
+        <button data-b="timeout">叫暫停(換人)</button>
         <button data-b="camera">視角</button>
         <button data-b="menu">☰</button>
       </div>`;
@@ -141,18 +138,28 @@ export class TouchControls {
     for (const el of this.buttons.values()) el.classList.remove('on');
   }
 
-  setMode(mode: TouchMode, solo = false): void {
-    if (mode === this.mode && solo === this.solo) return;
+  /** `calls`: your team has the ball in a live game, so the round button calls plays. */
+  setMode(mode: TouchMode, solo = false, calls = false): void {
+    if (mode === this.mode && solo === this.solo && calls === this.calls) return;
     this.mode = mode;
     this.solo = solo;
+    this.calls = calls;
     for (const id of ['shoot', 'pass', 'jump'] as const) this.buttons.get(id)!.textContent = LABELS[mode][id];
-    this.buttons.get('switch')!.textContent = SWITCH_LABEL[mode][solo ? 1 : 0];
+    this.role = calls ? 'plays' : !solo || mode === 'defense' ? 'switch' : 'off';
+    const act = this.buttons.get('act')!;
+    act.textContent = this.role === 'switch' ? (solo ? '換防' : '換人') : '戰術';
+    act.classList.toggle('off', this.role === 'off');
     // Nobody to call timeouts for in a career game: the coach does that.
     this.buttons.get('timeout')!.classList.toggle('hidden', solo);
   }
 
   /** UI buttons pressed since last asked (menu, camera). */
   consumeTap(id: 'menu' | 'camera' | 'plays'): boolean {
+    if (id === 'plays') {
+      const had = this.taps.has('act') && this.role === 'plays';
+      this.taps.delete('act');
+      return had;
+    }
     const had = this.taps.has(id);
     this.taps.delete(id);
     return had;
@@ -174,7 +181,7 @@ export class TouchControls {
     }
     inp.pass ||= h.has('pass');
     inp.jump ||= h.has('jump');
-    inp.switchPlayer ||= h.has('switch');
+    inp.switchPlayer ||= h.has('act') && this.role === 'switch';
     inp.timeout ||= h.has('timeout');
   }
 }

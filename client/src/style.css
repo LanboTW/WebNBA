@@ -875,7 +875,7 @@ button.small {
   right: max(14px, env(safe-area-inset-right));
   bottom: max(14px, env(safe-area-inset-bottom));
   width: 210px;
-  height: 190px;
+  height: 250px;
 }
 
 #touch .tb {
@@ -908,15 +908,25 @@ button.small {
   height: 72px;
 }
 
+/* Over jump: plays with the ball, change player / switch on defence. */
+#touch .tb.act {
+  right: 22px;
+  bottom: 186px;
+  width: 56px;
+  height: 56px;
+  font-size: 13px;
+}
+
+#touch .tb.act.off {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 #touch .tsmall {
   position: absolute;
   top: max(6px, env(safe-area-inset-top));
   display: flex;
   gap: 5px;
-}
-
-#touch .tsmall.tl {
-  left: max(10px, env(safe-area-inset-left));
 }
 
 #touch .tsmall.tr {

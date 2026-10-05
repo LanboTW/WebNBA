@@ -420,7 +420,7 @@ export class Session {
         : me
           ? 'offense'
           : 'none';
-    this.input.touch?.setMode(touchMode, this.solo);
+    this.input.touch?.setMode(touchMode, this.solo, this.canCallPlay());
     if (me && s.settings.mode === 'game' && s.settings.rules.fatigue && s.phase !== 'timeout') {
       const feet = this.ring.position.clone().project(this.cam.camera);
       this.hud.setStamina(me.energy, { x: ((feet.x + 1) / 2) * window.innerWidth, y: ((1 - feet.y) / 2) * window.innerHeight });
