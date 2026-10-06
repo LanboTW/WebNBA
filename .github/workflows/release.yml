@@ -1,0 +1,38 @@
+name: Release
+
+# A version tag (v1.4.0, ...) becomes a GitHub Release: the README's progress
+# line for that version, the commits since the previous version, and the
+# source code to download.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already has a release"
+            exit 0
+          fi
+          prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          {
+            grep -F -- "- [x] $TAG：" README.md | sed "s/^- \[x\] $TAG：//" || true
+            echo
+            echo "### 這個版本的修改"
+            git log --format='- %s' ${prev:+$prev..}"$TAG" | sed "s/^- $TAG: /- /"
+            echo
+            echo "線上玩：https://lanbotw.github.io/WebNBA/"
+          } > notes.md
+          gh release create "$TAG" --title "WebNBA $TAG" --notes-file notes.md --verify-tag
