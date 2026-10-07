@@ -49,7 +49,7 @@ export interface Look {
   shoeColor?: string;
   socks: 'low' | 'high';
   /** Model type: a standing player when absent. Purely visual, the sim never reads it. */
-  body?: 'wheelchair';
+  body?: 'wheelchair' | 'homer' | 'peter';
 }
 
 export interface TeamInfo {

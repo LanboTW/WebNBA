@@ -90,6 +90,11 @@ export class PlayerView {
   private readonly legR: Limb;
   private readonly bigMan: boolean;
   private readonly chair: Wheelchair | undefined;
+  /** Cartoon bodies: the belly, on a spring that lags the body's bounce. */
+  private readonly belly: THREE.Group | undefined;
+  private readonly bellyRest: number = 0;
+  private bellyY = 0;
+  private bellyV = 0;
   /** Wheelchair: wheel angle, push-stroke phase, and the chair's tip and turn. */
   private wheelAngle = 0;
   private pushPhase = 0;
@@ -126,6 +131,8 @@ export class PlayerView {
     this.legL = model.legL;
     this.legR = model.legR;
     this.chair = model.chair;
+    this.belly = model.belly;
+    if (this.belly) this.bellyRest = this.belly.position.y;
     this.bigMan = info.position === 'C' || info.position === 'PF';
     this.root.scale.setScalar(info.heightM / BASE_HEIGHT);
     this.root.add(model.root);
@@ -252,6 +259,18 @@ export class PlayerView {
 
     this.blend(dt);
     this.aimHead(ctx.lookAt, dt);
+    if (this.belly) this.jiggle(dt);
+  }
+
+  /** The belly trails the body's ups and downs: it bobs when he runs and wobbles on landing. */
+  private jiggle(dt: number): void {
+    const h = Math.min(dt, 1 / 30);
+    const y = this.current.bodyY;
+    this.bellyV += (420 * (y - this.bellyY) - 9 * this.bellyV) * h;
+    this.bellyY += this.bellyV * h;
+    const off = Math.max(-0.05, Math.min(0.05, (this.bellyY - y) * 1.8));
+    this.belly!.position.y = this.bellyRest + off;
+    this.belly!.scale.y = 1 - off * 1.5;
   }
 
   // ------------------------------------------------------------------ locomotion

@@ -203,6 +203,8 @@ function ratingsFor(pos: Position, style: ArchetypeId, heightM: number, ovr: num
 const BODY_OPTIONS: [string, string][] = [
   ['', '一般'],
   ['wheelchair', '輪椅'],
+  ['homer', '河馬'],
+  ['peter', '彼得'],
 ];
 
 const playerOvr = (p: RawPlayer): number =>

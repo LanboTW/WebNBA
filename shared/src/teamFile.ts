@@ -29,7 +29,7 @@ export const SLEEVE = ['none', 'left', 'right', 'both'] as const;
 export const SHOE = ['white', 'black', 'team'] as const;
 export const SOCKS = ['low', 'high'] as const;
 /** Model types besides a standing player. */
-export const BODY = ['wheelchair'] as const;
+export const BODY = ['wheelchair', 'homer', 'peter'] as const;
 
 /** Field-by-field check, for roster.json, custom-teams.json and overrides.json. */
 export function lookErrors(look: unknown, partial = false): string[] {

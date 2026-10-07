@@ -64,7 +64,15 @@ export interface PlayerModel {
   legL: Limb;
   legR: Limb;
   chair?: Wheelchair;
+  /** Cartoon bodies: the belly under the jersey, bobbing as he runs. */
+  belly?: THREE.Group;
 }
+
+/** Cartoon bodies start from their own face and hair; whatever the look sets still wins. */
+const TOON_LOOK: Partial<Record<NonNullable<Look['body']>, Partial<Look>>> = {
+  homer: { skin: '#f7d330', hair: 'bald', hairColor: '#2a2320', beard: 'none', headband: false },
+  peter: { skin: 1, hair: 'short', hairColor: '#5b3a22', beard: 'none', headband: false },
+};
 
 const SKIN = ['#eac0a0', '#d29a72', '#b0744c', '#8a5634', '#653d24', '#432819'];
 const HAIR_DEFAULT = '#1d1612';
@@ -121,7 +129,11 @@ function segment(len: number, rTop: number, rBottom: number, material: THREE.Mat
 
 export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
   // A look may be partial (a custom player with only a body type): the rest falls back.
-  const look: Look = { ...fallbackLook(info.name), ...info.look };
+  const look: Look = { ...fallbackLook(info.name), ...(info.look?.body ? TOON_LOOK[info.look.body] : undefined), ...info.look };
+  // Homer and Peter: a big belly, wider shoulders and thicker arms and legs.
+  const toon = look.body === 'homer' || look.body === 'peter';
+  const sx = toon ? 0.255 : SHOULDER_X;
+  const thick = toon ? 1.18 : 1;
   const skin = mat(skinColor(look.skin), 0.55);
   const jersey = mat(kit.body, 0.75);
   const trim = mat(kit.trim, 0.7);
@@ -137,9 +149,9 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
 
   // ---------------------------------------------------------------- lower body
   const shorts = mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.24, 14), trim, 0, HIP_Y + 0.04, 0);
-  shorts.scale.set(1.28, 1, 0.82);
+  shorts.scale.set(toon ? 1.42 : 1.28, 1, toon ? 0.95 : 0.82);
   const waistband = mesh(new THREE.CylinderGeometry(0.172, 0.172, 0.04, 14), jersey, 0, HIP_Y + 0.15, 0);
-  waistband.scale.set(1.28, 1, 0.82);
+  waistband.scale.copy(shorts.scale);
   body.add(shorts, waistband);
 
   // ---------------------------------------------------------------- upper body
@@ -151,21 +163,45 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
   // Chest: a capsule squashed into an athletic, slightly tapered torso.
   const chest = segment(0.56, 0.2, 0.16, jersey);
   chest.position.y = y(HIP_Y + 0.68) - 0.28;
-  chest.scale.set(1.25, 1, 0.68);
+  chest.scale.set(toon ? 1.38 : 1.25, 1, toon ? 0.76 : 0.68);
   spine.add(chest);
+
+  // The belly pushes the jersey forward and out over the shorts; the front number rides on it.
+  let belly: THREE.Group | undefined;
+  if (toon) {
+    belly = new THREE.Group();
+    belly.position.set(0, y(HIP_Y + 0.3), 0.05);
+    const ball = mesh(new THREE.SphereGeometry(BELLY_R, 22, 16), jersey);
+    ball.scale.set(1.22, 1.05, 1);
+    belly.add(ball);
+    spine.add(belly);
+  }
 
   // Trim around the neck and arm holes.
   const collar = mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 16), trim, 0, y(HIP_Y + 0.66), 0.02);
   collar.rotation.x = Math.PI / 2 - 0.25;
   collar.scale.set(1.15, 1, 1);
   spine.add(collar);
+  if (look.body === 'homer') {
+    // His white shirt collar shows above the jersey, the points lying on the chest.
+    const shirt = mat('#f6f6f2', 0.8);
+    const band = mesh(new THREE.TorusGeometry(0.082, 0.02, 6, 18), shirt, 0, y(HIP_Y + 0.675), 0.02);
+    band.rotation.x = Math.PI / 2 - 0.25;
+    band.scale.set(1.15, 1, 1);
+    spine.add(band);
+    for (const s of [1, -1]) {
+      const point = mesh(new THREE.BoxGeometry(0.055, 0.055, 0.012), shirt, s * 0.04, y(HIP_Y + 0.65), 0.125);
+      point.rotation.set(-0.15, 0, s * 0.6);
+      spine.add(point);
+    }
+  }
 
   // Shoulders: skin domes where the sleeveless jersey leaves them bare.
   for (const s of [1, -1]) {
-    const delt = mesh(new THREE.SphereGeometry(0.078, 12, 10), skin, s * SHOULDER_X, y(SHOULDER_Y) + 0.005, 0);
+    const delt = mesh(new THREE.SphereGeometry(0.078 * thick, 12, 10), skin, s * sx, y(SHOULDER_Y) + 0.005, 0);
     delt.scale.set(1, 0.95, 1.05);
     spine.add(delt);
-    const hole = mesh(new THREE.TorusGeometry(0.07, 0.012, 6, 14), trim, s * (SHOULDER_X - 0.04), y(SHOULDER_Y) - 0.06, 0);
+    const hole = mesh(new THREE.TorusGeometry(0.07 * thick, 0.012, 6, 14), trim, s * (sx - 0.04), y(SHOULDER_Y) - 0.06, 0);
     hole.rotation.y = Math.PI / 2;
     hole.rotation.x = 0.15;
     spine.add(hole);
@@ -174,13 +210,16 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
   // Number front and back.
   const numberTex = makeNumberTexture(info.number, kit);
   for (const side of [1, -1]) {
-    const plate = mesh(
-      new THREE.PlaneGeometry(0.26, 0.26),
-      new THREE.MeshStandardMaterial({ map: numberTex, transparent: true, roughness: 0.75 }),
-      0,
-      y(HIP_Y + 0.4),
-      side * 0.14,
-    );
+    const numberMat = new THREE.MeshStandardMaterial({ map: numberTex, transparent: true, roughness: 0.75 });
+    if (belly && side > 0) {
+      // Bent to the belly's curve, a little above its widest point.
+      const up = 0.07;
+      const plate = mesh(bentPlane(0.24, BELLY_R * 1.22, BELLY_R), numberMat, 0, up, Math.sqrt(BELLY_R ** 2 - up ** 2) + 0.004);
+      plate.rotation.x = -Math.asin(up / BELLY_R);
+      belly.add(plate);
+      continue;
+    }
+    const plate = mesh(new THREE.PlaneGeometry(0.26, 0.26), numberMat, 0, y(HIP_Y + 0.4), side * (toon ? 0.155 : 0.14));
     if (side < 0) plate.rotation.y = Math.PI;
     spine.add(plate);
   }
@@ -195,13 +234,13 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
 
   // ---------------------------------------------------------------- limbs
   const sleeveMat = mat(look.shoe === 'black' ? '#141418' : '#f2f2f2', 0.85);
-  const armL = makeArm(skin, look.sleeve === 'left' || look.sleeve === 'both' ? sleeveMat : null);
-  const armR = makeArm(skin, look.sleeve === 'right' || look.sleeve === 'both' ? sleeveMat : null);
-  armL.upper.position.set(SHOULDER_X, y(SHOULDER_Y), 0);
-  armR.upper.position.set(-SHOULDER_X, y(SHOULDER_Y), 0);
+  const armL = makeArm(skin, look.sleeve === 'left' || look.sleeve === 'both' ? sleeveMat : null, thick);
+  const armR = makeArm(skin, look.sleeve === 'right' || look.sleeve === 'both' ? sleeveMat : null, thick);
+  armL.upper.position.set(sx, y(SHOULDER_Y), 0);
+  armR.upper.position.set(-sx, y(SHOULDER_Y), 0);
   spine.add(armL.upper, armR.upper);
 
-  const legOpts = { skin, trim, shoe, sole, sock, gear, kneepad: look.kneepad, highSocks: look.socks === 'high' };
+  const legOpts = { skin, trim, shoe, sole, sock, gear, kneepad: look.kneepad, highSocks: look.socks === 'high', thick };
   const legL = makeLeg(legOpts);
   const legR = makeLeg(legOpts);
   legL.upper.position.set(HIP_X, HIP_Y, 0);
@@ -213,7 +252,18 @@ export function buildPlayerModel(info: PlayerInfo, kit: Kit): PlayerModel {
   root.traverse((o) => {
     if (o instanceof THREE.Mesh) o.castShadow = true;
   });
-  return { root, body, spine, head, armL, armR, legL, legR, ...(chair ? { chair: chair.parts } : {}) };
+  return { root, body, spine, head, armL, armR, legL, legR, ...(chair ? { chair: chair.parts } : {}), ...(belly ? { belly } : {}) };
+}
+
+const BELLY_R = 0.21;
+
+/** A square plane bent back at the edges, to lie on a round surface (radii across and up). */
+function bentPlane(size: number, rx: number, ry: number): THREE.PlaneGeometry {
+  const geo = new THREE.PlaneGeometry(size, size, 8, 8);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, -(pos.getX(i) ** 2) / (2 * rx) - pos.getY(i) ** 2 / (2 * ry));
+  geo.computeVertexNormals();
+  return geo;
 }
 
 /** Where the rear wheels touch the floor: the chair tips about this line. */
@@ -332,21 +382,60 @@ function buildHead(head: THREE.Group, look: Look, skin: THREE.Material, hairMat:
   const jaw = mesh(new THREE.SphereGeometry(0.075, 14, 10), skin, 0, cy - 0.06, 0.03);
   jaw.scale.set(1.05, 0.85, 1);
   head.add(jaw);
-  const nose = mesh(new THREE.SphereGeometry(0.017, 10, 8), skin, 0, cy - 0.012, 0.1);
-  nose.scale.set(0.85, 1.35, 0.9);
-  head.add(nose);
-  const mouth = mesh(new THREE.BoxGeometry(0.034, 0.005, 0.01), mat('#5a2a22', 0.8), 0, cy - 0.052, 0.098);
+  const homer = look.body === 'homer';
+  const peter = look.body === 'peter';
+  if (homer) {
+    // A long, drooping nose.
+    const nose = mesh(new THREE.CapsuleGeometry(0.017, 0.035, 4, 10), skin, 0, cy - 0.008, 0.113);
+    nose.rotation.x = Math.PI / 2 + 0.35;
+    head.add(nose);
+  } else {
+    const nose = mesh(new THREE.SphereGeometry(0.017, 10, 8), skin, 0, cy - 0.012, 0.1);
+    nose.scale.set(0.85, 1.35, 0.9);
+    head.add(nose);
+  }
+  const mouth = mesh(new THREE.BoxGeometry(homer ? 0.05 : 0.034, 0.005, 0.01), mat('#5a2a22', 0.8), 0, cy - 0.052, homer ? 0.114 : peter ? 0.101 : 0.098);
   head.add(mouth);
+  const dark = mat('#1a1410', 0.3);
   for (const s of [1, -1]) {
     const ear = mesh(new THREE.SphereGeometry(0.024, 8, 6), skin, s * 0.1, cy, -0.005);
     ear.scale.set(0.5, 1.2, 0.9);
     head.add(ear);
-    const eye = mesh(new THREE.SphereGeometry(0.0085, 8, 6), mat('#1a1410', 0.3), s * 0.034, cy + 0.018, 0.093);
+    if (homer) {
+      // Big white eyeballs touching in the middle, a dot of a pupil each.
+      head.add(mesh(new THREE.SphereGeometry(0.03, 16, 12), mat('#ffffff', 0.35), s * 0.031, cy + 0.024, 0.083));
+      const pupil = mesh(new THREE.SphereGeometry(0.0055, 8, 6), dark, s * 0.031, cy + 0.024, 0.112);
+      pupil.scale.z = 0.5;
+      head.add(pupil);
+      continue;
+    }
+    const eye = mesh(new THREE.SphereGeometry(0.0085, 8, 6), dark, s * 0.034, cy + 0.018, 0.093);
     eye.scale.z = 0.6;
     head.add(eye);
-    const brow = mesh(new THREE.BoxGeometry(0.03, 0.006, 0.008), mat(look.hairColor ?? HAIR_DEFAULT, 0.9), s * 0.035, cy + 0.037, 0.094);
+    const brow = mesh(new THREE.BoxGeometry(0.03, 0.006, 0.008), mat(look.hairColor ?? HAIR_DEFAULT, 0.9), s * 0.035, cy + (peter ? 0.05 : 0.037), 0.094);
     brow.rotation.z = s * -0.1;
     head.add(brow);
+  }
+  if (homer) {
+    // The stubble muzzle: a bigger, fuller jaw in grey-brown.
+    jaw.material = mat('#b39d7a', 0.85);
+    jaw.position.z = 0.035;
+    jaw.scale.set(1.15, 0.95, 1.1);
+  }
+  if (peter) {
+    // Round glasses, and the chin: a big jaw jutting forward, split down the middle.
+    const frame = mat('#26201c', 0.4);
+    const lens = new THREE.MeshStandardMaterial({ color: '#dfefff', roughness: 0.1, transparent: true, opacity: 0.22 });
+    for (const s of [1, -1]) {
+      head.add(mesh(new THREE.TorusGeometry(0.026, 0.0035, 6, 20), frame, s * 0.036, cy + 0.02, 0.107));
+      head.add(mesh(new THREE.CircleGeometry(0.026, 20), lens, s * 0.036, cy + 0.02, 0.106));
+      head.add(rod([s * 0.062, cy + 0.024, 0.104], [s * 0.1, cy + 0.024, 0.01], 0.003, frame));
+      const chin = mesh(new THREE.SphereGeometry(0.047, 14, 10), skin, s * 0.021, cy - 0.094, 0.068);
+      chin.scale.set(1, 0.85, 1);
+      head.add(chin);
+    }
+    head.add(rod([0.01, cy + 0.024, 0.11], [-0.01, cy + 0.024, 0.11], 0.003, frame));
+    jaw.scale.set(1.12, 0.92, 1.05);
   }
 
   // Hair: a cap over the skull, cut at a height set by the style, plus extras.
@@ -415,6 +504,22 @@ function buildHead(head: THREE.Group, look: Look, skin: THREE.Material, hairMat:
     case 'bald':
       break;
   }
+  if (homer) {
+    // Two hairs looping over the top, and a short ring round the back above the ears.
+    for (const s of [1, -1]) {
+      const loop = mesh(new THREE.TorusGeometry(0.034, 0.0032, 4, 16, Math.PI).rotateY(Math.PI / 2), hairMat, s * 0.012, cy + 0.1, s * 0.012);
+      head.add(loop);
+    }
+    const ring = mesh(new THREE.TorusGeometry(0.099, 0.006, 5, 24, Math.PI).rotateX(-Math.PI / 2), hairMat, 0, cy + 0.025, -0.004);
+    ring.scale.set(1.02, 1.6, 1.1);
+    head.add(ring);
+    // Zigzag tufts standing up along it.
+    const tuft = new THREE.ConeGeometry(0.01, 0.028, 4);
+    for (let i = 0; i <= 12; i++) {
+      const a = (i / 12) * Math.PI;
+      head.add(mesh(tuft, hairMat, Math.cos(a) * 0.1, cy + 0.035 + (i % 2) * 0.006, -Math.sin(a) * 0.11 - 0.004));
+    }
+  }
 
   if (look.beard === 'stubble') {
     // Stubble: the jaw takes on a shadow of the hair colour.
@@ -437,16 +542,16 @@ function buildHead(head: THREE.Group, look: Look, skin: THREE.Material, hairMat:
   }
 }
 
-function makeArm(skin: THREE.Material, sleeve: THREE.Material | null): Limb {
+function makeArm(skin: THREE.Material, sleeve: THREE.Material | null, k = 1): Limb {
   const upper = new THREE.Group();
-  upper.add(segment(UPPER_ARM, 0.068, 0.052, skin));
+  upper.add(segment(UPPER_ARM, 0.068 * k, 0.052 * k, skin));
   const lower = new THREE.Group();
   lower.position.y = -UPPER_ARM;
-  lower.add(segment(FOREARM, 0.052, 0.038, skin));
+  lower.add(segment(FOREARM, 0.052 * k, 0.038 * k, skin));
   upper.add(lower);
   if (sleeve) {
-    upper.add(segment(UPPER_ARM * 0.92, 0.071, 0.055, sleeve));
-    lower.add(segment(FOREARM * 0.85, 0.055, 0.042, sleeve));
+    upper.add(segment(UPPER_ARM * 0.92, 0.071 * k, 0.055 * k, sleeve));
+    lower.add(segment(FOREARM * 0.85, 0.055 * k, 0.042 * k, sleeve));
   }
   const end = new THREE.Group();
   end.position.y = -FOREARM;
@@ -469,22 +574,25 @@ function makeLeg(o: {
   gear: THREE.Material;
   kneepad: boolean;
   highSocks: boolean;
+  /** Thickness, 1 for an athlete. */
+  thick: number;
 }): Limb {
+  const k = o.thick;
   const upper = new THREE.Group();
-  upper.add(segment(THIGH, 0.092, 0.068, o.skin));
+  upper.add(segment(THIGH, 0.092 * k, 0.068 * k, o.skin));
   // Long, loose shorts down to just above the knee.
-  const leg = mesh(new THREE.CylinderGeometry(0.105, 0.098, THIGH * 0.74, 12), o.trim, 0, -THIGH * 0.3, 0);
+  const leg = mesh(new THREE.CylinderGeometry(0.105 * k, 0.098 * k, THIGH * 0.74, 12), o.trim, 0, -THIGH * 0.3, 0);
   upper.add(leg);
 
   const lower = new THREE.Group();
   lower.position.y = -THIGH;
-  lower.add(segment(SHIN, 0.07, 0.044, o.skin));
+  lower.add(segment(SHIN, 0.07 * k, 0.044 * k, o.skin));
   upper.add(lower);
   if (o.kneepad) {
-    lower.add(mesh(new THREE.CylinderGeometry(0.07, 0.066, 0.1, 12), o.gear, 0, -0.06, 0));
+    lower.add(mesh(new THREE.CylinderGeometry(0.07 * k, 0.066 * k, 0.1, 12), o.gear, 0, -0.06, 0));
   }
   const sockLen = o.highSocks ? SHIN * 0.5 : 0.08;
-  const sock = mesh(new THREE.CylinderGeometry(0.052, 0.048, sockLen, 10), o.sock, 0, -SHIN + sockLen / 2, 0);
+  const sock = mesh(new THREE.CylinderGeometry(0.052 * k, 0.048 * k, sockLen, 10), o.sock, 0, -SHIN + sockLen / 2, 0);
   lower.add(sock);
 
   const end = new THREE.Group();

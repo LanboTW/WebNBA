@@ -10,6 +10,7 @@ import {
   validMonthDay,
   validateCustomTeams,
   type ContentMyTeam,
+  type Look,
   type RawTeam,
   type SpecialFile,
 } from '../src';
@@ -48,6 +49,10 @@ describe('content files (the content editor)', () => {
     expect(validateCustomTeams({ ...file, teams: [team] }, NBA_TEAMS)).toEqual([]);
     const bad = { ...team, players: team.players.map((p, i) => (i ? p : ([...p.slice(0, 5), { body: 'robot' }] as unknown as RawTeam['players'][number]))) };
     expect(validateCustomTeams({ ...file, teams: [bad] }, NBA_TEAMS).some((e) => e.includes('body 要是'))).toBe(true);
+    for (const body of ['homer', 'peter'] as const) {
+      const toon = { ...team, players: team.players.map((p, i) => (i ? p : ([p[0], p[1], p[2], p[3], p[4], { body } as Look] as RawTeam['players'][number]))) };
+      expect(validateCustomTeams({ ...file, teams: [toon] }, NBA_TEAMS)).toEqual([]);
+    }
   });
 
   it('catches mistakes in plain words', () => {
