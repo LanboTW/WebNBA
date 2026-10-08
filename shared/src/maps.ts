@@ -18,12 +18,13 @@ export const MAP_TEAM_COLORS = ['home', 'home2', 'home-dark', 'home2-dark'] as c
 export type MapBase = (typeof MAP_BASES)[number];
 export type MapFloor = (typeof MAP_FLOORS)[number];
 export type MapTime = (typeof MAP_TIMES)[number];
-export type MapScenery = (typeof MAP_SCENERIES)[number];
+/** `plant` is the built-in power plant's own, never offered in the editor. */
+export type MapScenery = (typeof MAP_SCENERIES)[number] | 'plant';
 
 export const MAP_BASE_LABEL: Record<MapBase, string> = { indoor: '室內館', outdoor: '戶外' };
 export const MAP_FLOOR_LABEL: Record<MapFloor, string> = { maple: '楓木', darkwood: '深色木', asphalt: '柏油', concrete: '水泥', sport: '塑膠地墊' };
 export const MAP_TIME_LABEL: Record<MapTime, string> = { day: '白天', dusk: '黃昏', night: '夜晚' };
-export const MAP_SCENERY_LABEL: Record<MapScenery, string> = { none: '無', city: '城市街區', beach: '海灘' };
+export const MAP_SCENERY_LABEL: Record<MapScenery, string> = { none: '無', city: '城市街區', beach: '海灘', plant: '核電廠' };
 export const MAP_COLOR_LABEL: Record<(typeof MAP_TEAM_COLORS)[number], string> = {
   home: '主隊主色',
   home2: '主隊副色',
@@ -56,7 +57,7 @@ export interface MapDef {
   seats?: MapColor;
   /** Outdoors: a fence on three sides (chain-link, or posts and rope on a beach). */
   fence?: boolean;
-  /** Outdoors: what lies past the court (none = bare ground). */
+  /** Outdoors: what lies past the court (none = bare ground). `plant`: the built-in power plant, indoors. */
   scenery?: MapScenery;
 }
 
@@ -94,8 +95,26 @@ export const DEFAULT_STREET: MapDef = {
   scenery: 'city',
 };
 
-/** Built into the game: always there, never edited (the fallbacks). */
-export const BUILTIN_MAPS: MapDef[] = [DEFAULT_ARENA, DEFAULT_STREET];
+/**
+ * The Springfield nuclear power plant: a turbine hall with a crashed school
+ * bus at one end, waste barrels at the other, and Mr. Burns on the catwalk.
+ * Its scene is its own (client/src/plantScene.ts); the editor cannot make one.
+ */
+export const DEFAULT_PLANT: MapDef = {
+  id: 'plant',
+  name: '春田核電廠',
+  base: 'indoor',
+  floor: 'concrete',
+  court: '#8f8c84',
+  apron: '#5b4741',
+  lines: '#ffffff',
+  paint: '#3f9b3a',
+  time: 'day',
+  scenery: 'plant',
+};
+
+/** Built into the game: always there, never edited (arena and street are the fallbacks). */
+export const BUILTIN_MAPS: MapDef[] = [DEFAULT_ARENA, DEFAULT_STREET, DEFAULT_PLANT];
 /** The maps in maps.json, in file order. */
 export const MAPS: MapDef[] = (mapsJson as unknown as MapFile).maps;
 
@@ -139,7 +158,7 @@ export function validateMaps(file: MapFile, teams: { abbr: string; map?: string 
     const m = raw as unknown as Record<string, unknown>;
     const who = `地圖「${String(m.name || m.id || '?')}」`;
     if (typeof m.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(m.id)) errors.push(`${who}：id 只能用小寫英文、數字和 -`);
-    else if (ids.has(m.id)) errors.push(`${who}：id「${m.id}」重複（arena、street 是內建的）`);
+    else if (ids.has(m.id)) errors.push(`${who}：id「${m.id}」重複（arena、street、plant 是內建的）`);
     ids.add(String(m.id));
     if (typeof m.name !== 'string' || !m.name.trim()) errors.push(`${who}：缺少名稱`);
     const oneOf = (k: string, list: readonly string[], label: string) => {

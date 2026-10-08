@@ -403,6 +403,7 @@ export class Session {
     this.cam.update(new THREE.Vector3(tmp.x, 0, tmp.z), Math.sign(attackHoop(s, s.possession)), dt, follow);
     // Your ring goes with you to the bench.
     if (this.solo) this.ring.visible = !!mine;
+    this.arena.follow?.(tmp.x, tmp.z);
     this.arena.update(dt);
     this.renderPassIcons();
     this.renderTimeout();
@@ -541,7 +542,7 @@ export class Session {
         }
         this.playerViews[e.playerId]?.trigger('celebrate');
         this.sfx.cheer();
-        this.arena.cheer();
+        this.arena.cheer(e.kind === 'dunk' ? 'dunk' : e.points === 3 ? 'three' : 'score');
         const label = e.kind === 'dunk' ? '灌籃！' : e.swish ? '空心！' : '';
         hud.toast(`${label}+${e.points}  ${who}`, e.team === this.myColor ? 'perfect' : 'accent');
         if (e.assistId >= 0) hud.toast(`助攻 ${this.name(e.assistId)}`, '', true);

@@ -3,11 +3,16 @@ import { BOARD_X, COURT, HOOP, HOOP_X, mapColor, type MapDef, type MapTime, type
 import { buildFloor } from './courtFloor';
 import type { Quality, QualityAware } from './graphics';
 
+/** What kind of basket the crowd cheers: a plain one, a dunk, a three. */
+export type Cheer = 'score' | 'dunk' | 'three';
+
 export interface Arena extends QualityAware {
   /** Index 0 is the +x hoop, index 1 the -x hoop. */
   nets: THREE.Object3D[];
   swishNet(hoopX: number): void;
-  cheer(): void;
+  cheer(kind?: Cheer): void;
+  /** Where the ball is (in a hand or in the air), for scenery that watches it. */
+  follow?(x: number, z: number): void;
   update(dt: number): void;
   /** Showcase only: centre the spotlight on this spot of the floor. */
   spotOn(x: number, z: number): void;
@@ -235,7 +240,7 @@ function buildStands(scene: THREE.Scene, home: TeamInfo, seats: string): Crowd {
   };
 }
 
-function buildHoop(scene: THREE.Scene, s: 1 | -1, home: TeamInfo): THREE.Object3D {
+export function buildHoop(scene: THREE.Scene, s: 1 | -1, home: TeamInfo): THREE.Object3D {
   const group = new THREE.Group();
   const padMat = new THREE.MeshStandardMaterial({ color: home.primary, roughness: 0.7 });
   const steel = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.7, roughness: 0.35 });
