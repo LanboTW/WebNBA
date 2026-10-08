@@ -61,6 +61,8 @@ export interface TeamInfo {
   group?: string;
   /** Logo image under logos/: nba/ABBR.png for NBA teams, the "logo" field for custom ones. */
   logo?: string;
+  /** Custom teams: the home court (a map id); none = the default arena. */
+  map?: string;
   /** NBA teams only. */
   conference?: 'East' | 'West';
   /** First five are the starters. */

@@ -37,7 +37,7 @@ export interface RawRoster {
   season: string;
   updated?: string;
   ratingKeys: string[];
-  teams: { abbr: string; name: string; primary: string; secondary: string; group?: string; logo?: string; players: RawPlayer[] }[];
+  teams: { abbr: string; name: string; primary: string; secondary: string; group?: string; logo?: string; map?: string; players: RawPlayer[] }[];
 }
 
 /** shared/data/custom-teams.json: hand-made teams the roster update tool never touches. */
@@ -55,6 +55,7 @@ export function parseRoster(raw: RawRoster): TeamInfo[] {
     secondary: t.secondary,
     ...(t.group ? { group: t.group } : {}),
     ...(t.logo ? { logo: t.logo } : {}),
+    ...(t.map ? { map: t.map } : {}),
     players: t.players.map(([name, number, heightM, position, values, look]): PlayerInfo => {
       const ratings = {} as Ratings;
       for (const k of RATING_KEYS) ratings[k] = 50;

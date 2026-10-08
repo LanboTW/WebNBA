@@ -35,8 +35,8 @@ export function formatJson(value: unknown, width = 100, indent = ''): string {
   return `${open}\n${entries.map((e) => inner + e).join(',\n')}\n${indent}${close}`;
 }
 
-/** Line widths the two files are written at. */
-export const CONTENT_WIDTH = { special: 160, myteam: 100 };
+/** Line widths the content files are written at. */
+export const CONTENT_WIDTH = { special: 160, myteam: 100, maps: 100 };
 
 /** myteam.json: the editor changes packs and holidays and keeps the rest. */
 export interface ContentMyTeam {

@@ -15,3 +15,4 @@ export * from './custom';
 export * from './plays';
 export * from './content';
 export * from './teamFile';
+export * from './maps';

@@ -38,29 +38,48 @@ import {
   type SpecialFile,
   type SpecialRow,
   type SpecialTheme,
+  BUILTIN_MAPS,
+  DEFAULT_ARENA,
+  MAP_BASES,
+  MAP_BASE_LABEL,
+  MAP_COLOR_LABEL,
+  MAP_FLOORS,
+  MAP_FLOOR_LABEL,
+  MAP_KEYS,
+  MAP_TEAM_COLORS,
+  MAP_TIMES,
+  MAP_TIME_LABEL,
+  findTeam,
+  validateMaps,
+  type MapDef,
+  type MapFile,
 } from '@webnba/shared';
 import customJson from '../../shared/data/custom-teams.json';
+import mapsJson from '../../shared/data/maps.json';
 import myteamJson from '../../shared/data/myteam.json';
 import specialJson from '../../shared/data/special-cards.json';
 import { esc } from './boxscore';
 import { cardHtml, hydrateCards } from './cards';
 import { RATING_LABEL } from './careerCreate';
+import { FLOOR_COLOR } from './courtFloor';
+import { showMapPreview } from './mapPreview';
 
 /**
  * The content editor (npm run dev only): special cards, their themes, holiday
- * events, packs and the shipped custom teams, with a live preview. A save
- * checks everything, then the dev server writes shared/data/*.json (and the
- * picture into client/public/cards/ or logos/custom/); commit and push to
- * ship it.
+ * events, packs, the shipped custom teams and maps, with a live preview. A
+ * save checks everything, then the dev server writes shared/data/*.json (and
+ * the picture into client/public/cards/, logos/custom/ or maps/); commit and
+ * push to ship it.
  */
 
-type Kind = 'card' | 'theme' | 'holiday' | 'pack' | 'team';
+type Kind = 'card' | 'theme' | 'holiday' | 'pack' | 'team' | 'map';
 const KINDS: [Kind, string][] = [
   ['card', '特殊卡'],
   ['theme', '主題'],
   ['holiday', '節日活動'],
   ['pack', '卡包'],
   ['team', '自訂隊伍'],
+  ['map', '地圖'],
 ];
 
 /** custom-teams.json. */
@@ -78,7 +97,15 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 let special: SpecialFile = clone(specialJson as unknown as SpecialFile);
 let myteam: ContentMyTeam = clone(myteamJson as unknown as ContentMyTeam);
 let custom: CustomFile = clone(customJson as unknown as CustomFile);
+let maps: MapFile = clone(mapsJson as unknown as MapFile);
 let logos = new Set<string>();
+/** Pictures under client/public/maps/ (as maps/<name>.webp). */
+let mapPics = new Set<string>();
+/** A map's centre picture waiting for the save (webp data URL). */
+let mapPic: string | null = null;
+/** The map preview: full court or street (half), and whose colours "home" means. */
+let previewHalf = false;
+let previewHome = '';
 /** A team logo waiting for the save (webp data URL). */
 let logoPic: string | null = null;
 /** The player whose ratings are open in the team form. */
@@ -98,13 +125,14 @@ let picture: string | null = null;
 let crop: { img: HTMLImageElement; zoom: number; x: number; y: number } | null = null;
 let wired = false;
 
-const listIn = (k: Kind, s: SpecialFile, m: ContentMyTeam, c: CustomFile): Entry[] =>
-  (k === 'card' ? s.cards : k === 'theme' ? s.themes : k === 'holiday' ? m.holidays : k === 'pack' ? m.packs : c.teams) as unknown as Entry[];
-const listOf = (k: Kind = kind): Entry[] => listIn(k, special, myteam, custom);
+const listIn = (k: Kind, s: SpecialFile, m: ContentMyTeam, c: CustomFile, mp: MapFile): Entry[] =>
+  (k === 'card' ? s.cards : k === 'theme' ? s.themes : k === 'holiday' ? m.holidays : k === 'pack' ? m.packs : k === 'map' ? mp.maps : c.teams) as unknown as Entry[];
+const listOf = (k: Kind = kind): Entry[] => listIn(k, special, myteam, custom, maps);
 /** An entry's key: teams go by abbreviation, the rest by id. */
 const keyOf = (e: Entry, k: Kind = kind): string => String((k === 'team' ? e.abbr : e.id) ?? '');
 
 function blank(k: Kind): Entry {
+  if (k === 'map') return { id: '', name: '', base: 'outdoor', floor: 'asphalt', apron: '#3d3f43', lines: '#ffffff', paint: '#c4553a', time: 'day', fence: true, buildings: true };
   if (k === 'team') {
     const groups = custom.teams.map((t) => t.group).filter(Boolean);
     const player = (name: string, number: number, h: number, pos: Position): RawPlayer => [name, number, h, pos, ratingsFor(pos, 'allround', h, 70)];
@@ -249,7 +277,12 @@ function teamForm(): string {
       'list="ceGroups"',
     )}</div>` +
     `<datalist id="ceGroups">${groups.map((g) => `<option value="${esc(g)}"></option>`).join('')}</datalist>` +
-    `<div class="row">${field('主色', 'primary', 'color')}${field('副色', 'secondary', 'color')}</div>` +
+    `<div class="row">${field('主色', 'primary', 'color')}${field('副色', 'secondary', 'color')}${select(
+      '主場地圖',
+      'map',
+      [...BUILTIN_MAPS.filter((m) => m !== DEFAULT_ARENA), ...maps.maps].map((m) => [m.id, m.name]),
+      '預設室內館',
+    )}</div>` +
     `<h3 class="mth">隊徽<small>${form.logo ? esc(String(form.logo)) : '沒有就用縮寫和隊色'}</small></h3>` +
     `<div class="row ce-logo">${logoSrc ? `<img src="${esc(logoSrc)}" alt="" />` : ''}<label>選圖片（會縮到 256×256、保留透明）<input type="file" id="ceLogo" accept="image/*" /></label>${
       form.logo || logoPic ? '<button type="button" class="small" data-act="nologo">不用隊徽</button>' : ''
@@ -260,7 +293,47 @@ function teamForm(): string {
   );
 }
 
+/** A map colour: one that follows the home team, or a fixed one. `optional`: may be left out (blankLabel says what then). */
+function mapColorField(label: string, path: string, blankLabel?: string): string {
+  const v = getPath(form, path) as string | undefined;
+  const team = (MAP_TEAM_COLORS as readonly string[]).includes(v ?? '');
+  const mode = v === undefined ? '' : team ? v! : 'custom';
+  const options: [string, string][] = [['custom', '自訂顏色'], ...MAP_TEAM_COLORS.map((c): [string, string] => [c, MAP_COLOR_LABEL[c]])];
+  return (
+    `<label>${label}<span class="ce-mapcolor"><select data-mc="${path}">${blankLabel !== undefined ? opt('', blankLabel, mode) : ''}${options.map(([k, l]) => opt(k, l, mode)).join('')}</select>` +
+    (mode === 'custom' ? `<input type="color" data-f="${path}" data-t="color" value="${esc(v!)}" />` : '') +
+    `</span></label>`
+  );
+}
+
+function mapForm(): string {
+  const indoor = form.base === 'indoor';
+  const picSrc = mapPic ?? (form.logo ? `${import.meta.env.BASE_URL}${String(form.logo)}` : '');
+  const users = custom.teams.filter((t) => t.map && t.map === current).map((t) => t.name);
+  return (
+    `<div class="row">${idField()}${field('名稱（選單上顯示）', 'name', 'text')}</div>` +
+    `<div class="row">${select('底板', 'base', MAP_BASES.map((b) => [b, MAP_BASE_LABEL[b]]))}${select('地板材質', 'floor', MAP_FLOORS.map((x) => [x, MAP_FLOOR_LABEL[x]]))}${select(
+      '時段',
+      'time',
+      MAP_TIMES.map((t) => [t, MAP_TIME_LABEL[t]]),
+    )}</div>` +
+    `<h3 class="mth">顏色<small>「主隊」的顏色會跟著主隊變</small></h3>` +
+    `<div class="row">${mapColorField('球場地面', 'court', `材質原色（${FLOOR_COLOR[(form.floor as MapDef['floor']) ?? 'maple']}）`)}${mapColorField(indoor ? '場外地板' : '周圍地面', 'apron')}</div>` +
+    `<div class="row">${mapColorField('線', 'lines')}${mapColorField('禁區', 'paint')}${mapColorField('三分線內', 'arc', '不另外上色')}</div>` +
+    (indoor
+      ? `<h3 class="mth">看台</h3><div class="row">${field('觀眾密度（0–1，空白＝1）', 'crowd', 'number', 'min="0" max="1" step="0.05"')}${mapColorField('座椅（會調暗）', 'seats', '主隊主色')}</div>`
+      : `<h3 class="mth">周邊</h3><div class="row">${check('圍欄', 'fence')}${check('建築和樹', 'buildings')}</div>${form.time === 'night' ? '<p class="fine left">夜晚會自動加上照明燈。</p>' : ''}`) +
+    `<h3 class="mth">中圈圖案<small>${form.logo ? esc(String(form.logo)) : '沒有就用主隊隊徽'}（只有全場看得到）</small></h3>` +
+    `<div class="row ce-logo">${picSrc ? `<img src="${esc(picSrc)}" alt="" />` : ''}<label>選圖片（會縮到 512×512、保留透明）<input type="file" id="ceMapPic" accept="image/*" /></label>${
+      form.logo || mapPic ? '<button type="button" class="small" data-act="nomappic">不用圖案</button>' : ''
+    }</div>` +
+    (users.length ? `<p class="fine left">主場用這張地圖的隊伍：${users.map(esc).join('、')}</p>` : '') +
+    '<p class="fine left">地圖只改外觀，球場大小和規則都不變。全場比賽畫全場線，街頭畫半場線，兩種都能選這張地圖。</p>'
+  );
+}
+
 function formHtml(): string {
+  if (kind === 'map') return mapForm();
   if (kind === 'team') return teamForm();
   if (kind === 'card') {
     const known = new Set(knownPlayers());
@@ -405,7 +478,24 @@ function teamPreview(): string {
   );
 }
 
+/** Teams to try the map's home colours with: its own custom teams first. */
+function previewTeams(): [string, string][] {
+  const own = custom.teams.filter((t) => t.map === current);
+  return [...own, ...TEAMS.filter((t) => !own.some((o) => o.abbr === t.abbr))].map((t) => [t.abbr, `${t.abbr} ${t.name}`]);
+}
+
+function mapPreview(): string {
+  const teams = previewTeams();
+  if (!teams.some(([a]) => a === previewHome)) previewHome = teams[0]?.[0] ?? 'LAL';
+  return (
+    `<div class="row"><nav class="chips"><button type="button" class="chip${previewHalf ? '' : ' on'}" data-act="pvfull">全場</button><button type="button" class="chip${previewHalf ? ' on' : ''}" data-act="pvhalf">街頭（半場）</button></nav>` +
+    `<label>主隊<select id="cePvHome">${teams.map(([a, l]) => opt(a, l, previewHome)).join('')}</select></label></div>` +
+    '<div id="ceMap3d" class="ce-map3d"></div>'
+  );
+}
+
 function previewHtml(): string {
+  if (kind === 'map') return mapPreview();
   if (kind === 'team') return teamPreview();
   if (kind === 'card') {
     if (!form.player) return '<p class="fine">填上球員名字就會出現卡面。</p>';
@@ -484,6 +574,8 @@ function listHtml(): string {
               ? `${esc(String(e.name))}（${e.from}～${e.to}）`
               : kind === 'team'
                 ? `${esc(String(e.name))}<small> ${esc(String(e.group ?? ''))}</small>`
+                : kind === 'map'
+                  ? `${esc(String(e.name))}<small> ${MAP_BASE_LABEL[e.base as MapDef['base']] ?? ''}・${MAP_TIME_LABEL[e.time as MapDef['time']] ?? ''}</small>`
                 : `${esc(String(e.name))} ${e.price}${e.hidden ? '<small> 隱藏</small>' : ''}`;
       return `<button type="button" class="ce-item${current === id ? ' on' : ''}" data-open="${esc(id)}"><b>${label}</b><small>${esc(id)}</small></button>`;
     })
@@ -505,7 +597,7 @@ export function renderEditor(): void {
   body.innerHTML =
     `<nav class="tabs">${KINDS.map(([k, l]) => `<button type="button" data-kind="${k}" class="${k === kind ? 'on' : ''}">${l}</button>`).join('')}</nav>` +
     (message ? `<p class="msg">${esc(message)}</p>` : '') +
-    `<p class="fine left">開發用：存檔會直接改 shared/data 裡的 JSON（圖片放進 client/public/cards/），頁面會重新整理。確認沒問題再 commit、push 上線。</p>` +
+    `<p class="fine left">開發用：存檔會直接改 shared/data 裡的 JSON（圖片放進 client/public/ 底下），頁面會重新整理。確認沒問題再 commit、push 上線。</p>` +
     `<div class="cols mtcols ce-cols"><div class="col">${listHtml()}</div><div class="col">${
       editing
         ? `<div class="ce-form">${formHtml()}</div><div id="ceChecks">${checksHtml()}</div>` +
@@ -534,6 +626,13 @@ function refreshPreview(): void {
 function afterPreview(): void {
   const el = document.querySelector<HTMLElement>('#cePreview');
   if (!el) return;
+  const box = el.querySelector<HTMLElement>('#ceMap3d');
+  if (kind === 'map' && box) {
+    // The picture being added shows only after the save; until then, the one on file.
+    const map = { ...DEFAULT_ARENA, ...(form as unknown as MapDef) };
+    if (mapPic) delete map.logo;
+    showMapPreview(box, map, findTeam(previewHome), previewHalf);
+  }
   if (kind === 'theme') {
     // The card face reads the saved theme: show the colours being edited.
     el.querySelectorAll<HTMLElement>('.mtcard').forEach((card) => {
@@ -602,6 +701,22 @@ function loadLogo(file: File): void {
   img.src = URL.createObjectURL(file);
 }
 
+/** A map's centre picture: fitted into 512x512, transparency kept, as webp. */
+function loadMapPic(file: File): void {
+  const img = new Image();
+  img.onload = () => {
+    const out = document.createElement('canvas');
+    out.width = 512;
+    out.height = 512;
+    const s = Math.min(512 / img.width, 512 / img.height);
+    out.getContext('2d')!.drawImage(img, (512 - img.width * s) / 2, (512 - img.height * s) / 2, img.width * s, img.height * s);
+    mapPic = out.toDataURL('image/webp', 0.92);
+    form.logo = mapPicPath(String(form.id));
+    renderEditor();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
 function loadPicture(file: File): void {
   const img = new Image();
   img.onload = () => {
@@ -620,7 +735,8 @@ const KEY_ORDER: Record<Kind, string[]> = {
   theme: ['id', 'name', 'color', 'accent', 'levelOnly'],
   holiday: ['id', 'name', 'desc', 'from', 'to', 'theme', 'levels'],
   pack: ['id', 'name', 'price', 'count', 'kind', 'hidden', 'tiers', 'positions', 'players', 'guarantee', 'weights'],
-  team: ['group', 'abbr', 'name', 'primary', 'secondary', 'logo', 'players'],
+  team: ['group', 'abbr', 'name', 'primary', 'secondary', 'logo', 'map', 'players'],
+  map: MAP_KEYS,
 };
 
 function ordered(e: Entry): Entry {
@@ -629,21 +745,24 @@ function ordered(e: Entry): Entry {
 }
 
 /** The files with the form put in (or the entry taken out). */
-function withForm(remove = false): { special: SpecialFile; myteam: ContentMyTeam; custom: CustomFile } {
+function withForm(remove = false): { special: SpecialFile; myteam: ContentMyTeam; custom: CustomFile; maps: MapFile } {
   const s = clone(special);
   const m = clone(myteam);
   const c = clone(custom);
-  const list = listIn(kind, s, m, c);
+  const mp = clone(maps);
+  const list = listIn(kind, s, m, c, mp);
   const at = current ? list.findIndex((e) => keyOf(e) === current) : -1;
   if (remove) {
     if (at >= 0) list.splice(at, 1);
   } else if (at >= 0) list[at] = ordered(form);
   else list.push(ordered(form));
-  return { special: s, myteam: m, custom: c };
+  return { special: s, myteam: m, custom: c, maps: mp };
 }
 
 /** The logo the editor makes for a team: logos/custom/<abbr>.webp. */
 const logoPath = (abbr: string) => `custom/${abbr.toLowerCase()}.webp`;
+/** A map's centre picture: client/public/maps/<id>.webp. */
+const mapPicPath = (id: string) => `maps/${id}.webp`;
 
 async function post(path: string, body: unknown): Promise<{ ok?: boolean; error?: string; images?: string[] }> {
   const res = await fetch(`/__content/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -653,15 +772,23 @@ async function post(path: string, body: unknown): Promise<{ ok?: boolean; error?
 async function save(remove = false): Promise<void> {
   if (!remove && kind === 'card' && picture && form.id) form.image = `${form.id}.webp`;
   if (!remove && kind === 'team' && logoPic && form.abbr) form.logo = logoPath(String(form.abbr));
+  if (!remove && kind === 'map' && mapPic && form.id) form.logo = mapPicPath(String(form.id));
   const next = withForm(remove);
   const known = new Set(images);
   if (!remove && picture && form.image) known.add(String(form.image));
   const knownLogos = new Set(logos);
   if (!remove && logoPic && form.logo) knownLogos.add(String(form.logo));
+  const knownMapPics = new Set(mapPics);
+  if (!remove && mapPic && form.logo) knownMapPics.add(String(form.logo));
+  const mapIds = new Set([...BUILTIN_MAPS, ...next.maps.maps].map((m) => m.id));
   // Events pick opponents from custom-team groups: check them against the teams about to be saved.
   const groups = new Set([...next.custom.teams.map((t) => t.group).filter((g): g is string => !!g)]);
   const result = checkContent(next.special, next.myteam, known, groups);
-  problems = [...result.errors, ...(kind === 'team' ? validateCustomTeams(next.custom, NBA_TEAMS, knownLogos) : [])];
+  problems = [
+    ...result.errors,
+    ...(kind === 'team' ? validateCustomTeams(next.custom, NBA_TEAMS, knownLogos, mapIds) : []),
+    ...(kind === 'map' ? validateMaps(next.maps, next.custom.teams, knownMapPics) : []),
+  ];
   warnings = result.warnings;
   if (problems.length) {
     message = remove ? '不能刪除：' : '還不能存檔，先修正下面的問題：';
@@ -680,9 +807,20 @@ async function save(remove = false): Promise<void> {
       if (!r.ok) throw new Error(r.error);
     }
     if (remove && kind === 'team' && form.logo === logoPath(String(form.abbr))) await post('unlogo', { name: form.logo });
-    const file = kind === 'card' || kind === 'theme' ? 'special' : kind === 'team' ? 'custom' : 'myteam';
+    if (!remove && kind === 'map' && mapPic && form.logo) {
+      const r = await post('mappic', { name: form.logo, data: mapPic });
+      if (!r.ok) throw new Error(r.error);
+    }
+    if (remove && kind === 'map' && form.logo === mapPicPath(String(form.id))) await post('unmappic', { name: form.logo });
+    const file = kind === 'card' || kind === 'theme' ? 'special' : kind === 'team' ? 'custom' : kind === 'map' ? 'maps' : 'myteam';
     const text =
-      file === 'special' ? formatJson(next.special, CONTENT_WIDTH.special) : file === 'custom' ? formatCustomTeams(next.custom).trimEnd() : formatJson(next.myteam, CONTENT_WIDTH.myteam);
+      file === 'special'
+        ? formatJson(next.special, CONTENT_WIDTH.special)
+        : file === 'custom'
+          ? formatCustomTeams(next.custom).trimEnd()
+          : file === 'maps'
+            ? formatJson(next.maps, CONTENT_WIDTH.maps)
+            : formatJson(next.myteam, CONTENT_WIDTH.myteam);
     // Reopen here after the reload the saved file brings.
     sessionStorage.setItem('webnba.editor', JSON.stringify({ kind, id: remove ? null : keyOf(form) }));
     const r = await post('save', { file, text: `${text}\n` });
@@ -690,6 +828,8 @@ async function save(remove = false): Promise<void> {
     special = next.special;
     myteam = next.myteam;
     custom = next.custom;
+    maps = next.maps;
+    mapPic = null;
     picture = null;
     crop = null;
     logoPic = null;
@@ -713,6 +853,7 @@ function open(id: string | null): void {
   picture = null;
   crop = null;
   logoPic = null;
+  mapPic = null;
   openPlayer = null;
   confirmDelete = false;
   problems = [];
@@ -751,6 +892,13 @@ function wire(): void {
       const ids = special.cards.filter((c) => c.theme === form.theme).map((c) => `x-${c.id}`);
       if (last && ids.length) setPath(last, 'reward.cards', ids);
       else message = '這個主題還沒有特殊卡。';
+    } else if (act === 'pvfull' || act === 'pvhalf') {
+      previewHalf = act === 'pvhalf';
+      refreshPreview();
+      return;
+    } else if (act === 'nomappic') {
+      mapPic = null;
+      delete form.logo;
     } else if (act === 'nopic') {
       picture = null;
       crop = null;
@@ -824,6 +972,20 @@ function wire(): void {
       updatePicture();
       return;
     }
+    if (el.id === 'cePvHome') {
+      previewHome = el.value;
+      refreshPreview();
+      return;
+    }
+    if (el.dataset.mc) {
+      // A map colour's kind: a team colour, a fixed one (keeps the current, or grey), or none.
+      const path = el.dataset.mc;
+      const was = getPath(form, path) as string | undefined;
+      const fixed = was && /^#/.test(was) ? was : '#888888';
+      setPath(form, path, el.value === 'custom' ? fixed : el.value || undefined);
+      renderEditor();
+      return;
+    }
     if (el.id === 'cePeriod') {
       period = Number(el.value);
       refreshPreview();
@@ -864,6 +1026,15 @@ function wire(): void {
       loadLogo(el.files[0]);
       return;
     }
+    if (el.id === 'ceMapPic' && el.files?.[0]) {
+      if (!form.id) {
+        message = '先填 id 再選圖案（圖案用 id 命名）。';
+        renderEditor();
+        return;
+      }
+      loadMapPic(el.files[0]);
+      return;
+    }
     if (el.id === 'cePic' && el.files?.[0]) {
       if (!form.id) {
         message = '先填 id 再選圖片（圖片用 id 命名）。';
@@ -902,6 +1073,8 @@ export async function openEditor(): Promise<void> {
     if (res.ok) images = new Set((await res.json()) as string[]);
     const got = await fetch('/__content/logos');
     if (got.ok) logos = new Set((await got.json()) as string[]);
+    const pics = await fetch('/__content/maps');
+    if (pics.ok) mapPics = new Set((await pics.json()) as string[]);
   } catch {
     // No dev server: saving will say so.
   }

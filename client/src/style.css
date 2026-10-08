@@ -5613,6 +5613,23 @@ body.touch textarea {
   align-items: flex-end;
 }
 
+.ce-map3d canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  border-radius: 10px;
+}
+
+.ce-mapcolor {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ce-mapcolor select {
+  flex: 1;
+}
+
 .ce-logo img,
 .ce-teamhead img {
   width: 56px;

@@ -1,0 +1,43 @@
+{
+  "$comment": "Maps made in the content editor (npm run dev, 內容編輯器 → 地圖). Purely visual: court size and rules never change. Colours: #RRGGBB, or home / home2 / home-dark / home2-dark to follow the home team. Built-in maps arena and street are in shared/src/maps.ts.",
+  "maps": [
+    {
+      "id": "rooftop",
+      "name": "夜間屋頂球場",
+      "base": "outdoor",
+      "floor": "concrete",
+      "apron": "#4a4c50",
+      "lines": "#ffffff",
+      "paint": "#b8322a",
+      "time": "night",
+      "fence": true,
+      "buildings": true
+    },
+    {
+      "id": "retro-gym",
+      "name": "復古體育館",
+      "base": "indoor",
+      "floor": "darkwood",
+      "apron": "#3a2416",
+      "lines": "#f3e6c4",
+      "paint": "home",
+      "time": "dusk",
+      "crowd": 0.35,
+      "seats": "#6b4a2e"
+    },
+    {
+      "id": "beach",
+      "name": "海灘球場",
+      "base": "outdoor",
+      "floor": "sport",
+      "court": "#15508a",
+      "apron": "#c9b07c",
+      "lines": "#ffffff",
+      "paint": "#d9651a",
+      "arc": "#1c63a6",
+      "time": "day",
+      "fence": false,
+      "buildings": false
+    }
+  ]
+}

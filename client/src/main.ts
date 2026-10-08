@@ -21,6 +21,10 @@ import {
   type GameState,
   type PlayerInfo,
   type TeamInfo,
+  BUILTIN_MAPS,
+  DEFAULT_ARENA,
+  DEFAULT_STREET,
+  MAPS,
 } from '@webnba/shared';
 import { Sfx } from './audio';
 import { esc, renderBoxScore } from './boxscore';
@@ -405,7 +409,7 @@ $('#startBtn').addEventListener('click', () => {
     seed: (Math.random() * 2 ** 31) | 0,
     rules: menuRules(),
     cohesion: [cohesionFor(homeSel.value), cohesionFor(awaySel.value)],
-  });
+  }, 0, mapSel.value || undefined);
   quickCustom = [homeSel.value, awaySel.value].filter((k) => customTeamOf(k));
 });
 
@@ -459,9 +463,23 @@ function seatPlayer(s: Seat | null | undefined): { p: PlayerInfo; t: TeamInfo } 
   return t && p ? { p, t } : null;
 }
 
+/** The 場地 select: the mode's default (the home team's own court, or the street court), then every other map. */
+const mapSel = $<HTMLSelectElement>('#mapSel');
+const mapKey = (kind: QuickKind) => (kind === 'street' ? 'streetMap' : 'map');
+function fillMaps(kind: QuickKind): void {
+  const fallback = kind === 'street' ? DEFAULT_STREET : DEFAULT_ARENA;
+  const first = kind === 'street' ? '街頭球場（預設）' : '主隊主場（預設）';
+  const maps = [...BUILTIN_MAPS.filter((m) => m !== fallback), ...MAPS];
+  mapSel.innerHTML = [`<option value="">${first}</option>`, ...maps.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`)].join('');
+  const saved = load(mapKey(kind), '');
+  mapSel.value = maps.some((m) => m.id === saved) ? saved : '';
+}
+mapSel.addEventListener('change', () => save(mapKey(quickKind), mapSel.value));
+
 function setQuickKind(kind: QuickKind): void {
   quickKind = kind;
   save('quickKind', kind);
+  fillMaps(kind);
   document.querySelectorAll<HTMLElement>('#quickKind [data-kind]').forEach((b) => b.classList.toggle('on', b.dataset.kind === kind));
   $('#quick').classList.toggle('kind-street', kind === 'street');
   $<HTMLButtonElement>('#startBtn').disabled = kind === 'street' && !streetReady();
@@ -580,7 +598,7 @@ function startStreet(): void {
     seed: (Math.random() * 2 ** 31) | 0,
     rules: { fouls: ruleBoxes.fouls.checked, violations: false, fatigue: false },
     street: { target: Number(streetTarget.value), makeItTakeIt: streetMitt.checked },
-  });
+  }, 0, mapSel.value || undefined);
 }
 setQuickKind(quickKind);
 
@@ -717,7 +735,7 @@ let careerPlay: { rosterIdx: number; done: (state: GameState) => void } | null =
 /** A MyTeam game in progress: books the result once (at the final or on leaving), then back to MyTeam. */
 let myteamPlay: { finish: (state: GameState, forfeit: boolean) => string; after: () => void; booked: boolean } | null = null;
 
-function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, home: 0 | 1 = 0): void {
+function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSettings>, home: 0 | 1 = 0, map?: string): void {
   stopShowcase();
   session?.dispose();
   // Career games keep their own camera choice (the player view by default).
@@ -740,7 +758,7 @@ function startSession(teams: [TeamInfo, TeamInfo], settings: Partial<GameSetting
     { onFinal: showFinal, onViewChange },
     window.innerWidth / window.innerHeight,
     view as CameraMode,
-    { home },
+    { home, map },
   );
   graphics.attach(session.scene, session.arena);
   // Dev-only hook for inspecting the sim from the browser console.

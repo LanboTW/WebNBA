@@ -1,10 +1,7 @@
 import * as THREE from 'three';
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-import { BOARD_X, COURT, HOOP, HOOP_X, THREE_CORNER_DX, type TeamInfo } from '@webnba/shared';
+import { BOARD_X, COURT, HOOP, HOOP_X, mapColor, type MapDef, type MapTime, type TeamInfo } from '@webnba/shared';
+import { buildFloor } from './courtFloor';
 import type { Quality, QualityAware } from './graphics';
-import { loadLogo } from './logos';
-
-const PX_PER_M = 72;
 
 export interface Arena extends QualityAware {
   /** Index 0 is the +x hoop, index 1 the -x hoop. */
@@ -16,23 +13,61 @@ export interface Arena extends QualityAware {
   spotOn(x: number, z: number): void;
 }
 
+/** The swish: a net that was scored through bounces for a moment. */
+export function netSwing(nets: THREE.Object3D[]): { swish(hoopX: number): void; update(dt: number): void } {
+  const anim = nets.map(() => 0);
+  return {
+    swish(hoopX) {
+      anim[hoopX > 0 ? 0 : 1] = 1;
+    },
+    update(dt) {
+      nets.forEach((net, i) => {
+        const t = anim[i];
+        if (t <= 0) return;
+        anim[i] = Math.max(0, t - dt * 1.6);
+        net.scale.y = 1 + Math.sin(t * 22) * 0.25 * t;
+        net.scale.x = net.scale.z = 1 - 0.18 * t;
+      });
+    },
+  };
+}
+
+/** Indoor light by time of day: background, hemisphere, key, fill and the ceiling banks. */
+const INDOOR_LIGHT: Record<MapTime, { bg: number; sky: number; ground: number; hemi: number; key: number; keyI: number; fill: number; fillI: number; glow: number }> = {
+  day: { bg: 0x07080d, sky: 0xdfe6ff, ground: 0x3a2a1a, hemi: 0.9, key: 0xffffff, keyI: 2.2, fill: 0xfff1dd, fillI: 0.6, glow: 0xfff6e0 },
+  dusk: { bg: 0x120a07, sky: 0xffd9b0, ground: 0x3a2416, hemi: 0.8, key: 0xffd8a8, keyI: 2.1, fill: 0xffb47a, fillI: 0.55, glow: 0xffd9a0 },
+  night: { bg: 0x020308, sky: 0xbfcaff, ground: 0x14141f, hemi: 0.6, key: 0xe6ecff, keyI: 2.0, fill: 0x9fb2ff, fillI: 0.4, glow: 0xe8f0ff },
+};
+
 /**
- * The court and everything around it. A showcase arena (the menu background)
- * has no crowd and is dark apart from one spotlight that follows the player.
+ * An indoor map: the court and everything around it. A showcase arena (the
+ * menu background) has no crowd and is dark apart from one spotlight that
+ * follows the player. `half`: street games, one hoop.
  */
-export function buildArena(scene: THREE.Scene, home: TeamInfo, showcase = false): Arena {
-  scene.background = new THREE.Color(0x07080d);
-  scene.fog = new THREE.Fog(0x07080d, 40, 80);
+export function buildIndoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, half: boolean, showcase = false): Arena {
+  const light = INDOOR_LIGHT[map.time];
+  scene.background = new THREE.Color(light.bg);
+  scene.fog = new THREE.Fog(light.bg, 40, 80);
 
-  const lights = addLights(scene, showcase);
+  const lights = addLights(scene, map.time, showcase);
   const key = lights.key;
-  const floor = buildFloor(home);
-  scene.add(floor.group);
-  addCeiling(scene);
-  const crowd: Crowd = showcase ? { root: new THREE.Group(), setDensity() {} } : buildStands(scene, home);
-  const nets = [buildHoop(scene, 1, home), buildHoop(scene, -1, home)];
+  const apron = new THREE.Mesh(
+    new THREE.PlaneGeometry(COURT.halfLength * 2 + 8, COURT.halfWidth * 2 + 8),
+    new THREE.MeshStandardMaterial({ color: mapColor(map.apron, home), roughness: 0.8 }),
+  );
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.y = -0.01;
+  apron.receiveShadow = true;
+  scene.add(apron);
+  const floor = buildFloor(map, home, half);
+  scene.add(floor.mesh);
+  addCeiling(scene, light.glow);
+  const crowd: Crowd = showcase ? { root: new THREE.Group(), setDensity() {} } : buildStands(scene, home, mapColor(map.seats ?? 'home', home));
+  const share = map.crowd ?? 1;
+  // Street games use the +x hoop only; a stand-in keeps the indices.
+  const nets = half ? [buildHoop(scene, 1, home), new THREE.Object3D()] : [buildHoop(scene, 1, home), buildHoop(scene, -1, home)];
+  const swing = netSwing(nets);
 
-  const netAnim = [0, 0];
   let cheerT = 0;
   let quality: Quality | null = null;
   return {
@@ -48,26 +83,19 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo, showcase = false)
       }
       floor.setReflection(q === 'high' && !showcase, renderer);
       if (showcase) scene.environmentIntensity = 0.12;
-      crowd.setDensity(q === 'low' ? 0.55 : q === 'medium' ? 0.8 : 1, q !== 'low');
+      crowd.setDensity(share * (q === 'low' ? 0.55 : q === 'medium' ? 0.8 : 1), q !== 'low');
     },
-    swishNet(hoopX) {
-      netAnim[hoopX > 0 ? 0 : 1] = 1;
-    },
+    swishNet: swing.swish,
     cheer() {
-      cheerT = 2.2;
+      // A near-empty gym does not shake.
+      if (share >= 0.2) cheerT = 2.2;
     },
     spotOn(x, z) {
       lights.spot?.position.set(x + 1.5, 9, z + 3);
       lights.spot?.target.position.set(x, 0, z);
     },
     update(dt) {
-      nets.forEach((net, i) => {
-        const t = netAnim[i];
-        if (t <= 0) return;
-        netAnim[i] = Math.max(0, t - dt * 1.6);
-        net.scale.y = 1 + Math.sin(t * 22) * 0.25 * t;
-        net.scale.x = net.scale.z = 1 - 0.18 * t;
-      });
+      swing.update(dt);
       if (cheerT > 0) {
         cheerT = Math.max(0, cheerT - dt);
         crowd.root.position.y = Math.abs(Math.sin(cheerT * 14)) * 0.12 * Math.min(1, cheerT);
@@ -76,9 +104,10 @@ export function buildArena(scene: THREE.Scene, home: TeamInfo, showcase = false)
   };
 }
 
-function addLights(scene: THREE.Scene, showcase: boolean): { key: THREE.DirectionalLight; spot: THREE.SpotLight | null } {
-  scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x3a2a1a, showcase ? 0.12 : 0.9));
-  const key = new THREE.DirectionalLight(0xffffff, showcase ? 0.25 : 2.2);
+function addLights(scene: THREE.Scene, time: MapTime, showcase: boolean): { key: THREE.DirectionalLight; spot: THREE.SpotLight | null } {
+  const l = INDOOR_LIGHT[time];
+  scene.add(new THREE.HemisphereLight(l.sky, l.ground, showcase ? 0.12 : l.hemi));
+  const key = new THREE.DirectionalLight(l.key, showcase ? 0.25 : l.keyI);
   key.position.set(6, 22, 10);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -91,7 +120,7 @@ function addLights(scene: THREE.Scene, showcase: boolean): { key: THREE.Directio
   c.far = 60;
   key.shadow.bias = -0.0005;
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xfff1dd, showcase ? 0.08 : 0.6);
+  const fill = new THREE.DirectionalLight(l.fill, showcase ? 0.08 : l.fillI);
   fill.position.set(-10, 15, -8);
   scene.add(fill);
   if (!showcase) return { key, spot: null };
@@ -106,8 +135,8 @@ function addLights(scene: THREE.Scene, showcase: boolean): { key: THREE.Directio
 }
 
 /** Banks of arena lights over the court; bright enough to bloom on high quality. */
-function addCeiling(scene: THREE.Scene): void {
-  const glow = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+function addCeiling(scene: THREE.Scene, color: number): void {
+  const glow = new THREE.MeshBasicMaterial({ color });
   glow.color.multiplyScalar(2.2);
   const frame = new THREE.MeshStandardMaterial({ color: 0x1a1c24, roughness: 0.8 });
   const bank = new THREE.BoxGeometry(3.2, 0.25, 0.9);
@@ -124,174 +153,16 @@ function addCeiling(scene: THREE.Scene): void {
   }
 }
 
-function buildFloor(home: TeamInfo): { group: THREE.Object3D; setReflection(on: boolean, r: THREE.WebGLRenderer): void } {
-  const group = new THREE.Group();
-  const w = COURT.halfLength * 2;
-  const h = COURT.halfWidth * 2;
-
-  const apron = new THREE.Mesh(
-    new THREE.PlaneGeometry(w + 8, h + 8),
-    new THREE.MeshStandardMaterial({ color: new THREE.Color(home.primary).multiplyScalar(0.6), roughness: 0.8 }),
-  );
-  apron.rotation.x = -Math.PI / 2;
-  apron.position.y = -0.01;
-  apron.receiveShadow = true;
-  group.add(apron);
-
-  const canvas = drawCourt(home);
-  const tex = new THREE.CanvasTexture(canvas);
-  // The centre shows the abbreviation until the logo arrives (or for good if there is none).
-  loadLogo(home).then((img) => {
-    if (!img) return;
-    const ctx = canvas.getContext('2d')!;
-    const r = (COURT.centerCircleRadius - 0.03) * PX_PER_M;
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = home.primary;
-    ctx.fill();
-    const size = r * 1.55;
-    ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
-    tex.needsUpdate = true;
-  });
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
-  const court = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, h),
-    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, metalness: 0.05 }),
-  );
-  court.rotation.x = -Math.PI / 2;
-  court.receiveShadow = true;
-  // Drawn first among see-through things so floor markers still show on top.
-  court.renderOrder = -1;
-  group.add(court);
-
-  // High quality: a mirror just under a slightly see-through court reads as polished wood.
-  let mirror: Reflector | null = null;
-  const courtMat = court.material;
-  return {
-    group,
-    setReflection(on, r) {
-      if (on && !mirror) {
-        const scale = r.getPixelRatio() * 0.5;
-        mirror = new Reflector(new THREE.PlaneGeometry(w, h), {
-          textureWidth: Math.round(window.innerWidth * scale),
-          textureHeight: Math.round(window.innerHeight * scale),
-          color: 0x9a8f86,
-          clipBias: 0.003,
-        });
-        mirror.rotation.x = -Math.PI / 2;
-        mirror.position.y = -0.004;
-        group.add(mirror);
-      }
-      if (mirror) mirror.visible = on;
-      courtMat.transparent = on;
-      courtMat.opacity = on ? 0.82 : 1;
-      courtMat.needsUpdate = true;
-    },
-  };
-}
-
-function drawCourt(home: TeamInfo): HTMLCanvasElement {
-  const L = COURT.halfLength;
-  const W = COURT.halfWidth;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(L * 2 * PX_PER_M);
-  canvas.height = Math.round(W * 2 * PX_PER_M);
-  const ctx = canvas.getContext('2d')!;
-  const u = (x: number) => (x + L) * PX_PER_M;
-  const v = (z: number) => (z + W) * PX_PER_M;
-
-  // Maple planks running the length of the court.
-  ctx.fillStyle = '#d6a268';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const plank = 0.12 * PX_PER_M;
-  let seed = 7;
-  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let y = 0; y < canvas.height; y += plank) {
-    ctx.fillStyle = `rgba(${rand() < 0.5 ? '90,50,20' : '255,235,200'},${0.04 + rand() * 0.06})`;
-    ctx.fillRect(0, y, canvas.width, plank);
-    ctx.fillStyle = 'rgba(80,45,15,0.12)';
-    ctx.fillRect(0, y, canvas.width, 1);
-  }
-
-  const paint = home.primary;
-  ctx.lineWidth = 0.05 * PX_PER_M;
-  ctx.strokeStyle = '#ffffff';
-
-  const poly = (pts: [number, number][], close = false) => {
-    ctx.beginPath();
-    pts.forEach(([x, z], i) => (i ? ctx.lineTo(u(x), v(z)) : ctx.moveTo(u(x), v(z))));
-    if (close) ctx.closePath();
-    ctx.stroke();
-  };
-  const circle = (x: number, z: number, r: number, fill?: string) => {
-    ctx.beginPath();
-    ctx.arc(u(x), v(z), r * PX_PER_M, 0, Math.PI * 2);
-    if (fill) {
-      ctx.fillStyle = fill;
-      ctx.fill();
-    }
-    ctx.stroke();
-  };
-
-  // Centre circle and team mark.
-  circle(0, 0, COURT.centerCircleRadius, paint);
-  ctx.fillStyle = home.secondary;
-  ctx.font = `bold ${0.9 * PX_PER_M}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(home.abbr, u(0), v(0));
-
-  for (const s of [1, -1]) {
-    const base = s * L;
-    const ft = s * (L - COURT.freeThrowFromBaseline);
-    const kw = COURT.keyWidth / 2;
-    const hoop = s * HOOP_X;
-
-    // Paint.
-    ctx.fillStyle = paint;
-    ctx.fillRect(Math.min(u(base), u(ft)), v(-kw), Math.abs(u(base) - u(ft)), v(kw) - v(-kw));
-    poly([[base, -kw], [ft, -kw], [ft, kw], [base, kw]]);
-    circle(ft, 0, COURT.centerCircleRadius);
-
-    // Three-point line: corner straights plus the arc.
-    const cornerX = hoop - s * THREE_CORNER_DX;
-    poly([[base, COURT.threeCornerZ], [cornerX, COURT.threeCornerZ]]);
-    poly([[base, -COURT.threeCornerZ], [cornerX, -COURT.threeCornerZ]]);
-    const alpha = Math.asin(COURT.threeCornerZ / COURT.threeRadius);
-    const arc: [number, number][] = [];
-    for (let i = 0; i <= 64; i++) {
-      const a = -alpha + (2 * alpha * i) / 64;
-      arc.push([hoop - s * Math.cos(a) * COURT.threeRadius, Math.sin(a) * COURT.threeRadius]);
-    }
-    poly(arc);
-
-    // Restricted area.
-    const ra: [number, number][] = [];
-    for (let i = 0; i <= 32; i++) {
-      const a = -Math.PI / 2 + (Math.PI * i) / 32;
-      ra.push([hoop - s * Math.cos(a) * COURT.restrictedRadius, Math.sin(a) * COURT.restrictedRadius]);
-    }
-    poly(ra);
-  }
-
-  poly([[0, -W], [0, W]]);
-  ctx.lineWidth = 0.1 * PX_PER_M;
-  poly([[-L, -W], [L, -W], [L, W], [-L, W]], true);
-  return canvas;
-}
-
 interface Crowd {
   root: THREE.Object3D;
   /** Share of seats filled (0-1) and whether fans get heads. */
   setDensity(share: number, heads: boolean): void;
 }
 
-function buildStands(scene: THREE.Scene, home: TeamInfo): Crowd {
+function buildStands(scene: THREE.Scene, home: TeamInfo, seats: string): Crowd {
   const stands = new THREE.Group();
-  const seatMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(home.primary).multiplyScalar(0.35), roughness: 0.9 });
+  // Seats sit in the dark past the court lights.
+  const seatMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(seats).multiplyScalar(0.35), roughness: 0.9 });
   const tiers = 9;
   const rows: { x: number; z: number; len: number; alongX: boolean; outward: number }[] = [];
   const sideZ = COURT.halfWidth + 3.2;

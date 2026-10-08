@@ -2,14 +2,22 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CONTENT_WIDTH,
+  DEFAULT_ARENA,
+  DEFAULT_STREET,
+  MAPS,
   NBA_TEAMS,
   checkContent,
   formatCustomTeams,
   formatJson,
+  gameMap,
+  mapColor,
   previewSpecial,
   validMonthDay,
   validateCustomTeams,
+  validateMaps,
   type ContentMyTeam,
+  type MapDef,
+  type MapFile,
   type Look,
   type RawTeam,
   type SpecialFile,
@@ -76,6 +84,55 @@ describe('content files (the content editor)', () => {
     has('張數要是 1–10');
     has('保底等級比卡包能開出的等級還高');
     has('「premium」被關卡、任務或活動的獎勵用到');
+  });
+
+  it('maps: the shipped file passes, is written back as it is, and mistakes are caught', () => {
+    const file = (): MapFile => JSON.parse(read('maps.json'));
+    const teams = (JSON.parse(read('custom-teams.json')) as { teams: RawTeam[] }).teams;
+    expect(validateMaps(file(), teams)).toEqual([]);
+    expect(formatJson(file(), CONTENT_WIDTH.maps) + '\n').toBe(read('maps.json'));
+    const ok = file().maps[0];
+    const bad = (m: Partial<MapDef> & Record<string, unknown>, team?: RawTeam) => validateMaps({ maps: [{ ...ok, ...m } as MapDef] }, team ? [team] : [], new Set());
+    const has = (errors: string[], text: string) => expect(errors.some((e) => e.includes(text)), text).toBe(true);
+    has(bad({ id: 'Bad Id' }), 'id 只能用小寫英文');
+    has(bad({ id: 'arena' }), '重複');
+    has(bad({ name: '' }), '缺少名稱');
+    has(bad({ base: 'space' as never }), '底板要是');
+    has(bad({ floor: 'ice' as never }), '地板材質要是');
+    has(bad({ time: 'noon' as never }), '時段要是');
+    has(bad({ lines: 'white' }), 'lines 要是 #RRGGBB');
+    has(bad({ seats: '#12345' }), 'seats 要是');
+    has(bad({ crowd: 2 }), '觀眾密度');
+    has(bad({ logo: 'x.png' }), 'logo 要寫成 maps/');
+    has(bad({ logo: 'maps/x.webp' }), '裡沒有「maps/x.webp」');
+    has(bad({ sky: 1 }), '不認識的欄位 sky');
+    has(bad({}, { ...teams[0], map: 'gone' }), '被隊伍用到的地圖不能刪');
+    expect(bad({ paint: 'home2-dark', arc: 'home' })).toEqual([]);
+  });
+
+  it('maps: colours that follow the home team, and which map a game uses', () => {
+    const home = { ...NBA_TEAMS[0], primary: '#ff0000', secondary: '#0000c8' };
+    expect(mapColor('home', home)).toBe('#ff0000');
+    expect(mapColor('home2', home)).toBe('#0000c8');
+    expect(mapColor('home-dark', home)).toBe('#c90000');
+    expect(mapColor('#123456', home)).toBe('#123456');
+    expect(gameMap(undefined, home, false)).toBe(DEFAULT_ARENA);
+    expect(gameMap(undefined, home, true)).toBe(DEFAULT_STREET);
+    expect(gameMap(undefined, { ...home, map: MAPS[0].id }, false)).toBe(MAPS[0]);
+    // A missing map falls back; a picked one wins over the home team's.
+    expect(gameMap(undefined, { ...home, map: 'gone' }, false)).toBe(DEFAULT_ARENA);
+    expect(gameMap('street', { ...home, map: MAPS[0].id }, false)).toBe(DEFAULT_STREET);
+  });
+
+  it('custom teams: a home map has to exist and is written on its own line', () => {
+    const file = JSON.parse(read('custom-teams.json')) as { ratingKeys: string[]; teams: RawTeam[] };
+    const team = { ...file.teams[0], map: MAPS[0].id };
+    const ids = new Set(['arena', 'street', ...MAPS.map((m) => m.id)]);
+    expect(validateCustomTeams({ ...file, teams: [team] }, NBA_TEAMS, undefined, ids)).toEqual([]);
+    expect(validateCustomTeams({ ...file, teams: [{ ...team, map: 'gone' }] }, NBA_TEAMS, undefined, ids).some((e) => e.includes('主場地圖「gone」不存在'))).toBe(true);
+    const text = formatCustomTeams({ ...file, teams: [team] });
+    expect(text).toContain(`    "map": "${MAPS[0].id}",\n    "players": [`);
+    expect((JSON.parse(text) as { teams: RawTeam[] }).teams[0].map).toBe(MAPS[0].id);
   });
 
   it('days and previews', () => {

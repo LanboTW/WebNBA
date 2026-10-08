@@ -1,168 +1,121 @@
 import * as THREE from 'three';
-import { BOARD_X, COURT, HOOP, HOOP_X, THREE_CORNER_DX } from '@webnba/shared';
-import { buildNet, type Arena } from './arena';
+import { BOARD_X, COURT, HOOP, HOOP_X, mapColor, type MapDef, type MapTime, type TeamInfo } from '@webnba/shared';
+import { buildNet, netSwing, type Arena } from './arena';
+import { buildFloor } from './courtFloor';
 
-const PX_PER_M = 48;
+/** Outdoor light by time of day. */
+const OUTDOOR_LIGHT: Record<
+  MapTime,
+  { bg: number; fog: number; near: number; far: number; sky: number; ground: number; hemi: number; sun: number; sunI: number; sunAt: [number, number, number] }
+> = {
+  day: { bg: 0x9fc6ea, fog: 0xb8d4ee, near: 45, far: 110, sky: 0xdcecff, ground: 0x4a4438, hemi: 1.1, sun: 0xfff2dc, sunI: 2.6, sunAt: [-11, 24, 12] },
+  dusk: { bg: 0xe39a6c, fog: 0xd9a27e, near: 40, far: 105, sky: 0xffcf9e, ground: 0x3c2c2a, hemi: 0.75, sun: 0xff9550, sunI: 2.2, sunAt: [-30, 9, 14] },
+  // The moon: no shadow; the floodlights carry the court.
+  night: { bg: 0x070b18, fog: 0x070b18, near: 35, far: 95, sky: 0x40507a, ground: 0x0c0c12, hemi: 0.35, sun: 0x8fa6ff, sunI: 0.3, sunAt: [3, 30, -10] },
+};
 
 /**
- * Street games: an outdoor half court at the +x hoop. Asphalt, a painted
- * court, one steel pole, a chain-link fence and a city block under daylight.
+ * An outdoor map: ground, the painted court, steel poles and, as the map
+ * says, a chain-link fence and a city block; floodlights at night. `half`:
+ * street games, one hoop at +x.
  */
-export function buildStreetArena(scene: THREE.Scene): Arena {
-  scene.background = new THREE.Color(0x9fc6ea);
-  scene.fog = new THREE.Fog(0xb8d4ee, 45, 110);
+export function buildOutdoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, half: boolean): Arena {
+  const l = OUTDOOR_LIGHT[map.time];
+  const night = map.time === 'night';
+  const cx = half ? 7 : 0;
+  scene.background = new THREE.Color(l.bg);
+  scene.fog = new THREE.Fog(l.fog, l.near, l.far);
 
-  scene.add(new THREE.HemisphereLight(0xdcecff, 0x4a4438, 1.1));
-  const sun = new THREE.DirectionalLight(0xfff2dc, 2.6);
-  sun.position.set(-4, 24, 12);
-  sun.target.position.set(7, 0, 0);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const c = sun.shadow.camera;
-  c.left = -16;
-  c.right = 16;
-  c.top = 14;
-  c.bottom = -14;
-  c.near = 1;
-  c.far = 70;
-  sun.shadow.bias = -0.0005;
+  scene.add(new THREE.HemisphereLight(l.sky, l.ground, l.hemi));
+  const sun = new THREE.DirectionalLight(l.sun, l.sunI);
+  sun.position.set(cx + l.sunAt[0], l.sunAt[1], l.sunAt[2]);
+  sun.target.position.set(cx, 0, 0);
   scene.add(sun, sun.target);
+  let caster: THREE.DirectionalLight | THREE.SpotLight = sun;
+  if (night) caster = addFloodlights(scene, half);
+  else {
+    sun.castShadow = true;
+    const c = sun.shadow.camera;
+    c.right = half ? 16 : 21;
+    c.left = -c.right;
+    c.top = half ? 14 : 16;
+    c.bottom = -c.top;
+    c.near = 1;
+    c.far = 80;
+    sun.shadow.bias = -0.0005;
+  }
+  caster.shadow.mapSize.set(2048, 2048);
 
-  // Asphalt all around, the court painted on it.
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), new THREE.MeshStandardMaterial({ color: 0x3b3d40, roughness: 0.95 }));
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(half ? 90 : 110, half ? 70 : 80),
+    new THREE.MeshStandardMaterial({ color: mapColor(map.apron, home), roughness: 0.95 }),
+  );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(5, -0.01, 0);
+  ground.position.set(half ? 5 : 0, -0.01, 0);
   ground.receiveShadow = true;
   scene.add(ground);
+  scene.add(buildFloor(map, home, half).mesh);
 
-  const L = COURT.halfLength;
-  const W = COURT.halfWidth;
-  const tex = new THREE.CanvasTexture(drawHalfCourt());
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
-  const court = new THREE.Mesh(new THREE.PlaneGeometry(L + 2, W * 2 + 2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
-  court.rotation.x = -Math.PI / 2;
-  court.position.set(L / 2, 0, 0);
-  court.receiveShadow = true;
-  court.renderOrder = -1;
-  scene.add(court);
-
-  const net = buildPole(scene);
-  buildFence(scene);
-  buildBlock(scene);
-
-  let netAnim = 0;
+  // In street games nobody ever shoots at the -x end; a stand-in keeps the indices.
+  const nets = half ? [buildPole(scene, 1), new THREE.Object3D()] : [buildPole(scene, 1), buildPole(scene, -1)];
+  if (map.fence) buildFence(scene, half);
+  if (map.buildings) buildBlock(scene, half, night);
+  const swing = netSwing(nets);
   return {
-    // Nobody ever shoots at the -x end; a stand-in keeps the indices.
-    nets: [net, new THREE.Object3D()],
+    nets,
     setQuality(q) {
-      const size = q === 'high' ? 4096 : 2048;
-      if (sun.shadow.mapSize.x !== size) {
-        sun.shadow.mapSize.set(size, size);
-        sun.shadow.map?.dispose();
-        sun.shadow.map = null;
+      const size = night ? (q === 'high' ? 2048 : 1024) : q === 'high' ? 4096 : 2048;
+      if (caster.shadow.mapSize.x !== size) {
+        caster.shadow.mapSize.set(size, size);
+        caster.shadow.map?.dispose();
+        caster.shadow.map = null;
       }
     },
-    swishNet(hoopX) {
-      if (hoopX > 0) netAnim = 1;
-    },
+    swishNet: swing.swish,
     cheer() {},
     spotOn() {},
-    update(dt) {
-      if (netAnim <= 0) return;
-      netAnim = Math.max(0, netAnim - dt * 1.6);
-      net.scale.y = 1 + Math.sin(netAnim * 22) * 0.25 * netAnim;
-      net.scale.x = net.scale.z = 1 - 0.18 * netAnim;
-    },
+    update: swing.update,
   };
 }
 
-/** x from -1 to L+1, z from -W-1 to W+1 (a metre of margin all round). */
-function drawHalfCourt(): HTMLCanvasElement {
-  const L = COURT.halfLength;
+/** Night: light towers along the far sideline, and lamps out of view on the camera side. The first casts the shadows. */
+function addFloodlights(scene: THREE.Scene, half: boolean): THREE.SpotLight {
   const W = COURT.halfWidth;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round((L + 2) * PX_PER_M);
-  canvas.height = Math.round((W * 2 + 2) * PX_PER_M);
-  const ctx = canvas.getContext('2d')!;
-  const u = (x: number) => (x + 1) * PX_PER_M;
-  const v = (z: number) => (z + W + 1) * PX_PER_M;
-
-  // Worn asphalt, then the court's painted surface with its own wear.
-  ctx.fillStyle = '#3d3f43';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#2f6b8a';
-  ctx.fillRect(u(0), v(-W), L * PX_PER_M, W * 2 * PX_PER_M);
-  let seed = 11;
-  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 9000; i++) {
-    const light = rand() < 0.5;
-    ctx.fillStyle = `rgba(${light ? '255,255,255' : '0,0,0'},${0.03 + rand() * 0.07})`;
-    const s = 1 + rand() * 3;
-    ctx.fillRect(rand() * canvas.width, rand() * canvas.height, s, s);
-  }
-
-  const kw = COURT.keyWidth / 2;
-  const ft = L - COURT.freeThrowFromBaseline;
-  ctx.fillStyle = '#c4553a';
-  ctx.fillRect(u(ft), v(-kw), (L - ft) * PX_PER_M, kw * 2 * PX_PER_M);
-
-  ctx.lineWidth = 0.06 * PX_PER_M;
-  ctx.strokeStyle = 'rgba(245,245,240,0.92)';
-  const poly = (pts: [number, number][], close = false) => {
-    ctx.beginPath();
-    pts.forEach(([x, z], i) => (i ? ctx.lineTo(u(x), v(z)) : ctx.moveTo(u(x), v(z))));
-    if (close) ctx.closePath();
-    ctx.stroke();
-  };
-  // An arc around (cx, 0) opening toward the hoop end, from angle `from` to `to`.
-  const arc = (cx: number, r: number, from: number, to: number) => {
-    const pts: [number, number][] = [];
-    for (let i = 0; i <= 48; i++) {
-      const a = from + ((to - from) * i) / 48;
-      pts.push([cx - Math.cos(a) * r, Math.sin(a) * r]);
+  const xs = half ? [2, 12] : [-12, 0, 12];
+  const steel = new THREE.MeshStandardMaterial({ color: 0x4a4f55, metalness: 0.6, roughness: 0.5 });
+  const lamp = new THREE.MeshBasicMaterial({ color: 0xfff4d8 });
+  lamp.color.multiplyScalar(2.2);
+  const H = 10;
+  let first: THREE.SpotLight | null = null;
+  for (const z of [-(W + 3.4), W + 7]) {
+    for (const x of xs) {
+      const spot = new THREE.SpotLight(0xfff1d6, 140, 32, 0.62, 0.6, 2);
+      spot.position.set(x, H, z);
+      spot.target.position.set(x * 0.8 + (half ? 1.5 : 0), 0, z * -0.25);
+      scene.add(spot, spot.target);
+      if (!first) {
+        first = spot;
+        spot.castShadow = true;
+        spot.shadow.bias = -0.0005;
+        spot.shadow.camera.near = 2;
+        spot.shadow.camera.far = 45;
+      }
+      if (z > 0) continue;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, H, 10), steel);
+      pole.position.set(x, H / 2, z - 0.3);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 0.25), steel);
+      head.position.set(x, H + 0.2, z - 0.15);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.38), lamp);
+      face.position.set(x, H + 0.2, z - 0.02);
+      face.rotation.x = -0.35;
+      scene.add(pole, head, face);
     }
-    poly(pts);
-  };
-
-  poly([
-    [L, -kw],
-    [ft, -kw],
-    [ft, kw],
-    [L, kw],
-  ]);
-  arc(ft, COURT.centerCircleRadius, -Math.PI / 2, Math.PI / 2);
-  const cornerX = HOOP_X - THREE_CORNER_DX;
-  poly([
-    [L, COURT.threeCornerZ],
-    [cornerX, COURT.threeCornerZ],
-  ]);
-  poly([
-    [L, -COURT.threeCornerZ],
-    [cornerX, -COURT.threeCornerZ],
-  ]);
-  const alpha = Math.asin(COURT.threeCornerZ / COURT.threeRadius);
-  arc(HOOP_X, COURT.threeRadius, -alpha, alpha);
-  arc(HOOP_X, COURT.restrictedRadius, -Math.PI / 2, Math.PI / 2);
-  // Half of the centre circle on the half-court line.
-  ctx.beginPath();
-  ctx.arc(u(0), v(0), COURT.centerCircleRadius * PX_PER_M, -Math.PI / 2, Math.PI / 2);
-  ctx.stroke();
-  ctx.lineWidth = 0.1 * PX_PER_M;
-  poly(
-    [
-      [0, -W],
-      [L, -W],
-      [L, W],
-      [0, W],
-    ],
-    true,
-  );
-  return canvas;
+  }
+  return first!;
 }
 
-/** One steel pole with a painted steel backboard. */
-function buildPole(scene: THREE.Scene): THREE.Object3D {
+/** One steel pole with a painted steel backboard, at the +x (s = 1) or -x end. */
+function buildPole(scene: THREE.Scene, s: 1 | -1): THREE.Object3D {
   const group = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x2f4a3a, metalness: 0.6, roughness: 0.45 });
   const poleX = COURT.halfLength + 1.1;
@@ -213,6 +166,8 @@ function buildPole(scene: THREE.Scene): THREE.Object3D {
   const net = buildNet();
   net.position.set(HOOP_X, HOOP.rimHeight, 0);
   group.add(net);
+  // Built at +x; the other end is the same turned around.
+  if (s < 0) group.rotation.y = Math.PI;
   scene.add(group);
   return net;
 }
@@ -237,8 +192,8 @@ function chainLink(): THREE.CanvasTexture {
   return tex;
 }
 
-/** Fence behind the hoop and along the far sideline (the camera side stays open). */
-function buildFence(scene: THREE.Scene): void {
+/** Fence behind the hoops and along the far sideline (the camera side stays open). */
+function buildFence(scene: THREE.Scene, half: boolean): void {
   const H = 3.6;
   const tex = chainLink();
   const post = new THREE.MeshStandardMaterial({ color: 0x8a9096, metalness: 0.6, roughness: 0.4 });
@@ -265,44 +220,59 @@ function buildFence(scene: THREE.Scene): void {
   };
   const bx = COURT.halfLength + 3.2;
   const sz = COURT.halfWidth + 2.6;
-  panel(-4, -sz, bx, -sz);
+  panel(half ? -4 : -bx, -sz, bx, -sz);
   panel(bx, -sz, bx, sz);
+  if (!half) panel(-bx, -sz, -bx, sz);
 }
 
-/** A row of plain buildings past the fence, and a few trees. */
-function buildBlock(scene: THREE.Scene): void {
+/** Rows of plain buildings past the fence (lit windows at night), and a few trees. */
+function buildBlock(scene: THREE.Scene, half: boolean, night: boolean): void {
   let seed = 5;
   const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const tones = [0x8b6f5c, 0xa8a196, 0x6f7a86, 0xb98f6a, 0x7d6a74];
   const win = new THREE.MeshStandardMaterial({ color: 0x31404f, roughness: 0.3, metalness: 0.4 });
-  const building = (x: number, z: number, w: number, d: number, facing: 'z' | 'x') => {
+  const lit = new THREE.MeshStandardMaterial({ color: 0x2a2418, emissive: 0xffc56a, emissiveIntensity: 0.9 });
+  /** `facing`: the side toward the court (+z, or the -x / +x face). */
+  const building = (x: number, z: number, w: number, d: number, facing: 'z' | '-x' | '+x') => {
     const h = 8 + rand() * 16;
-    const mat = new THREE.MeshStandardMaterial({ color: tones[Math.floor(rand() * tones.length)], roughness: 0.9 });
+    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(tones[Math.floor(rand() * tones.length)]).multiplyScalar(night ? 0.3 : 1), roughness: 0.9 });
     const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     b.position.set(x, h / 2, z);
     scene.add(b);
     // Window bands on the side facing the court.
     for (let y = 2.5; y < h - 1.5; y += 3) {
-      const band = new THREE.Mesh(new THREE.PlaneGeometry((facing === 'z' ? w : d) * 0.8, 1.1), win);
+      const band = new THREE.Mesh(new THREE.PlaneGeometry((facing === 'z' ? w : d) * 0.8, 1.1), night && rand() < 0.55 ? lit : win);
       if (facing === 'z') band.position.set(x, y, z + d / 2 + 0.02);
       else {
-        band.rotation.y = -Math.PI / 2;
-        band.position.set(x - w / 2 - 0.02, y, z);
+        const side = facing === '-x' ? -1 : 1;
+        band.rotation.y = (side * Math.PI) / 2;
+        band.position.set(x + side * (w / 2 + 0.02), y, z);
       }
       scene.add(band);
     }
   };
-  for (let x = -20; x < 30; x += 9 + rand() * 3) building(x, -24 - rand() * 4, 7 + rand() * 3, 8, 'z');
-  for (let z = -18; z < 20; z += 9 + rand() * 3) building(31 + rand() * 3, z, 8, 8, 'x');
+  for (let x = half ? -20 : -30; x < 30; x += 9 + rand() * 3) building(x, -24 - rand() * 4, 7 + rand() * 3, 8, 'z');
+  for (let z = -18; z < 20; z += 9 + rand() * 3) building(31 + rand() * 3, z, 8, 8, '-x');
+  if (!half) for (let z = -18; z < 20; z += 9 + rand() * 3) building(-31 - rand() * 3, z, 8, 8, '+x');
   const trunk = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 1 });
-  const leaves = new THREE.MeshStandardMaterial({ color: 0x3f7a3a, roughness: 1 });
-  for (const [x, z] of [
-    [-6, -13],
-    [4, -14],
-    [21, -12],
-    [21, 9],
-    [-7, 12],
-  ]) {
+  const leaves = new THREE.MeshStandardMaterial({ color: new THREE.Color(0x3f7a3a).multiplyScalar(night ? 0.35 : 1), roughness: 1 });
+  const trees = half
+    ? [
+        [-6, -13],
+        [4, -14],
+        [21, -12],
+        [21, 9],
+        [-7, 12],
+      ]
+    : [
+        [-8, -14],
+        [6, -14],
+        [21, -12],
+        [21, 9],
+        [-21, -12],
+        [-21, 9],
+      ];
+  for (const [x, z] of trees) {
     const t = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.6, 8), trunk);
     t.position.set(x, 1.3, z);
     const crown = new THREE.Mesh(new THREE.SphereGeometry(1.8 + rand(), 12, 10), leaves);

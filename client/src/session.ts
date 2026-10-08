@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import {
+  DEFAULT_ARENA,
   DT,
   PLAY_KINDS,
   PLAY_NAME,
   attackHoop,
   attackHoopX,
   cancelSub,
+  gameMap,
   choosePassTarget,
   createGame,
   passIcons,
@@ -25,8 +27,8 @@ import {
   type TeamInfo,
   type Vec3,
 } from '@webnba/shared';
-import { buildArena, type Arena } from './arena';
-import { buildStreetArena } from './streetCourt';
+import type { Arena } from './arena';
+import { buildMap } from './mapScene';
 import type { Sfx } from './audio';
 import { BallView } from './ballView';
 import { CAMERA_LABEL, GameCamera, type CameraMode } from './camera';
@@ -91,6 +93,8 @@ export interface SessionOptions {
   showcase?: boolean;
   /** Which team is at home (its arena, the other wears its colours); team 0 by default. */
   home?: 0 | 1;
+  /** The map picked in the menu (an id); none = the home team's own, or the mode's default. */
+  map?: string;
 }
 
 export interface SessionCallbacks {
@@ -156,7 +160,8 @@ export class Session {
     this.hud.setHelpMode(this.solo);
     this.builtFor = this.state.players.map((p) => p.rosterIdx);
     this.home = options.home ?? 0;
-    this.arena = street ? buildStreetArena(this.scene) : buildArena(this.scene, teams[this.home], !!options.showcase);
+    const home = teams[this.home];
+    this.arena = buildMap(this.scene, options.showcase ? DEFAULT_ARENA : gameMap(options.map, home, street), home, street, !!options.showcase);
     this.cam = new GameCamera(aspect, view);
     this.playerViews = this.state.players.map((p) => {
       const v = new PlayerView(p.info, kitFor(teams[p.team], p.team === this.home));

@@ -18,6 +18,8 @@ export interface RawTeam {
   group?: string;
   /** Custom teams: a picture under client/public/logos/. */
   logo?: string;
+  /** Custom teams: the home court, a map id (maps.json). */
+  map?: string;
   players: RawPlayer[];
 }
 
@@ -79,9 +81,9 @@ export function validateTeams(teams: RawTeam[], ratingKeys: string[], heights: [
  * custom-teams.json: same rules as NBA teams, plus abbreviations that fit the
  * scoreboard and never collide. Fun teams may stretch heights a little, and a
  * look may set only some fields (just a wheelchair, say): the game fills in the rest.
- * `logos`: the files under client/public/logos/, when known.
+ * `logos`: the files under client/public/logos/, when known; `maps`: the map ids.
  */
-export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTeam[] }, nba: { abbr: string }[], logos?: Set<string>): string[] {
+export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTeam[] }, nba: { abbr: string }[], logos?: Set<string>, maps?: Set<string>): string[] {
   const errors = validateTeams(custom.teams, custom.ratingKeys, [1.4, 2.6], true);
   const seen = new Set(nba.map((t) => t.abbr));
   for (const t of custom.teams) {
@@ -92,6 +94,7 @@ export function validateCustomTeams(custom: { ratingKeys: string[]; teams: RawTe
     if (t.logo !== undefined && (typeof t.logo !== 'string' || !/^[\w./-]+\.(png|webp|svg)$/i.test(t.logo) || t.logo.includes('..')))
       errors.push(`${t.abbr}：logo 要寫成 logos/ 底下的 .png／.webp／.svg 路徑，例如 "taiwan/tpe.png"`);
     else if (t.logo && logos && !logos.has(t.logo)) errors.push(`${t.abbr}：client/public/logos/ 裡沒有「${t.logo}」`);
+    if (t.map !== undefined && maps && !maps.has(t.map)) errors.push(`${t.abbr}：主場地圖「${t.map}」不存在`);
   }
   return errors;
 }
@@ -121,6 +124,7 @@ export function formatCustomTeams(file: { $comment?: string; ratingKeys: string[
       '  {',
       `    ${head},`,
       ...(t.logo ? [`    "logo": ${q(t.logo)},`] : []),
+      ...(t.map ? [`    "map": ${q(t.map)},`] : []),
       '    "players": [',
       t.players.map((p) => `      ${formatPlayer(p)}`).join(',\n'),
       '    ]',

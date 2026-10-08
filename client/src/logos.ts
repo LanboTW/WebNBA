@@ -23,7 +23,11 @@ const cache = new Map<string, Promise<HTMLImageElement | null>>();
 /** Loads the logo for drawing onto a canvas; null when there is none or it fails. */
 export function loadLogo(t: TeamInfo): Promise<HTMLImageElement | null> {
   const url = logoUrl(t);
-  if (!url) return Promise.resolve(null);
+  return url ? loadPicture(url) : Promise.resolve(null);
+}
+
+/** Any picture for drawing onto a canvas (cached); null when it fails. */
+export function loadPicture(url: string): Promise<HTMLImageElement | null> {
   let p = cache.get(url);
   if (!p) {
     p = new Promise((resolve) => {
