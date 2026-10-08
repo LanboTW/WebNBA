@@ -106,6 +106,8 @@ describe('content files (the content editor)', () => {
     has(bad({ logo: 'x.png' }), 'logo 要寫成 maps/');
     has(bad({ logo: 'maps/x.webp' }), '裡沒有「maps/x.webp」');
     has(bad({ sky: 1 }), '不認識的欄位 sky');
+    has(bad({ buildings: true }), '不認識的欄位 buildings');
+    has(bad({ scenery: 'park' as never }), '周邊景觀要是');
     has(bad({}, { ...teams[0], map: 'gone' }), '被隊伍用到的地圖不能刪');
     expect(bad({ paint: 'home2-dark', arc: 'home' })).toEqual([]);
   });

@@ -4177,6 +4177,69 @@ body.menu-solid #home {
   display: none !important;
 }
 
+/* The 場地 picker: a tab per map over a live preview. */
+.cols .q-map {
+  order: 1;
+}
+
+.mappick {
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.maptabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--line);
+}
+
+.maptabs button {
+  flex: 0 0 auto;
+  margin-bottom: -1px;
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.maptabs button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.maptabs button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  background: rgba(255, 122, 26, 0.12);
+}
+
+.mapview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 34dvh;
+  margin-top: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0d1018;
+}
+
+.mapview canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* The player database fills the window; only the table scrolls. */
 #players .panel.full {
   height: calc(100dvh - 32px);
@@ -4227,16 +4290,19 @@ body.menu-solid #home {
 
   .cols .q-first,
   .cols .q-top,
-  .cols .q-last {
+  .cols .q-last,
+  .cols .q-map {
     order: 0;
   }
 
   #quick .matchup {
-    margin: 0;
+    margin: 0 0 14px;
   }
 
+  /* Room under the cards for the 場地 picker. */
   #quick .matchup .card {
-    max-height: calc(100dvh - 190px);
+    max-height: calc(66dvh - 250px);
+    min-height: 120px;
     overflow-y: auto;
   }
 

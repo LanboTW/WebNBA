@@ -25,6 +25,7 @@ import {
   DEFAULT_ARENA,
   DEFAULT_STREET,
   MAPS,
+  gameMap,
 } from '@webnba/shared';
 import { Sfx } from './audio';
 import { esc, renderBoxScore } from './boxscore';
@@ -40,6 +41,7 @@ import { initMyTeam, renderMyTeam, resetMyTeamSearch } from './myteamUi';
 import { initCustom, renderCustom } from './customUi';
 import { custom } from './myteamStore';
 import { initCareerMenu, renderCareer, savedCareers } from './careerMenu';
+import { showMapPreview } from './mapPreview';
 import { Session } from './session';
 import { Showcase } from './showcase';
 import { openBugReport, type BugContext } from './bugReport';
@@ -380,6 +382,7 @@ function refreshCards(): void {
   menuPicker.render();
   renderStreet();
   $('#startBtn').textContent = modeSel.value === 'watch' ? '開始觀戰' : '開始比賽';
+  showPickedMap();
 }
 [homeSel, awaySel, modeSel].forEach((s) => s.addEventListener('change', refreshCards));
 
@@ -409,7 +412,7 @@ $('#startBtn').addEventListener('click', () => {
     seed: (Math.random() * 2 ** 31) | 0,
     rules: menuRules(),
     cohesion: [cohesionFor(homeSel.value), cohesionFor(awaySel.value)],
-  }, 0, mapSel.value || undefined);
+  }, 0, pickedMap || undefined);
   quickCustom = [homeSel.value, awaySel.value].filter((k) => customTeamOf(k));
 });
 
@@ -463,18 +466,40 @@ function seatPlayer(s: Seat | null | undefined): { p: PlayerInfo; t: TeamInfo } 
   return t && p ? { p, t } : null;
 }
 
-/** The 場地 select: the mode's default (the home team's own court, or the street court), then every other map. */
-const mapSel = $<HTMLSelectElement>('#mapSel');
+/**
+ * The 場地 picker: a tab per map, first the mode's default (the home team's
+ * own court, or the street court), and a live preview of the picked one.
+ * Each mode remembers its own pick.
+ */
 const mapKey = (kind: QuickKind) => (kind === 'street' ? 'streetMap' : 'map');
+let pickedMap = '';
 function fillMaps(kind: QuickKind): void {
   const fallback = kind === 'street' ? DEFAULT_STREET : DEFAULT_ARENA;
-  const first = kind === 'street' ? '街頭球場（預設）' : '主隊主場（預設）';
   const maps = [...BUILTIN_MAPS.filter((m) => m !== fallback), ...MAPS];
-  mapSel.innerHTML = [`<option value="">${first}</option>`, ...maps.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`)].join('');
   const saved = load(mapKey(kind), '');
-  mapSel.value = maps.some((m) => m.id === saved) ? saved : '';
+  pickedMap = maps.some((m) => m.id === saved) ? saved : '';
+  const tabs: [string, string][] = [['', kind === 'street' ? '街頭球場' : '主隊主場'], ...maps.map((m): [string, string] => [m.id, m.name])];
+  $('#mapTabs').innerHTML = tabs.map(([id, name]) => `<button type="button" role="tab" data-map="${esc(id)}">${esc(name)}</button>`).join('');
+  showPickedMap();
 }
-mapSel.addEventListener('change', () => save(mapKey(quickKind), mapSel.value));
+/** Marks the picked tab and, while the quick screen is up, draws the map with your team at home. */
+function showPickedMap(): void {
+  $('#mapTabs')
+    .querySelectorAll<HTMLElement>('[data-map]')
+    .forEach((b) => b.setAttribute('aria-selected', String(b.dataset.map === pickedMap)));
+  if (current !== 'quick' || session) return;
+  const street = quickKind === 'street';
+  const home = street ? STREET_SIDES[0] : teamFor(homeSel.value);
+  showMapPreview($('#mapView'), gameMap(pickedMap || undefined, home, street), home, street, true);
+}
+$('#mapTabs').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-map]');
+  if (!b) return;
+  pickedMap = b.dataset.map ?? '';
+  save(mapKey(quickKind), pickedMap);
+  b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  showPickedMap();
+});
 
 function setQuickKind(kind: QuickKind): void {
   quickKind = kind;
@@ -598,7 +623,7 @@ function startStreet(): void {
     seed: (Math.random() * 2 ** 31) | 0,
     rules: { fouls: ruleBoxes.fouls.checked, violations: false, fatigue: false },
     street: { target: Number(streetTarget.value), makeItTakeIt: streetMitt.checked },
-  }, 0, mapSel.value || undefined);
+  }, 0, pickedMap || undefined);
 }
 setQuickKind(quickKind);
 

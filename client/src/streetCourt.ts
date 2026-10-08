@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BOARD_X, COURT, HOOP, HOOP_X, mapColor, type MapDef, type MapTime, type TeamInfo } from '@webnba/shared';
 import { buildNet, netSwing, type Arena } from './arena';
+import { buildBeach, buildRopeFence } from './beachScene';
 import { buildFloor } from './courtFloor';
 
 /** Outdoor light by time of day. */
@@ -16,7 +17,7 @@ const OUTDOOR_LIGHT: Record<
 
 /**
  * An outdoor map: ground, the painted court, steel poles and, as the map
- * says, a chain-link fence and a city block; floodlights at night. `half`:
+ * says, a fence and a city block or a beach; floodlights at night. `half`:
  * street games, one hoop at +x.
  */
 export function buildOutdoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, half: boolean): Arena {
@@ -24,7 +25,9 @@ export function buildOutdoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, ha
   const night = map.time === 'night';
   const cx = half ? 7 : 0;
   scene.background = new THREE.Color(l.bg);
-  scene.fog = new THREE.Fog(l.fog, l.near, l.far);
+  const beach = map.scenery === 'beach';
+  // The sea runs out to the horizon: see further.
+  scene.fog = beach ? new THREE.Fog(l.fog, l.near + 15, night ? 150 : 185) : new THREE.Fog(l.fog, l.near, l.far);
 
   scene.add(new THREE.HemisphereLight(l.sky, l.ground, l.hemi));
   const sun = new THREE.DirectionalLight(l.sun, l.sunI);
@@ -47,7 +50,7 @@ export function buildOutdoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, ha
   caster.shadow.mapSize.set(2048, 2048);
 
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(half ? 90 : 110, half ? 70 : 80),
+    beach ? new THREE.PlaneGeometry(420, 420) : new THREE.PlaneGeometry(half ? 90 : 110, half ? 70 : 80),
     new THREE.MeshStandardMaterial({ color: mapColor(map.apron, home), roughness: 0.95 }),
   );
   ground.rotation.x = -Math.PI / 2;
@@ -58,8 +61,9 @@ export function buildOutdoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, ha
 
   // In street games nobody ever shoots at the -x end; a stand-in keeps the indices.
   const nets = half ? [buildPole(scene, 1), new THREE.Object3D()] : [buildPole(scene, 1), buildPole(scene, -1)];
-  if (map.fence) buildFence(scene, half);
-  if (map.buildings) buildBlock(scene, half, night);
+  if (map.fence) (beach ? buildRopeFence : buildFence)(scene, half);
+  if (map.scenery === 'city') buildBlock(scene, half, night);
+  const waves = beach ? buildBeach(scene, map.time, mapColor(map.apron, home)) : null;
   const swing = netSwing(nets);
   return {
     nets,
@@ -74,7 +78,10 @@ export function buildOutdoor(scene: THREE.Scene, map: MapDef, home: TeamInfo, ha
     swishNet: swing.swish,
     cheer() {},
     spotOn() {},
-    update: swing.update,
+    update(dt) {
+      swing.update(dt);
+      waves?.(dt);
+    },
   };
 }
 

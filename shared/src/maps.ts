@@ -11,16 +11,19 @@ import type { TeamInfo } from './types';
 export const MAP_BASES = ['indoor', 'outdoor'] as const;
 export const MAP_FLOORS = ['maple', 'darkwood', 'asphalt', 'concrete', 'sport'] as const;
 export const MAP_TIMES = ['day', 'dusk', 'night'] as const;
+export const MAP_SCENERIES = ['none', 'city', 'beach'] as const;
 /** Colours that follow the home team: primary, secondary, and darker shades of them. */
 export const MAP_TEAM_COLORS = ['home', 'home2', 'home-dark', 'home2-dark'] as const;
 
 export type MapBase = (typeof MAP_BASES)[number];
 export type MapFloor = (typeof MAP_FLOORS)[number];
 export type MapTime = (typeof MAP_TIMES)[number];
+export type MapScenery = (typeof MAP_SCENERIES)[number];
 
 export const MAP_BASE_LABEL: Record<MapBase, string> = { indoor: '室內館', outdoor: '戶外' };
 export const MAP_FLOOR_LABEL: Record<MapFloor, string> = { maple: '楓木', darkwood: '深色木', asphalt: '柏油', concrete: '水泥', sport: '塑膠地墊' };
 export const MAP_TIME_LABEL: Record<MapTime, string> = { day: '白天', dusk: '黃昏', night: '夜晚' };
+export const MAP_SCENERY_LABEL: Record<MapScenery, string> = { none: '無', city: '城市街區', beach: '海灘' };
 export const MAP_COLOR_LABEL: Record<(typeof MAP_TEAM_COLORS)[number], string> = {
   home: '主隊主色',
   home2: '主隊副色',
@@ -51,10 +54,10 @@ export interface MapDef {
   crowd?: number;
   /** Indoors: the stands (drawn dimmed). Default: the home team's colour. */
   seats?: MapColor;
-  /** Outdoors: chain-link fence. */
+  /** Outdoors: a fence on three sides (chain-link, or posts and rope on a beach). */
   fence?: boolean;
-  /** Outdoors: city blocks and trees past the fence. */
-  buildings?: boolean;
+  /** Outdoors: what lies past the court (none = bare ground). */
+  scenery?: MapScenery;
 }
 
 export interface MapFile {
@@ -88,7 +91,7 @@ export const DEFAULT_STREET: MapDef = {
   paint: '#c4553a',
   time: 'day',
   fence: true,
-  buildings: true,
+  scenery: 'city',
 };
 
 /** Built into the game: always there, never edited (the fallbacks). */
@@ -120,7 +123,7 @@ export function mapColor(c: MapColor, home: TeamInfo): string {
 }
 
 /** The file's key order for a map. */
-export const MAP_KEYS: (keyof MapDef)[] = ['id', 'name', 'base', 'floor', 'court', 'apron', 'lines', 'paint', 'arc', 'logo', 'time', 'crowd', 'seats', 'fence', 'buildings'];
+export const MAP_KEYS: (keyof MapDef)[] = ['id', 'name', 'base', 'floor', 'court', 'apron', 'lines', 'paint', 'arc', 'logo', 'time', 'crowd', 'seats', 'fence', 'scenery'];
 
 /**
  * maps.json's checks. `teams`: the custom teams, whose home maps have to
@@ -148,7 +151,8 @@ export function validateMaps(file: MapFile, teams: { abbr: string; map?: string 
     for (const k of ['apron', 'lines', 'paint']) if (!color(m[k])) errors.push(`${who}：${k} ${colorRule}`);
     for (const k of ['court', 'arc', 'seats']) if (m[k] !== undefined && !color(m[k])) errors.push(`${who}：${k} ${colorRule}`);
     if (m.crowd !== undefined && !(typeof m.crowd === 'number' && m.crowd >= 0 && m.crowd <= 1)) errors.push(`${who}：觀眾密度要是 0–1`);
-    for (const k of ['fence', 'buildings']) if (m[k] !== undefined && typeof m[k] !== 'boolean') errors.push(`${who}：${k} 要是 true/false`);
+    if (m.scenery !== undefined) oneOf('scenery', MAP_SCENERIES, '周邊景觀');
+    for (const k of ['fence']) if (m[k] !== undefined && typeof m[k] !== 'boolean') errors.push(`${who}：${k} 要是 true/false`);
     if (m.logo !== undefined) {
       if (typeof m.logo !== 'string' || !/^maps\/[a-z0-9][a-z0-9-]*\.webp$/.test(m.logo)) errors.push(`${who}：logo 要寫成 maps/<名稱>.webp`);
       else if (pictures && !pictures.has(m.logo)) errors.push(`${who}：client/public/ 裡沒有「${m.logo}」`);

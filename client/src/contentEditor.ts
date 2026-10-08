@@ -47,6 +47,8 @@ import {
   MAP_FLOOR_LABEL,
   MAP_KEYS,
   MAP_TEAM_COLORS,
+  MAP_SCENERIES,
+  MAP_SCENERY_LABEL,
   MAP_TIMES,
   MAP_TIME_LABEL,
   findTeam,
@@ -132,7 +134,7 @@ const listOf = (k: Kind = kind): Entry[] => listIn(k, special, myteam, custom, m
 const keyOf = (e: Entry, k: Kind = kind): string => String((k === 'team' ? e.abbr : e.id) ?? '');
 
 function blank(k: Kind): Entry {
-  if (k === 'map') return { id: '', name: '', base: 'outdoor', floor: 'asphalt', apron: '#3d3f43', lines: '#ffffff', paint: '#c4553a', time: 'day', fence: true, buildings: true };
+  if (k === 'map') return { id: '', name: '', base: 'outdoor', floor: 'asphalt', apron: '#3d3f43', lines: '#ffffff', paint: '#c4553a', time: 'day', fence: true, scenery: 'city' };
   if (k === 'team') {
     const groups = custom.teams.map((t) => t.group).filter(Boolean);
     const player = (name: string, number: number, h: number, pos: Position): RawPlayer => [name, number, h, pos, ratingsFor(pos, 'allround', h, 70)];
@@ -322,7 +324,7 @@ function mapForm(): string {
     `<div class="row">${mapColorField('線', 'lines')}${mapColorField('禁區', 'paint')}${mapColorField('三分線內', 'arc', '不另外上色')}</div>` +
     (indoor
       ? `<h3 class="mth">看台</h3><div class="row">${field('觀眾密度（0–1，空白＝1）', 'crowd', 'number', 'min="0" max="1" step="0.05"')}${mapColorField('座椅（會調暗）', 'seats', '主隊主色')}</div>`
-      : `<h3 class="mth">周邊</h3><div class="row">${check('圍欄', 'fence')}${check('建築和樹', 'buildings')}</div>${form.time === 'night' ? '<p class="fine left">夜晚會自動加上照明燈。</p>' : ''}`) +
+      : `<h3 class="mth">周邊</h3><div class="row">${check('圍欄', 'fence')}${select('周邊景觀', 'scenery', MAP_SCENERIES.map((x) => [x, MAP_SCENERY_LABEL[x]]))}</div>${form.time === 'night' ? '<p class="fine left">夜晚會自動加上照明燈。</p>' : ''}`) +
     `<h3 class="mth">中圈圖案<small>${form.logo ? esc(String(form.logo)) : '沒有就用主隊隊徽'}（只有全場看得到）</small></h3>` +
     `<div class="row ce-logo">${picSrc ? `<img src="${esc(picSrc)}" alt="" />` : ''}<label>選圖片（會縮到 512×512、保留透明）<input type="file" id="ceMapPic" accept="image/*" /></label>${
       form.logo || mapPic ? '<button type="button" class="small" data-act="nomappic">不用圖案</button>' : ''

@@ -11,7 +11,7 @@
       "paint": "#b8322a",
       "time": "night",
       "fence": true,
-      "buildings": true
+      "scenery": "city"
     },
     {
       "id": "retro-gym",
@@ -36,8 +36,8 @@
       "paint": "#d9651a",
       "arc": "#1c63a6",
       "time": "day",
-      "fence": false,
-      "buildings": false
+      "fence": true,
+      "scenery": "beach"
     }
   ]
 }

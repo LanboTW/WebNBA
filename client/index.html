@@ -133,9 +133,6 @@
                   <option value="720">12 分鐘</option>
                 </select>
               </label>
-              <label>場地
-                <select id="mapSel"></select>
-              </label>
             </div>
             <div class="buttons q-last">
               <button type="button" id="randomBtn">隨機對戰</button>
@@ -163,6 +160,10 @@
               <button type="button" class="side" id="homeSide"><span class="seatname">你的隊伍</span><div id="homeCard" class="card"></div></button>
               <div class="vs">VS</div>
               <button type="button" class="side" id="awaySide"><span class="seatname">對手</span><div id="awayCard" class="card"></div></button>
+            </div>
+            <div class="mappick q-map">
+              <div class="maptabs" id="mapTabs" role="tablist" aria-label="場地"></div>
+              <div class="mapview" id="mapView"></div>
             </div>
           </div>
         </div>
